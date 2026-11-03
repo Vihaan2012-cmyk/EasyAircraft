@@ -1,6 +1,6 @@
 # EasyAcft plan
 
-Draft for review, 3 Nov 2026.
+Draft for review, 3 Nov 2026. Status at the end.
 
 EasyAcft is a whole-aircraft systems library for X-Plane, for any aircraft developer. It is a separate
 product from the A380 and shares no code with it.
@@ -584,3 +584,25 @@ bundled test tools and the X-Plane SDK, and it relies on libacfutils for everyth
   per-domain solves, sub-steps only where they are needed, and a frame budget test.
 - **Expression language growth:** it must stay small. Anything bigger goes to the C API (or Lua, if
   you choose 2B).
+
+## Status, 3 Nov 2026
+
+M0 to M8 are built and tested; M9 (freeze, docs, release) is next.
+
+Built as planned:
+- every domain in the plan, the checker with error codes, units, expressions, variants (`[variant] of`, `remove`), scenario tests (`easyacft test`), import from `.acf` and MSFS;
+- the X-Plane plugin with bindings, published values, switch commands, hot reload, the live link to Studio and the in-sim systems window;
+- the C API with computers;
+- three examples, each with scenario tests: twin-jet (184 parts), piston-single (52), a380 (300).
+
+Studio, built differently from the plan:
+- networks are edited through the inspector (typed settings, part pickers, live expression checks with completion) and by shift-dragging between two buses or lines; there is no port-wiring canvas;
+- the engine editor is a side view drawn from the stages, the station values, and a design point that solves as you type; stage maps and the T-s diagram are not drawn;
+- FADEC ratings and schedules are CSV tables, edited and plotted in Tables;
+- one detail level (the network view); no overview or part internals yet;
+- labels hide below 55 % zoom;
+- the theme file `studio-theme.toml` sets four colours: ink, faint, fill, paper;
+- the in-sim window is a list per system with fail and repair, not diagrams;
+- binding is a form in the inspector, not drag and drop;
+- recorded tests add each bus's powered state as the checks.
+
