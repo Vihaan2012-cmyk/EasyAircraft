@@ -422,6 +422,6 @@ mod tests {
                 assert!(apart, "{} overlaps {}", a.checked.parts[x.part].id, a.checked.parts[y.part].id);
             }
         }
-        assert_eq!(d.edges.len(), a.checked.parts.iter().filter(|p| edge_ends(p).is_some()).count());
+        assert_eq!(d.edges.len(), a.checked.parts.iter().filter(|p| p.domain == "electrical" && edge_ends(p).is_some()).count());
     }
 }
