@@ -1,0 +1,49 @@
+[[sensor.pitot]]
+id = "pitot"
+air = "air"
+heat_when = "pitot_heater.powered"
+
+[[sensor.static_port]]
+id = "static"
+air = "air"
+
+[[computer.air_data]]
+id = "asi"
+pitot = "pitot"
+static = "static"
+air = "air"
+
+[[weight.station]]
+id = "empty"
+mass = "767 kg"
+arm = "1.0 m"
+
+[[weight.station]]
+id = "front_seats"
+mass = "170 kg"
+arm = "0.94 m"
+
+[[weight.station]]
+id = "rear_seats"
+mass = "0 kg"
+arm = "1.85 m"
+
+[[weight.station]]
+id = "baggage"
+mass = "10 kg"
+arm = "2.4 m"
+
+[[weight.balance]]
+id = "wb"
+stations = ["empty", "front_seats", "rear_seats", "baggage", "left", "right"]
+
+[[wear.counter]]
+id = "engine_hours"
+rate = "if(eng.running, 1 / 3600, 0)"
+limit = 2000
+
+[[wear.counter]]
+id = "oil_used"
+rate = "if(eng.running, 0.00002, 0)"
+limit = 1.5
+service_when = "false"

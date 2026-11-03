@@ -1,0 +1,43 @@
+[[step]]
+at = "0 s"
+set = { "master_bat.on" = 1, "master_alt.on" = 1, "throttle.value" = 0.15 }
+
+[[expect]]
+at = "1 s"
+that = "main.powered && !alt.ready"
+
+[[step]]
+at = "2 s"
+set = { "key.position" = 4 }
+
+[[step]]
+at = "5 s"
+set = { "key.position" = 3 }
+
+[[expect]]
+at = "15 s"
+that = "eng.running && alt.ready && alt_field.closed && bat.current < 0 A"
+
+[[step]]
+at = "20 s"
+set = { "throttle.value" = 1 }
+
+[[expect]]
+at = "40 s"
+that = "prop.rpm > 2200 rpm && prop.thrust > 2500 N"
+
+[[step]]
+at = "41 s"
+set = { "key.position" = 1 }
+
+[[expect]]
+at = "45 s"
+that = "eng.running"
+
+[[step]]
+at = "46 s"
+set = { "fuel_selector.position" = 0 }
+
+[[expect]]
+at = "120 s"
+that = "!eng.running"

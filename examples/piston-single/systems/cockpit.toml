@@ -1,0 +1,41 @@
+[[cockpit.switch]]
+id = "master_bat"
+
+[[cockpit.switch]]
+id = "master_alt"
+
+[[cockpit.switch]]
+id = "avionics_sw"
+
+[[cockpit.switch]]
+id = "fuel_pump_sw"
+
+[[cockpit.switch]]
+id = "beacon_sw"
+
+[[cockpit.switch]]
+id = "landing_sw"
+
+[[cockpit.switch]]
+id = "pitot_heat_sw"
+
+[[cockpit.switch]]
+id = "carb_heat"
+
+# 0 off, 1 right, 2 left, 3 both, 4 start
+[[cockpit.selector]]
+id = "key"
+positions = 5
+
+# 0 off, 1 left, 2 right, 3 both
+[[cockpit.selector]]
+id = "fuel_selector"
+positions = 4
+initial = 3
+
+[[input.number]]
+id = "throttle"
+
+[[input.number]]
+id = "mixture"
+initial = 1

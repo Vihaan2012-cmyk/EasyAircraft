@@ -228,7 +228,7 @@ impl Domain for Fuel {
         }
         for (k, fd) in self.feeds.iter().enumerate() {
             let p = self.lines[fd.line].1.get(slots, "pressure");
-            let starved = want[k] > 0.0 && p < fd.minimum;
+            let starved = p < fd.minimum;
             fd.s.flag(slots, "starved", starved);
             fd.s.put(slots, "flow", if starved { 0.0 } else { want[k] });
         }

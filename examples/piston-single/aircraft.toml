@@ -1,0 +1,24 @@
+[aircraft]
+name = "Example Single"
+easyacft = "1.0"
+include = ["systems/environment.toml", "systems/cockpit.toml", "systems/electrical.toml", "systems/fuel.toml", "systems/engine.toml", "systems/airframe.toml"]
+
+[rates]
+electrical = "20 ms"
+fuel = "50 ms"
+
+[bindings]
+"sim/cockpit2/electrical/battery_on[0]" = { to = "master_bat.on" }
+"sim/cockpit2/electrical/generator_on[0]" = { to = "master_alt.on" }
+"sim/cockpit2/switches/avionics_power_on" = { to = "avionics_sw.on" }
+"sim/cockpit2/engine/actuators/throttle_ratio[0]" = { to = "throttle.value" }
+"sim/cockpit2/engine/actuators/mixture_ratio[0]" = { to = "mixture.value" }
+"sim/cockpit2/engine/actuators/ignition_key[0]" = { to = "key.position" }
+"sim/cockpit2/fuel/fuel_tank_selector" = { to = "fuel_selector.position" }
+"sim/cockpit2/switches/beacon_on" = { to = "beacon_sw.on" }
+"sim/cockpit2/switches/landing_lights_on" = { to = "landing_sw.on" }
+"sim/cockpit2/ice/ice_pitot_heat_on_pilot" = { to = "pitot_heat_sw.on" }
+"sim/cockpit2/engine/indicators/prop_speed_rsm[0]" = "prop.rpm"
+"sim/cockpit2/engine/indicators/MPR_in_hg[0]" = { from = "eng.manifold_pressure", unit = "inHg" }
+"sim/cockpit2/engine/indicators/EGT_deg_C[0]" = { from = "eng.egt", unit = "degC" }
+"sim/cockpit2/engine/indicators/CHT_deg_C[0]" = { from = "eng.cht", unit = "degC" }

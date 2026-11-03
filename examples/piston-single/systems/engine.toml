@@ -1,0 +1,39 @@
+[[engine.piston]]
+id = "eng"
+air = "air"
+rated_power = "180 hp"
+rated_rpm = "2700 rpm"
+rpm = "prop.rpm"
+throttle = "throttle.value"
+mixture = "mixture.value"
+magnetos = "if(key.position == 3 || key.position == 4, 2, if(key.position > 0, 1, 0))"
+fuel_available = "!eng_feed.starved"
+
+[[engine.propeller]]
+id = "prop"
+air = "air"
+power = "eng.power"
+diameter = "1.9 m"
+rated_rpm = "2700 rpm"
+rated_power = "180 hp"
+starter_torque = "if(starter_motor.powered && bat_bus.voltage > 18 V, 150 N*m, 0 N*m)"
+friction = "8 kW"
+
+[[ice.surface]]
+id = "carb_ice"
+air = "air"
+heated_when = "carb_heat.on"
+build_time = "600 s"
+
+[[failure.trigger]]
+id = "carb_icing"
+part = "eng"
+when = "carb_ice.ice > 0.8"
+latched = false
+
+[[output.force]]
+id = "prop_thrust"
+force = "prop.thrust"
+x = "0 m"
+y = "0 m"
+z = "-2.2 m"

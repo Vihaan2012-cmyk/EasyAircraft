@@ -1,0 +1,84 @@
+[[electrical.bus]]
+id = "bat_bus"
+nominal = "24 V"
+
+[[electrical.battery]]
+id = "bat"
+bus = "bat_bus"
+voltage = "24 V"
+capacity = "13 Ah"
+
+[[electrical.bus]]
+id = "main"
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "alt_out"
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "avionics"
+nominal = "28 V"
+
+[[electrical.contactor]]
+id = "bat_relay"
+between = ["bat_bus", "main"]
+close_when = "master_bat.on"
+
+[[electrical.generator]]
+id = "alt"
+bus = "alt_out"
+voltage = "28 V"
+rating = "1.7 kW"
+driven_when = "prop.rpm > 1000 rpm"
+
+[[electrical.contactor]]
+id = "alt_field"
+between = ["alt_out", "main"]
+close_when = "master_alt.on && master_bat.on"
+
+[[electrical.breaker]]
+id = "cb_avionics"
+between = ["main", "avionics"]
+rating = "15 A"
+
+[[electrical.load]]
+id = "radios"
+bus = "avionics"
+power = "120 W"
+on_when = "avionics_sw.on"
+
+[[electrical.load]]
+id = "starter_motor"
+bus = "bat_bus"
+power = "2.5 kW"
+on_when = "key.position == 4 && master_bat.on"
+
+[[electrical.load]]
+id = "aux_pump"
+bus = "main"
+power = "60 W"
+on_when = "fuel_pump_sw.on"
+
+[[electrical.load]]
+id = "pitot_heater"
+bus = "main"
+power = "250 W"
+on_when = "pitot_heat_sw.on"
+
+[[light.unit]]
+id = "beacon"
+bus = "main"
+on_when = "beacon_sw.on"
+pattern = "beacon"
+
+[[light.unit]]
+id = "landing_light"
+bus = "main"
+on_when = "landing_sw.on"
+
+[[electrical.load]]
+id = "lights"
+bus = "main"
+power = "180 W"
+on_when = "beacon_sw.on || landing_sw.on"

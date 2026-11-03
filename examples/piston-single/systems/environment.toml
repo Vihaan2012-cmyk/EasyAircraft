@@ -1,0 +1,12 @@
+[[environment.air]]
+id = "air"
+
+[bindings]
+"sim/weather/barometer_current_inhg" = { to = "air.pressure", unit = "inHg" }
+"sim/weather/temperature_ambient_c" = { to = "air.temperature", unit = "degC" }
+"sim/flightmodel/position/elevation" = { to = "air.altitude" }
+"sim/flightmodel/position/true_airspeed" = { to = "air.airspeed" }
+"sim/flightmodel/position/groundspeed" = { to = "air.groundspeed" }
+"sim/flightmodel/misc/machno" = { to = "air.mach" }
+"sim/flightmodel/failures/onground_any" = { to = "air.on_ground" }
+"sim/flightmodel/failures/frm_ice" = { to = "air.icing" }
