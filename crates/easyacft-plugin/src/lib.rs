@@ -102,7 +102,11 @@ pub unsafe extern "C" fn XPluginEnable() -> c_int {
         let Some(st) = b.as_mut() else { return 0 };
         let dir = aircraft_dir(&st.sim.api);
         st.runner = Runner::load(&dir, &st.sim);
-        let Some(r) = st.runner.as_ref() else { return 0 };
+        let Some(r) = st.runner.as_mut() else { return 0 };
+        if let Ok(text) = std::fs::read_to_string(dir.join("persistent.txt")) {
+            r.aircraft.restore_persistent(&text);
+        }
+        let r = &*r;
         st.sim.log(&format!("EasyAcft: {} loaded from {}", r.aircraft.name, dir.display()));
         for (name, slot) in r.published() {
             let n = CString::new(name).unwrap();
@@ -134,7 +138,9 @@ pub unsafe extern "C" fn XPluginDisable() {
             for (k, (c, _, _)) in st.commands.drain(..).enumerate() {
                 (st.sim.api.UnregisterCommandHandler)(c, on_command, 1, k as *mut c_void);
             }
-            st.runner = None;
+            if let Some(r) = st.runner.take() {
+                let _ = std::fs::write(r.dir.join("persistent.txt"), r.aircraft.persistent());
+            }
         }
     })
 }

@@ -10,7 +10,8 @@ pub type StepFn = extern "C" fn(*mut Handle, f64, *mut c_void);
 pub struct Handle {
     pub aircraft: Aircraft,
     names: Vec<CString>,
-    hooks: Vec<(StepFn, *mut c_void)>,
+    hooks: Vec<(StepFn, *mut c_void, Option<usize>)>,
+    log: Vec<CString>,
 }
 
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
@@ -39,7 +40,7 @@ pub unsafe extern "C" fn easyacft_load(dir: *const c_char, errors: *mut *mut c_c
         match Aircraft::load(Path::new(&dir)) {
             Ok((aircraft, _)) => {
                 let names = aircraft.names().map(|n| CString::new(n).unwrap_or_default()).collect();
-                Box::into_raw(Box::new(Handle { aircraft, names, hooks: Vec::new() }))
+                Box::into_raw(Box::new(Handle { aircraft, names, hooks: Vec::new(), log: Vec::new() }))
             }
             Err(r) => {
                 report(r.render());
@@ -74,8 +75,10 @@ pub unsafe extern "C" fn easyacft_step(a: *mut Handle, dt: f64) {
     let Some(h) = a.as_mut() else { return };
     let hooks = h.hooks.clone();
     guard((), || h.aircraft.step(dt));
-    for (f, user) in hooks {
-        f(a, dt, user);
+    for (f, user, gate) in hooks {
+        if gate.is_none_or(|g| (&(*a).aircraft.slots)[g] != 0.0) {
+            f(a, dt, user);
+        }
     }
 }
 
@@ -144,8 +147,39 @@ pub unsafe extern "C" fn easyacft_restore(a: *mut Handle, buf: *const u8, len: u
 #[no_mangle]
 pub unsafe extern "C" fn easyacft_on_step(a: *mut Handle, f: StepFn, user: *mut c_void) {
     if let Some(h) = a.as_mut() {
-        h.hooks.push((f, user));
+        h.hooks.push((f, user, None));
     }
+}
+
+/// # Safety
+/// `a` live, `computer` NUL-terminated; `user` valid while the aircraft lives.
+#[no_mangle]
+pub unsafe extern "C" fn easyacft_on_computer_step(a: *mut Handle, computer: *const c_char, f: StepFn, user: *mut c_void) -> c_int {
+    let (Some(h), false) = (a.as_mut(), computer.is_null()) else { return 0 };
+    let id = CStr::from_ptr(computer).to_string_lossy();
+    match h.aircraft.slot(&format!("{id}.running")) {
+        Some(slot) => {
+            h.hooks.push((f, user, Some(slot)));
+            1
+        }
+        None => 0,
+    }
+}
+
+/// # Safety
+/// `a` live.
+#[no_mangle]
+pub unsafe extern "C" fn easyacft_log_count(a: *mut Handle) -> c_int {
+    let Some(h) = a.as_mut() else { return 0 };
+    h.log = h.aircraft.log.iter().map(|e| CString::new(format!("{:.1} {} {}", e.time, e.what, if e.on_ground { "ground" } else { "air" })).unwrap_or_default()).collect();
+    h.log.len() as c_int
+}
+
+/// # Safety
+/// `a` live; call `easyacft_log_count` first.
+#[no_mangle]
+pub unsafe extern "C" fn easyacft_log_entry(a: *const Handle, i: c_int) -> *const c_char {
+    a.as_ref().and_then(|h| h.log.get(i as usize)).map_or(std::ptr::null(), |s| s.as_ptr())
 }
 
 #[cfg(test)]

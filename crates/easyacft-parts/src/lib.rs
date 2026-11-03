@@ -1,5 +1,6 @@
 //! EasyAcft part catalogue and the aircraft runtime.
 
+pub mod avionics;
 pub mod catalog;
 pub mod control;
 pub mod electrical;
@@ -63,7 +64,18 @@ impl Report {
     }
 }
 
+/// A maintenance log line: when a part failed or a fault came up.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LogEntry {
+    pub time: f64,
+    pub what: String,
+    pub on_ground: bool,
+}
+
 pub struct Aircraft {
+    pub log: Vec<LogEntry>,
+    watched: Vec<(usize, String, bool)>,
+    ground: Option<usize>,
     pub name: String,
     pub files: Vec<String>,
     pub bindings: Vec<easyacft_lang::model::Binding>,
@@ -96,6 +108,7 @@ impl Aircraft {
         logic::init(&checked, &mut slots);
         fuel::init(&checked, &mut slots);
         systems::init(&checked, &mut slots);
+        avionics::init(&checked, &mut slots);
         let mut domains: Vec<(Rate, Box<dyn Domain>)> = Vec::new();
         domains.push((rate_for(&model, "logic", 0.01), Box::new(logic::Logic::new(&checked))));
         if let Some(e) = electrical::Electrical::new(&checked) {
@@ -117,6 +130,9 @@ impl Aircraft {
         if let Some(d) = control::Control::new(&checked, &base) {
             domains.push((rate_for(&model, "control", 0.02), Box::new(d)));
         }
+        if let Some(d) = avionics::Avionics::new(&checked) {
+            domains.push((rate_for(&model, "avionics", 0.02), Box::new(d)));
+        }
         if let Some(d) = extras::Extras::new(&checked) {
             domains.push((rate_for(&model, "extras", 0.02), Box::new(d)));
         }
@@ -124,7 +140,9 @@ impl Aircraft {
             domains.push((rate_for(&model, "systems", 0.02), Box::new(d)));
         }
         let files = model.sources.files.iter().map(|(n, _)| n.clone()).collect();
-        Ok((Self { name: model.name.clone(), files, bindings: model.bindings.clone(), checked, slots, domains, time: 0.0 }, report))
+        let watched = checked.slots.names.iter().enumerate().filter(|(_, (n, _))| [".failed", ".fault", ".aborted", ".shutdown", ".tripped", ".detected"].iter().any(|s| n.ends_with(s))).map(|(i, (n, _))| (i, n.clone(), false)).collect();
+        let ground = checked.parts.iter().find(|p| p.domain == "environment").and_then(|p| checked.slots.index.get(&format!("{}.on_ground", p.id)).copied());
+        Ok((Self { log: Vec::new(), watched, ground, name: model.name.clone(), files, bindings: model.bindings.clone(), checked, slots, domains, time: 0.0 }, report))
     }
 
     pub fn step(&mut self, dt: f64) {
@@ -135,6 +153,38 @@ impl Aircraft {
                 d.step(&mut self.slots, rate.period());
             }
         }
+        self.watch();
+    }
+
+    fn watch(&mut self) {
+        let on_ground = self.ground.is_some_and(|g| self.slots[g] != 0.0);
+        for (i, name, last) in &mut self.watched {
+            let now = self.slots[*i] != 0.0;
+            if now && !*last {
+                self.log.push(LogEntry { time: self.time, what: name.clone(), on_ground });
+            }
+            *last = now;
+        }
+    }
+
+    /// Wear counters as `name value` lines, for keeping between flights.
+    pub fn persistent(&self) -> String {
+        self.checked.parts.iter().filter(|p| p.domain == "wear").filter_map(|p| self.get(&format!("{}.value", p.id)).map(|v| format!("{}.value {v}
+", p.id))).collect()
+    }
+
+    pub fn restore_persistent(&mut self, text: &str) -> usize {
+        let mut n = 0;
+        for line in text.lines() {
+            if let Some((k, v)) = line.split_once(' ') {
+                if let Ok(v) = v.trim().parse::<f64>() {
+                    if k.ends_with(".value") && self.set(k, v) {
+                        n += 1;
+                    }
+                }
+            }
+        }
+        n
     }
 
     pub fn slot(&self, name: &str) -> Option<usize> {

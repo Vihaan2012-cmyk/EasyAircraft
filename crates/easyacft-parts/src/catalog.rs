@@ -187,7 +187,7 @@ pub static CORE: &[PartSpec] = &[
 
 pub fn all() -> &'static [PartSpec] {
     static ALL: std::sync::OnceLock<Vec<PartSpec>> = std::sync::OnceLock::new();
-    ALL.get_or_init(|| [CORE, crate::hydraulic::SPECS, crate::fuel::SPECS, crate::pneumatic::SPECS, crate::systems::SPECS, crate::engine::SPECS, crate::control::SPECS, crate::extras::SPECS].concat())
+    ALL.get_or_init(|| [CORE, crate::hydraulic::SPECS, crate::fuel::SPECS, crate::pneumatic::SPECS, crate::systems::SPECS, crate::engine::SPECS, crate::control::SPECS, crate::extras::SPECS, crate::avionics::SPECS].concat())
 }
 
 pub struct Builtin;
