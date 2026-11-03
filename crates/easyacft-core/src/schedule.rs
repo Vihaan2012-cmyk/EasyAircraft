@@ -1,5 +1,4 @@
-//! Fixed-rate stepping on sim time: each domain runs at its own period, as many whole steps as the
-//! elapsed time allows, so results depend only on the time fed in, never on frame rate.
+//! Fixed-rate stepping on sim time, per domain.
 
 pub trait Stepped {
     fn step(&mut self, dt: f64);
@@ -13,7 +12,7 @@ pub struct Rate {
 }
 
 impl Rate {
-    /// `max_steps` bounds the catch-up after a long frame; the rest of the time is dropped.
+    /// `max_steps` caps catch-up after a long frame.
     pub fn new(period_s: f64, max_steps: usize) -> Self {
         Self { period: period_s.max(1e-6), owed: 0.0, max_steps: max_steps.max(1) }
     }

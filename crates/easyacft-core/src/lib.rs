@@ -1,4 +1,4 @@
-//! EasyAcft core: units, the flow-network solver, fixed-rate scheduling and snapshots.
+//! EasyAcft core: units, flow networks, scheduling, snapshots.
 
 pub mod network;
 pub mod schedule;

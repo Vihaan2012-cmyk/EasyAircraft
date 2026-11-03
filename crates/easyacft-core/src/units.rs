@@ -1,5 +1,4 @@
-//! Quantities with units, parsed from text such as `"28 V"`, `"3000 psi"` or `"0.5 kg/s"` and held
-//! in SI.
+//! Quantities parsed from text like `"28 V"`, held in SI.
 
 use std::fmt;
 
@@ -172,8 +171,7 @@ fn lookup(name: &str) -> Option<&'static Unit> {
     UNITS.iter().find(|u| u.name == name)
 }
 
-/// One factor of a compound unit such as `kg/s` or `m/s2`: a name with an optional integer
-/// exponent (`s2`, `s^2`).
+/// One factor of a compound unit, e.g. `s2` in `m/s2`.
 fn factor(token: &str) -> Result<(f64, f64, Dim, bool), UnitError> {
     let (name, exp) = match token.find('^') {
         Some(i) => (&token[..i], token[i + 1..].parse::<i8>().map_err(|_| UnitError::UnknownUnit(token.to_owned()))?),

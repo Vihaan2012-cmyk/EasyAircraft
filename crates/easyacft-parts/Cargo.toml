@@ -1,0 +1,11 @@
+[package]
+name = "easyacft-parts"
+description = "EasyAcft part catalogue and runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+easyacft-core = { path = "../easyacft-core" }
+easyacft-lang = { path = "../easyacft-lang" }

@@ -1,0 +1,28 @@
+[[cockpit.switch]]
+id = "bat_sw"
+
+[[cockpit.switch]]
+id = "ext_pwr_sw"
+
+[[cockpit.switch]]
+id = "gen{n}_sw"
+count = 2
+initial = true
+
+[[cockpit.switch]]
+id = "apu_gen_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "galley_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "eng{n}_running"
+count = 2
+
+[[cockpit.switch]]
+id = "apu_running"
+
+[[cockpit.switch]]
+id = "gpu_connected"

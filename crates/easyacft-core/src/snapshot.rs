@@ -1,5 +1,4 @@
-//! Whole-state snapshots as tagged little-endian `f64` sections, for save/load, replay and test
-//! fixtures.
+//! Whole-state snapshots as named `f64` sections.
 
 const MAGIC: &[u8; 8] = b"EACFSNP1";
 

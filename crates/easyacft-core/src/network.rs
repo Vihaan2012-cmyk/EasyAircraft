@@ -1,19 +1,11 @@
-//! One solver for every flow network: nodes carry a potential (volts, pascals), links carry a flow
-//! (amps, kg/s). Each step solves the network implicitly, island by island, so a node can store
-//! (capacitance), a link can resist and carry momentum (resistance and inertance), and sources
-//! and loads stamp a conductance and an injection onto their node.
-//!
-//! Implicit Euler on node `C dφ/dt = Σ inflow` and link `L dq/dt + R q = φa − φb` keeps every
-//! step linear in the new potentials: an inertive link becomes a conductance plus a fixed flow,
-//! so one matrix per island covers resistive, storing and wave-carrying networks alike.
+//! Implicit flow-network solver shared by every domain.
 
 pub type NodeId = usize;
 pub type LinkId = usize;
 
 /// Closed switches and ideal sources stand in as this conductance.
 pub const STIFF: f64 = 1e9;
-/// Every node leaks this much to the reference so a node cut off from everything settles at zero
-/// instead of leaving the matrix singular.
+/// Leak to reference so isolated nodes settle at zero.
 const LEAK: f64 = 1e-12;
 
 #[derive(Clone, Debug)]
@@ -66,8 +58,7 @@ impl Network {
         self.links.len() - 1
     }
 
-    /// A long pipe, duct or cable as `n` segments, with the totals shared evenly and `n - 1`
-    /// intermediate nodes holding the capacitance.
+    /// A pipe, duct or cable split into `n` equal segments.
     pub fn add_segmented(&mut self, a: NodeId, b: NodeId, n: usize, resistance: f64, inertance: f64, capacitance: f64) -> Vec<LinkId> {
         let n = n.max(1);
         let mut prev = a;
@@ -112,8 +103,7 @@ impl Network {
         self.inject.iter_mut().for_each(|v| *v = 0.0);
     }
 
-    /// A conductance from `node` to the reference with `injection` flowing into the node: a load
-    /// is a conductance, an ideal source of potential `v` is `stamp(node, STIFF, STIFF * v)`.
+    /// Shunt conductance to reference plus an injected flow; ideal source = `(STIFF, STIFF * v)`.
     pub fn stamp(&mut self, node: NodeId, conductance: f64, injection: f64) {
         self.shunt[node] += conductance;
         self.inject[node] += injection;
@@ -150,6 +140,20 @@ impl Network {
             self.rebuild_islands();
         }
         self.islands.len()
+    }
+
+    /// Island index of every node.
+    pub fn islands_of(&mut self) -> Vec<usize> {
+        if self.islands_dirty {
+            self.rebuild_islands();
+        }
+        let mut of = vec![0; self.nodes.len()];
+        for (i, island) in self.islands.iter().enumerate() {
+            for &n in island {
+                of[n] = i;
+            }
+        }
+        of
     }
 
     pub fn step(&mut self, dt: f64) {
@@ -240,7 +244,7 @@ impl Network {
     }
 }
 
-/// Gaussian elimination with partial pivoting; the answer replaces `b`.
+/// Gaussian elimination with partial pivoting; result in `b`.
 fn solve(a: &mut [f64], b: &mut [f64], m: usize) {
     for col in 0..m {
         let pivot = (col..m).max_by(|&x, &y| a[x * m + col].abs().total_cmp(&a[y * m + col].abs())).unwrap_or(col);

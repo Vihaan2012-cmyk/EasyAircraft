@@ -1,0 +1,16 @@
+[package]
+name = "easyacft-cli"
+description = "The easyacft command: check, sim, explain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "easyacft"
+path = "src/main.rs"
+
+[dependencies]
+easyacft-core = { path = "../easyacft-core" }
+easyacft-lang = { path = "../easyacft-lang" }
+easyacft-parts = { path = "../easyacft-parts" }

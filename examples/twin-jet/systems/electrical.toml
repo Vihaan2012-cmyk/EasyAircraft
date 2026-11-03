@@ -1,0 +1,145 @@
+[[electrical.bus]]
+id = "hot_bat{n}"
+count = 2
+nominal = "28 V"
+
+[[electrical.battery]]
+id = "bat{n}"
+count = 2
+bus = "hot_bat{n}"
+voltage = "24 V"
+capacity = "44 Ah"
+
+[[electrical.bus]]
+id = "dc{n}"
+count = 2
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "dc_ess"
+nominal = "28 V"
+
+[[electrical.contactor]]
+id = "bat_lc{n}"
+count = 2
+between = ["hot_bat{n}", "dc{n}"]
+close_when = "bat_sw.on"
+
+[[electrical.contactor]]
+id = "dc_ess_feed"
+between = ["dc1", "dc_ess"]
+
+[[electrical.contactor]]
+id = "dc_tie"
+between = ["dc1", "dc2"]
+close_when = "!(tr1.active && tr2.active)"
+
+[[electrical.bus]]
+id = "ac{n}"
+count = 2
+nominal = "115 V"
+
+[[electrical.bus]]
+id = "gen{n}_out"
+count = 2
+nominal = "115 V"
+
+[[electrical.generator]]
+id = "gen{n}"
+count = 2
+bus = "gen{n}_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "90 kVA"
+driven_when = "eng{n}_running.on"
+
+[[electrical.contactor]]
+id = "glc{n}"
+count = 2
+between = ["gen{n}_out", "ac{n}"]
+close_when = "gen{n}_sw.on && gen{n}.ready && delay(gen{n}.ready, 1 s)"
+
+[[electrical.bus]]
+id = "apu_gen_out"
+nominal = "115 V"
+
+[[electrical.generator]]
+id = "apu_gen"
+bus = "apu_gen_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "90 kVA"
+driven_when = "apu_running.on"
+
+[[electrical.bus]]
+id = "tie"
+nominal = "115 V"
+
+[[electrical.contactor]]
+id = "agc"
+between = ["apu_gen_out", "tie"]
+close_when = "apu_gen_sw.on && apu_gen.ready && !(glc1.closed && glc2.closed)"
+
+[[electrical.bus]]
+id = "ext_out"
+nominal = "115 V"
+
+[[electrical.ext_power]]
+id = "ext"
+bus = "ext_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "90 kVA"
+connected_when = "gpu_connected.on"
+
+[[electrical.contactor]]
+id = "epc"
+between = ["ext_out", "tie"]
+close_when = "ext_pwr_sw.on && ext.available"
+
+[[electrical.contactor]]
+id = "btc{n}"
+count = 2
+between = ["ac{n}", "tie"]
+close_when = "!glc{n}.closed"
+
+[[electrical.tru]]
+id = "tr{n}"
+count = 2
+input = "ac{n}"
+output = "dc{n}"
+voltage = "28 V"
+rating = "8 kW"
+
+[[electrical.bus]]
+id = "galley"
+nominal = "115 V"
+
+[[electrical.breaker]]
+id = "cb_galley"
+between = ["ac2", "galley"]
+rating = "300 A"
+
+[[electrical.load]]
+id = "galley_load"
+bus = "galley"
+power = "25 kW"
+on_when = "galley_sw.on"
+shed_priority = 5
+
+[[electrical.load]]
+id = "avionics"
+bus = "dc_ess"
+power = "1800 W"
+
+[[electrical.load]]
+id = "cabin_lights"
+bus = "ac1"
+power = "4 kW"
+shed_priority = 2
+
+[[electrical.load]]
+id = "fuel_pump{n}"
+bus = "ac{n}"
+count = 2
+power = "3 kW"

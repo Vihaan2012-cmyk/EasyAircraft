@@ -1,0 +1,7 @@
+[aircraft]
+name = "Example Twin"
+easyacft = "1.0"
+include = ["systems/cockpit.toml", "systems/electrical.toml"]
+
+[rates]
+electrical = "10 ms"
