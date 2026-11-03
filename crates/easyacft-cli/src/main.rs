@@ -23,7 +23,8 @@ const CODES: &[(&str, &str)] = &[
 
 fn usage() -> ExitCode {
     eprintln!("usage:\n  easyacft check <aircraft dir>\n  easyacft sim <aircraft dir> [--for 10s] [--every 1s] [--set name=value]... [--print name,name]\n  easyacft names <aircraft dir>\n  easyacft kinds\n  easyacft explain <code>
-  easyacft fit <aircraft dir> <engine id> <points.toml> [--tune name,name]");
+  easyacft fit <aircraft dir> <engine id> <points.toml> [--tune name,name]
+  easyacft import <file.acf | MSFS aircraft folder> <new folder>");
     ExitCode::from(2)
 }
 
@@ -83,6 +84,30 @@ fn main() -> ExitCode {
             }
         },
         Some("fit") if args.len() >= 4 => fit(&args[1..]),
+        Some("import") if args.len() == 3 => {
+            let out = PathBuf::from(&args[2]);
+            if out.join("aircraft.toml").exists() {
+                eprintln!("`{}` already has an aircraft.toml", out.display());
+                return ExitCode::FAILURE;
+            }
+            match easyacft_import::import(&PathBuf::from(&args[1]), &out) {
+                Ok(report) => {
+                    print!("{report}");
+                    match load(&args[2]) {
+                        Some(a) => {
+                            println!("
+{}: {} parts, no errors. Written to {}", a.name, a.checked.parts.len(), out.display());
+                            ExitCode::SUCCESS
+                        }
+                        None => ExitCode::FAILURE,
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Some("sim") if args.len() >= 2 => {
             let Some(mut a) = load(&args[1]) else { return ExitCode::FAILURE };
             let (mut total, mut every, mut print) = (10.0, 1.0, Vec::<String>::new());

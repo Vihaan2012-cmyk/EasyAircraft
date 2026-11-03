@@ -7,6 +7,7 @@ name = "easyacft-cli"
 version = "0.1.0"
 dependencies = [
  "easyacft-core",
+ "easyacft-import",
  "easyacft-lang",
  "easyacft-parts",
  "toml_edit",
@@ -23,6 +24,10 @@ dependencies = [
  "easyacft-core",
  "easyacft-parts",
 ]
+
+[[package]]
+name = "easyacft-import"
+version = "0.1.0"
 
 [[package]]
 name = "easyacft-lang"

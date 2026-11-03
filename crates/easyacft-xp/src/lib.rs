@@ -33,6 +33,8 @@ struct Bound {
     index: Option<usize>,
     slot: usize,
     to_easyacft: bool,
+    factor: f64,
+    offset: f64,
 }
 
 pub struct Runner {
@@ -80,7 +82,7 @@ impl Runner {
                 sim.log(&format!("EasyAcft: binding {} = {} skipped (no such dataref or value)", b.dataref, b.path));
                 continue;
             };
-            self.bound.push(Bound { dataref, index, slot, to_easyacft: b.write });
+            self.bound.push(Bound { dataref, index, slot, to_easyacft: b.write, factor: if b.factor == 0.0 { 1.0 } else { b.factor }, offset: b.offset });
         }
         self.stamps = self.aircraft.files.iter().map(|f| (PathBuf::from(f), stamp(Path::new(f)))).collect();
         self.forces = easyacft_parts::engine::forces(&self.aircraft.checked);
@@ -123,13 +125,13 @@ impl Runner {
             None => frame_s.clamp(0.0, 0.5),
         };
         for b in self.bound.iter().filter(|b| b.to_easyacft) {
-            self.aircraft.slots[b.slot] = sim.get(b.dataref, b.index);
+            self.aircraft.slots[b.slot] = sim.get(b.dataref, b.index) * b.factor + b.offset;
         }
         if dt > 0.0 {
             self.aircraft.step(dt);
         }
         for b in self.bound.iter().filter(|b| !b.to_easyacft) {
-            sim.set(b.dataref, b.index, self.aircraft.slots[b.slot]);
+            sim.set(b.dataref, b.index, (self.aircraft.slots[b.slot] - b.offset) / b.factor);
         }
         self.apply_forces(sim);
         self.reload_s += frame_s.max(0.0);

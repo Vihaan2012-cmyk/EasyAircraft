@@ -10,6 +10,7 @@ pub fn init(c: &Checked, slots: &mut [f64]) {
             ("cockpit", "switch" | "guarded_switch") => slots[out(p, "on")] = p.flag("initial") as u8 as f64,
             ("cockpit", "pushbutton") => slots[out(p, "pressed")] = p.flag("initial") as u8 as f64,
             ("cockpit", "selector") => slots[out(p, "position")] = p.num("initial"),
+            ("input", "number") => slots[out(p, "value")] = p.num("initial"),
             ("weight", "station") => {
                 slots[out(p, "mass")] = p.num("mass");
                 slots[out(p, "arm")] = p.num("arm");

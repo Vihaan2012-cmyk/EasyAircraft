@@ -76,6 +76,13 @@ pub static CORE: &[PartSpec] = &[
         outputs: &[("mass", Type::Num(Dim::MASS)), ("cg", Type::Num(Dim::LENGTH)), ("cg_lateral", Type::Num(Dim::LENGTH)), ("cg_mac", N)],
     },
     PartSpec {
+        domain: "input",
+        kind: "number",
+        help: "A number set from outside: a binding, the API or Studio.",
+        fields: &[opt("initial", Kind::Number, "0", "value at start")],
+        outputs: &[("value", N)],
+    },
+    PartSpec {
         domain: "logic",
         kind: "flag",
         help: "A named true/false from an expression.",

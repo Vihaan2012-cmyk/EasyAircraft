@@ -1,0 +1,9 @@
+[package]
+name = "easyacft-import"
+description = "Imports an existing X-Plane .acf or MSFS aircraft into EasyAcft files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]

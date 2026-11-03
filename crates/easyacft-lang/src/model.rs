@@ -42,6 +42,9 @@ pub struct Binding {
     pub dataref: String,
     pub path: String,
     pub write: bool,
+    /// The dataref's unit: SI = raw * factor + offset.
+    pub factor: f64,
+    pub offset: f64,
     pub file: usize,
     pub span: Range<usize>,
 }
@@ -169,11 +172,21 @@ impl Loader {
 
     fn bindings(&mut self, b: &Table, id: usize) {
         for (k, v) in b.iter() {
+            let mut unit = (1.0, 0.0);
             let (path, write) = match v {
                 Item::Value(Value::String(s)) => (s.value().clone(), false),
                 Item::Value(Value::InlineTable(t)) => {
                     let from = t.get("from").and_then(|x| x.as_str()).map(str::to_owned);
                     let to = t.get("to").and_then(|x| x.as_str()).map(str::to_owned);
+                    if let Some(u) = t.get("unit").and_then(|x| x.as_str()) {
+                        match easyacft_core::units::parse_unit(u) {
+                            Ok((f, o, _)) => unit = (f, o),
+                            Err(e) => {
+                                self.diags.push(Diagnostic::error("E0005", format!("binding unit: {e}"), id, span(v)));
+                                continue;
+                            }
+                        }
+                    }
                     match (from, to) {
                         (Some(f), None) => (f, false),
                         (None, Some(t)) => (t, true),
@@ -188,7 +201,7 @@ impl Loader {
                     continue;
                 }
             };
-            self.model.bindings.push(Binding { dataref: k.to_owned(), path, write, file: id, span: span(v) });
+            self.model.bindings.push(Binding { dataref: k.to_owned(), path, write, factor: unit.0, offset: unit.1, file: id, span: span(v) });
         }
     }
 
