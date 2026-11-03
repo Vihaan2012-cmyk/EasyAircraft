@@ -164,7 +164,7 @@ impl Checked {
 fn matches(allowed: &[&str], decl: &PartDecl) -> bool {
     allowed.iter().any(|a| {
         let (d, k) = a.split_once('.').unwrap_or((a, "*"));
-        d == decl.domain && (k == "*" || k == decl.kind)
+        (d == "*" || d == decl.domain) && (k == "*" || k == decl.kind)
     })
 }
 

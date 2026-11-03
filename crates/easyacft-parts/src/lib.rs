@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod control;
 pub mod electrical;
 pub mod engine;
+pub mod extras;
 pub mod fuel;
 pub mod hydraulic;
 pub mod logic;
@@ -115,6 +116,9 @@ impl Aircraft {
         }
         if let Some(d) = control::Control::new(&checked, &base) {
             domains.push((rate_for(&model, "control", 0.02), Box::new(d)));
+        }
+        if let Some(d) = extras::Extras::new(&checked) {
+            domains.push((rate_for(&model, "extras", 0.02), Box::new(d)));
         }
         if let Some(d) = systems::Systems::new(&checked) {
             domains.push((rate_for(&model, "systems", 0.02), Box::new(d)));
