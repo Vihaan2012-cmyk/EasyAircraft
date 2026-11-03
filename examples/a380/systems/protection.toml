@@ -1,0 +1,35 @@
+[[fire.zone]]
+id = "eng{n}_fire"
+count = 4
+fire_when = "eng{n}_overheat.active"
+
+[[fire.zone]]
+id = "apu_fire"
+fire_when = "false"
+
+[[fire.bottle]]
+id = "eng{n}_bottle_a"
+count = 4
+zones = ["eng{n}_fire"]
+discharge_when = "fire{n}_handle.on && agent{n}_pb.pressed"
+
+[[fire.bottle]]
+id = "apu_bottle"
+zones = ["apu_fire"]
+discharge_when = "apu_fire_handle.on && apu_agent_pb.pressed"
+
+[[failure.trigger]]
+id = "eng{n}_overheat"
+count = 4
+part = "eng{n}"
+when = "delay(eng{n}.egt > 1350 K, 20 s)"
+
+[[cockpit.annunciator]]
+id = "master_caution"
+when = "!ac1.powered || !ac2.powered || !ac3.powered || !ac4.powered || green.low || yellow.low"
+test = "ann_test"
+
+[[cockpit.annunciator]]
+id = "master_warning"
+when = "eng1_fire.detected || eng2_fire.detected || eng3_fire.detected || eng4_fire.detected || apu_fire.detected || cabin.excess_altitude"
+test = "ann_test"

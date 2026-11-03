@@ -1,0 +1,75 @@
+[[gear.leg]]
+id = "nose_gear"
+circuit = "green"
+down_when = "gear_lever.on"
+time = "10 s"
+
+[[gear.leg]]
+id = "wing_gear_{n}"
+count = 2
+circuit = "green"
+down_when = "gear_lever.on"
+time = "14 s"
+
+[[gear.leg]]
+id = "body_gear_{n}"
+count = 2
+circuit = "green"
+down_when = "gear_lever.on"
+time = "14 s"
+
+[[gear.brake]]
+id = "brakes_l"
+circuit = "green"
+pedal = "brake_l.value"
+max_pressure = "3000 psi"
+air = "air"
+
+[[gear.brake]]
+id = "brakes_r"
+circuit = "green"
+pedal = "brake_r.value"
+max_pressure = "3000 psi"
+air = "air"
+
+[[cabin.pressurization]]
+id = "cabin"
+air = "air"
+volume = "1600 m3"
+inflow = "pack1.flow + pack2.flow"
+cabin_ceiling = "6000 ft"
+
+[[ice.surface]]
+id = "wing_ice"
+air = "air"
+heated_when = "wing_ai_l.supplied && wing_ai_r.supplied"
+
+[[oxygen.crew]]
+id = "crew_oxygen"
+pressure = "1850 psi"
+
+[[oxygen.passenger]]
+id = "pax_oxygen"
+deploy_when = "cabin.altitude > 14000 ft"
+
+# Mass and balance near the published maximum take-off weight
+[[weight.station]]
+id = "empty"
+mass = "277000 kg"
+arm = "36 m"
+
+[[weight.station]]
+id = "passengers"
+mass = "48000 kg"
+arm = "35 m"
+
+[[weight.station]]
+id = "cargo"
+mass = "20000 kg"
+arm = "34 m"
+
+[[weight.balance]]
+id = "wb"
+stations = ["empty", "passengers", "cargo", "feed1", "feed2", "feed3", "feed4", "inner_l", "inner_r", "mid_l", "mid_r", "outer_l", "outer_r", "trim"]
+mac_leading_edge = "30.5 m"
+mac = "12.3 m"

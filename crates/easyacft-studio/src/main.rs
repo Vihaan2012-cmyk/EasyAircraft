@@ -357,13 +357,16 @@ impl App {
         }
         if self.fit {
             self.fit_size = resp.rect.size();
-            let (mut w, mut h) = (1.0f32, 1.0f32);
-            for it in &d.items {
-                w = w.max(it.pos.0 + it.size.0 / 2.0 + 30.0);
-                h = h.max(it.pos.1 + it.size.1 / 2.0 + 30.0);
+            let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            let pts = d.items.iter().flat_map(|it| [(it.pos.0 - it.size.0 / 2.0, it.pos.1 - it.size.1 / 2.0 - 16.0), (it.pos.0 + it.size.0 / 2.0, it.pos.1 + it.size.1 / 2.0 + 16.0)]).chain(d.edges.iter().flat_map(|e| e.path.iter().copied()));
+            for (px, py) in pts {
+                (x0, y0, x1, y1) = (x0.min(px), y0.min(py), x1.max(px), y1.max(py));
             }
-            self.zoom = (resp.rect.width() / w).min(resp.rect.height() / h).clamp(0.3, 1.5);
-            self.offset = Vec2::ZERO;
+            if x0 <= x1 {
+                let pad = 20.0;
+                self.zoom = ((resp.rect.width() - 2.0 * pad) / (x1 - x0)).min((resp.rect.height() - 2.0 * pad) / (y1 - y0)).clamp(0.3, 1.5);
+                self.offset = Vec2::new(pad - x0 * self.zoom, pad - y0 * self.zoom);
+            }
             self.fit = false;
         }
         if let Some(h) = resp.hover_pos() {
@@ -538,7 +541,7 @@ impl App {
             self.selected = hit;
             self.edits.clear();
         }
-        painter.text(resp.rect.right_top() + Vec2::new(-8.0, 8.0), Align2::RIGHT_TOP, "drag to move, shift-drag between two to connect, right-click to fail, scroll to zoom", FontId::proportional(10.5), faint);
+        painter.text(resp.rect.right_bottom() + Vec2::new(-8.0, -8.0), Align2::RIGHT_BOTTOM, "drag to move, shift-drag between two to connect, right-click to fail, scroll to zoom", FontId::proportional(10.5), faint);
         let rest = diagram::listed(&a.checked, domain);
         if !rest.is_empty() {
             let names: Vec<String> = rest.iter().map(|&i| a.checked.parts[i].id.clone()).collect();

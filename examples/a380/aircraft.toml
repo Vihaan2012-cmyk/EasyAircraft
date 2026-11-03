@@ -1,0 +1,22 @@
+# A380-800 systems backend built on EasyAcft from public data.
+# Not affiliated with or endorsed by Airbus. A380 is a trademark of Airbus.
+[aircraft]
+name = "A380-800 systems"
+easyacft = "1.0"
+include = [
+    "systems/environment.toml",
+    "systems/cockpit.toml",
+    "systems/electrical.toml",
+    "systems/fuel.toml",
+    "systems/engines.toml",
+    "systems/pneumatic.toml",
+    "systems/hydraulic.toml",
+    "systems/airframe.toml",
+    "systems/protection.toml",
+]
+
+[rates]
+electrical = "10 ms"
+hydraulic = "20 ms"
+fuel = "50 ms"
+pneumatic = "20 ms"

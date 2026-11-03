@@ -1,0 +1,151 @@
+# Eleven tanks: four feed tanks, inner, mid and outer wing tanks each side, and the trim tank.
+# Capacities in kg at 0.8 kg/L, summing to the published 320,000 L class total.
+
+[[fuel.tank]]
+id = "feed{n}"
+count = 4
+capacity = "23000 kg"
+quantity = "20000 kg"
+arm = "33 m"
+
+[[fuel.tank]]
+id = "inner_l"
+capacity = "36000 kg"
+quantity = "25000 kg"
+arm = "34 m"
+
+[[fuel.tank]]
+id = "inner_r"
+capacity = "36000 kg"
+quantity = "25000 kg"
+arm = "34 m"
+
+[[fuel.tank]]
+id = "mid_l"
+capacity = "29000 kg"
+quantity = "15000 kg"
+arm = "36 m"
+
+[[fuel.tank]]
+id = "mid_r"
+capacity = "29000 kg"
+quantity = "15000 kg"
+arm = "36 m"
+
+[[fuel.tank]]
+id = "outer_l"
+capacity = "8300 kg"
+quantity = "8000 kg"
+arm = "40 m"
+
+[[fuel.tank]]
+id = "outer_r"
+capacity = "8300 kg"
+quantity = "8000 kg"
+arm = "40 m"
+
+[[fuel.tank]]
+id = "trim"
+capacity = "18600 kg"
+quantity = "5000 kg"
+arm = "62 m"
+
+[[fuel.line]]
+id = "eng{n}_line"
+count = 4
+
+[[fuel.line]]
+id = "xfeed_manifold"
+
+[[fuel.pump]]
+id = "feed{n}_main"
+count = 4
+tank = "feed{n}"
+outlet = "eng{n}_line"
+flow = "5 kg/s"
+running_when = "feed{n}_main_sw.on && fuel_pumps_{n}.powered"
+
+[[fuel.pump]]
+id = "feed{n}_stby"
+count = 4
+tank = "feed{n}"
+outlet = "eng{n}_line"
+pressure = "20 psi"
+flow = "5 kg/s"
+running_when = "feed{n}_stby_sw.on && fuel_pumps_{n}.powered && !feed{n}_main.running"
+
+[[fuel.valve]]
+id = "xfeed{n}"
+count = 4
+between = ["eng{n}_line", "xfeed_manifold"]
+open_when = "xfeed{n}_sw.on"
+
+# Transfers into the feed tanks when they drop below 80 %
+[[fuel.pump]]
+id = "inner_l_xfr{n}"
+count = 2
+tank = "inner_l"
+outlet = "feed{n}"
+pressure = "15 psi"
+flow = "2 kg/s"
+running_when = "transfer_auto.on && feed{n}.quantity < 18400 kg && ac1.powered"
+
+[[fuel.pump]]
+id = "inner_r_xfr3"
+tank = "inner_r"
+outlet = "feed3"
+pressure = "15 psi"
+flow = "2 kg/s"
+running_when = "transfer_auto.on && feed3.quantity < 18400 kg && ac3.powered"
+
+[[fuel.pump]]
+id = "inner_r_xfr4"
+tank = "inner_r"
+outlet = "feed4"
+pressure = "15 psi"
+flow = "2 kg/s"
+running_when = "transfer_auto.on && feed4.quantity < 18400 kg && ac4.powered"
+
+[[fuel.pump]]
+id = "mid_l_xfr"
+tank = "mid_l"
+outlet = "inner_l"
+pressure = "15 psi"
+flow = "2 kg/s"
+running_when = "transfer_auto.on && inner_l.quantity < 30000 kg && ac2.powered"
+
+[[fuel.pump]]
+id = "mid_r_xfr"
+tank = "mid_r"
+outlet = "inner_r"
+pressure = "15 psi"
+flow = "2 kg/s"
+running_when = "transfer_auto.on && inner_r.quantity < 30000 kg && ac3.powered"
+
+[[fuel.pump]]
+id = "trim_xfr"
+tank = "trim"
+outlet = "mid_l"
+pressure = "15 psi"
+flow = "1.5 kg/s"
+running_when = "transfer_auto.on && mid_l.quantity < 10000 kg && ac2.powered"
+
+[[fuel.feed]]
+id = "eng{n}_feed"
+count = 4
+line = "eng{n}_line"
+demand = "if(fire{n}_handle.on, 0 kg/s, fadec{n}.fuel_command)"
+
+[[fuel.feed]]
+id = "apu_feed"
+line = "xfeed_manifold"
+demand = "if(apu_fire_handle.on, 0 kg/s, apu.fuel_flow)"
+
+# The APU has its own pump from feed 4 when the AC buses are off
+[[fuel.pump]]
+id = "apu_pump"
+tank = "feed4"
+outlet = "xfeed_manifold"
+pressure = "10 psi"
+flow = "0.2 kg/s"
+running_when = "apu_master.on && dc_apu.powered"

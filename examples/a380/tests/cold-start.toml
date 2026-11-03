@@ -1,0 +1,51 @@
+[[step]]
+at = "0 s"
+set = { "bat1_sw.on" = 1, "bat2_sw.on" = 1, "ess_bat_sw.on" = 1, "apu_bat_sw.on" = 1 }
+
+[[expect]]
+at = "2 s"
+that = "dc_ess.powered && dc_apu.powered && !ac1.powered"
+
+[[step]]
+at = "3 s"
+set = { "apu_master.on" = 1 }
+
+[[step]]
+at = "5 s"
+set = { "apu_start.on" = 1 }
+
+[[expect]]
+at = "100 s"
+that = "apu.available && ac1.powered && ac2.powered && ac3.powered && ac4.powered && ac_ess.powered && manifold_l.pressure > 20 psi"
+
+[[step]]
+at = "105 s"
+set = { "eng_mode.position" = 2, "eng4_master.on" = 1 }
+
+[[expect]]
+at = "200 s"
+that = "eng4.running && glc4.closed"
+
+[[step]]
+at = "205 s"
+set = { "eng3_master.on" = 1 }
+
+[[step]]
+at = "305 s"
+set = { "eng2_master.on" = 1 }
+
+[[step]]
+at = "405 s"
+set = { "eng1_master.on" = 1 }
+
+[[expect]]
+at = "520 s"
+that = "eng1.running && eng2.running && eng3.running && glc1.closed && glc2.closed && glc3.closed && green.available && yellow.available"
+
+[[step]]
+at = "525 s"
+set = { "eng_mode.position" = 1, "apu_master.on" = 0, "tla1.value" = 0.9, "tla2.value" = 0.9, "tla3.value" = 0.9, "tla4.value" = 0.9 }
+
+[[expect]]
+at = "600 s"
+that = "eng1.n1 > 80 && eng4.thrust > 200 kN && !master_caution.lit && !master_warning.lit"

@@ -1,0 +1,145 @@
+# Electrical panel
+[[cockpit.switch]]
+id = "bat{n}_sw"
+count = 2
+
+[[cockpit.switch]]
+id = "ess_bat_sw"
+
+[[cockpit.switch]]
+id = "apu_bat_sw"
+
+[[cockpit.switch]]
+id = "gen{n}_sw"
+count = 4
+initial = true
+
+[[cockpit.switch]]
+id = "apu_gen_a_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "apu_gen_b_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "ext{n}_sw"
+count = 4
+
+[[cockpit.switch]]
+id = "ext{n}_connected"
+count = 4
+
+[[cockpit.switch]]
+id = "galley_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "rat_manual"
+
+# APU, bleed, packs
+[[cockpit.switch]]
+id = "apu_master"
+
+[[cockpit.switch]]
+id = "apu_start"
+
+[[cockpit.switch]]
+id = "apu_bleed_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "bleed{n}_sw"
+count = 4
+initial = true
+
+[[cockpit.switch]]
+id = "xbleed_l_sw"
+
+[[cockpit.switch]]
+id = "xbleed_r_sw"
+
+[[cockpit.switch]]
+id = "xbleed_c_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "pack{n}_sw"
+count = 2
+initial = true
+
+[[cockpit.switch]]
+id = "wing_ai_sw"
+
+# Fuel
+[[cockpit.switch]]
+id = "feed{n}_main_sw"
+count = 4
+initial = true
+
+[[cockpit.switch]]
+id = "feed{n}_stby_sw"
+count = 4
+initial = true
+
+[[cockpit.switch]]
+id = "xfeed{n}_sw"
+count = 4
+
+[[cockpit.switch]]
+id = "transfer_auto"
+initial = true
+
+# Hydraulics
+[[cockpit.switch]]
+id = "edp{n}_sw"
+count = 4
+initial = true
+
+[[cockpit.switch]]
+id = "green_elec_sw"
+
+[[cockpit.switch]]
+id = "yellow_elec_sw"
+
+# Engines
+[[cockpit.switch]]
+id = "eng{n}_master"
+count = 4
+
+# 0 crank, 1 normal, 2 ignition and start
+[[cockpit.selector]]
+id = "eng_mode"
+positions = 3
+initial = 1
+
+[[input.number]]
+id = "tla{n}"
+count = 4
+
+[[cockpit.guarded_switch]]
+id = "fire{n}_handle"
+count = 4
+
+[[cockpit.guarded_switch]]
+id = "apu_fire_handle"
+
+[[cockpit.pushbutton]]
+id = "agent{n}_pb"
+count = 4
+
+[[cockpit.pushbutton]]
+id = "apu_agent_pb"
+
+[[cockpit.switch]]
+id = "gear_lever"
+initial = true
+
+[[input.number]]
+id = "brake_l"
+
+[[input.number]]
+id = "brake_r"
+
+[[cockpit.switch]]
+id = "ann_test"

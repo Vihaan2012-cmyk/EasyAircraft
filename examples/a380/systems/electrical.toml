@@ -1,0 +1,316 @@
+# Four 150 kVA variable-frequency engine generators, two 120 kVA APU generators,
+# four ground power receptacles, a ram air turbine, four batteries.
+
+[[electrical.bus]]
+id = "ac{n}"
+count = 4
+nominal = "115 V"
+
+[[electrical.bus]]
+id = "gen{n}_out"
+count = 4
+nominal = "115 V"
+
+[[electrical.generator]]
+id = "gen{n}"
+count = 4
+bus = "gen{n}_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "150 kVA"
+driven_when = "eng{n}.running && eng{n}.n3 > 30"
+
+[[electrical.contactor]]
+id = "glc{n}"
+count = 4
+between = ["gen{n}_out", "ac{n}"]
+close_when = "gen{n}_sw.on && gen{n}.ready && delay(gen{n}.ready, 1 s)"
+
+# Left side ties AC 1 and 2, right side AC 3 and 4
+[[electrical.bus]]
+id = "tie_l"
+nominal = "115 V"
+
+[[electrical.bus]]
+id = "tie_r"
+nominal = "115 V"
+
+[[electrical.contactor]]
+id = "btc1"
+between = ["ac1", "tie_l"]
+close_when = "!glc1.closed || !glc2.closed"
+
+[[electrical.contactor]]
+id = "btc2"
+between = ["ac2", "tie_l"]
+close_when = "!glc1.closed || !glc2.closed"
+
+[[electrical.contactor]]
+id = "btc3"
+between = ["ac3", "tie_r"]
+close_when = "!glc3.closed || !glc4.closed"
+
+[[electrical.contactor]]
+id = "btc4"
+between = ["ac4", "tie_r"]
+close_when = "!glc3.closed || !glc4.closed"
+
+[[electrical.contactor]]
+id = "split_tie"
+between = ["tie_l", "tie_r"]
+close_when = "!(apu_gen_a.ready && apu_gen_b.ready) && !(glc1.closed && glc2.closed && glc3.closed && glc4.closed)"
+
+[[electrical.bus]]
+id = "apu_gen_a_out"
+nominal = "115 V"
+
+[[electrical.bus]]
+id = "apu_gen_b_out"
+nominal = "115 V"
+
+[[electrical.generator]]
+id = "apu_gen_a"
+bus = "apu_gen_a_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "120 kVA"
+driven_when = "apu.available"
+
+[[electrical.generator]]
+id = "apu_gen_b"
+bus = "apu_gen_b_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "120 kVA"
+driven_when = "apu.available"
+
+[[electrical.contactor]]
+id = "agc_a"
+between = ["apu_gen_a_out", "tie_l"]
+close_when = "apu_gen_a_sw.on && apu_gen_a.ready && !(glc1.closed && glc2.closed)"
+
+[[electrical.contactor]]
+id = "agc_b"
+between = ["apu_gen_b_out", "tie_r"]
+close_when = "apu_gen_b_sw.on && apu_gen_b.ready && !(glc3.closed && glc4.closed)"
+
+[[electrical.bus]]
+id = "ext{n}_out"
+count = 4
+nominal = "115 V"
+
+[[electrical.ext_power]]
+id = "ext{n}"
+count = 4
+bus = "ext{n}_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "90 kVA"
+connected_when = "ext{n}_connected.on"
+
+[[electrical.contactor]]
+id = "epc{n}"
+count = 4
+between = ["ext{n}_out", "ac{n}"]
+close_when = "ext{n}_sw.on && ext{n}.available && !glc{n}.closed"
+
+# Essential and emergency
+[[electrical.bus]]
+id = "ac_ess"
+nominal = "115 V"
+
+[[electrical.contactor]]
+id = "ac_ess_norm"
+between = ["ac1", "ac_ess"]
+close_when = "ac1.powered"
+
+[[electrical.contactor]]
+id = "ac_ess_alt"
+between = ["ac4", "ac_ess"]
+close_when = "!ac1.powered && ac4.powered"
+
+[[electrical.bus]]
+id = "rat_out"
+nominal = "115 V"
+
+[[electrical.generator]]
+id = "rat_gen"
+bus = "rat_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "70 kVA"
+driven_when = "rat_deployed.on && air.airspeed > 70 kt"
+
+[[logic.flag]]
+id = "rat_deployed"
+when = "latch(rat_manual.on || (!air.on_ground && !ac1.powered && !ac2.powered && !ac3.powered && !ac4.powered), false)"
+
+[[electrical.contactor]]
+id = "rat_line"
+between = ["rat_out", "ac_ess"]
+close_when = "rat_gen.ready && !ac1.powered && !ac4.powered"
+
+# DC
+[[electrical.bus]]
+id = "dc{n}"
+count = 2
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "dc_ess"
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "dc_apu"
+nominal = "28 V"
+
+[[electrical.tru]]
+id = "tr1"
+input = "ac2"
+output = "dc1"
+voltage = "28 V"
+rating = "8.4 kW"
+
+[[electrical.tru]]
+id = "tr2"
+input = "ac3"
+output = "dc2"
+voltage = "28 V"
+rating = "8.4 kW"
+
+[[electrical.tru]]
+id = "ess_tr"
+input = "ac_ess"
+output = "dc_ess"
+voltage = "28 V"
+rating = "8.4 kW"
+
+[[electrical.tru]]
+id = "apu_tr"
+input = "ac4"
+output = "dc_apu"
+voltage = "28 V"
+rating = "8.4 kW"
+
+[[electrical.contactor]]
+id = "dc_tie"
+between = ["dc1", "dc2"]
+close_when = "!(tr1.active && tr2.active)"
+
+[[electrical.bus]]
+id = "hot_bat{n}"
+count = 2
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "hot_ess"
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "hot_apu"
+nominal = "28 V"
+
+[[electrical.battery]]
+id = "bat{n}"
+count = 2
+bus = "hot_bat{n}"
+voltage = "24 V"
+capacity = "50 Ah"
+
+[[electrical.battery]]
+id = "ess_bat"
+bus = "hot_ess"
+voltage = "24 V"
+capacity = "50 Ah"
+
+[[electrical.battery]]
+id = "apu_bat"
+bus = "hot_apu"
+voltage = "24 V"
+capacity = "50 Ah"
+
+[[electrical.contactor]]
+id = "bat{n}_lc"
+count = 2
+between = ["hot_bat{n}", "dc{n}"]
+close_when = "bat{n}_sw.on"
+
+[[electrical.contactor]]
+id = "ess_bat_lc"
+between = ["hot_ess", "dc_ess"]
+close_when = "ess_bat_sw.on"
+
+[[electrical.contactor]]
+id = "apu_bat_lc"
+between = ["hot_apu", "dc_apu"]
+close_when = "apu_bat_sw.on"
+
+# Loads
+[[electrical.bus]]
+id = "galley{n}"
+count = 4
+nominal = "115 V"
+
+[[electrical.breaker]]
+id = "cb_galley{n}"
+count = 4
+between = ["ac{n}", "galley{n}"]
+rating = "400 A"
+
+[[electrical.load]]
+id = "galley{n}_load"
+count = 4
+bus = "galley{n}"
+power = "60 kW"
+on_when = "galley_sw.on"
+shed_priority = 5
+
+[[electrical.load]]
+id = "cabin{n}"
+count = 4
+bus = "ac{n}"
+power = "25 kW"
+shed_priority = 3
+
+[[electrical.load]]
+id = "ess_avionics"
+bus = "dc_ess"
+power = "2 kW"
+
+[[electrical.load]]
+id = "ac_ess_avionics"
+bus = "ac_ess"
+power = "3 kW"
+
+[[electrical.load]]
+id = "dc{n}_avionics"
+count = 2
+bus = "dc{n}"
+power = "2.5 kW"
+
+[[electrical.load]]
+id = "apu_starter_motor"
+bus = "dc_apu"
+power = "6 kW"
+on_when = "apu.starting"
+
+[[electrical.load]]
+id = "fuel_pumps_{n}"
+count = 4
+bus = "ac{n}"
+power = "4 kW"
+on_when = "feed{n}_main_sw.on || feed{n}_stby_sw.on"
+
+[[electrical.load]]
+id = "green_elec_motor"
+bus = "ac2"
+power = "15 kW"
+on_when = "green_elec_sw.on"
+shed_priority = 4
+
+[[electrical.load]]
+id = "yellow_elec_motor"
+bus = "ac3"
+power = "15 kW"
+on_when = "yellow_elec_sw.on"
+shed_priority = 4

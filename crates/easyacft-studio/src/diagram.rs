@@ -177,8 +177,8 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
     };
     let side_w = |h: usize, below: bool| attached.get(&(h, below)).map_or(0.0, |l| l.iter().map(|&i| child_w(i) + 12.0).sum::<f32>());
     let degree = |h: usize| ends.iter().filter(|(_, a, b)| *a == h || *b == h).count() as f32;
-    let width = |h: usize| (text_w(&c.parts[h].id) + 110.0).max(side_w(h, true).max(side_w(h, false)) + 24.0 + degree(h) * 30.0).max(160.0);
-    let (gap, dy, hub_h) = (60.0f32, 190.0f32, 28.0f32);
+    let width = |h: usize| (text_w(&c.parts[h].id) + 76.0).max(side_w(h, true).max(side_w(h, false)) + 24.0 + degree(h) * 26.0).max(110.0);
+    let (gap, dy, hub_h) = (44.0f32, 190.0f32, 28.0f32);
 
     let mut nodes: Vec<Node> = hubs.iter().map(|&h| Node { hub: Some(h), w: width(h) }).collect();
     let node_of: HashMap<usize, usize> = hubs.iter().enumerate().map(|(n, &h)| (h, n)).collect();
@@ -233,14 +233,39 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
             place(&rows[r].clone(), &mut x);
         }
     }
-    let row_y = |l: usize| 110.0 + (levels - 1 - l) as f32 * dy;
-    let mut node_level = vec![0usize; nodes.len()];
-    for (l, row) in rows.iter().enumerate() {
+    let span = |row: &[usize]| row.iter().map(|&n| nodes[n].w + if nodes[n].hub.is_some() { gap } else { 14.0 }).sum::<f32>();
+    let widest = rows.iter().map(|r| span(r)).fold(0.0, f32::max);
+    let max_w = widest.min(1500.0f32.max(widest / 2.0));
+    let mut node_y = vec![0.0f32; nodes.len()];
+    let mut node_line = vec![0usize; nodes.len()];
+    let mut y = 110.0f32;
+    let mut line_no = 0;
+    for l in (0..levels).rev() {
+        let k = (span(&rows[l]) / max_w).ceil().max(1.0) as usize;
+        place(&rows[l], &mut x);
+        let lines: Vec<Vec<usize>> = (0..k).map(|j| rows[l].iter().copied().skip(j).step_by(k).collect()).collect();
+        for line in lines {
+            let mut right = f32::MIN;
+            for &n in &line {
+                let half = nodes[n].w / 2.0;
+                let want = 40.0 + (x[n] - half - 40.0) / k as f32 + half;
+                x[n] = want.max(right + half + if right == f32::MIN { 0.0 } else { gap });
+                right = x[n] + half;
+            }
+            for &n in &line {
+                node_y[n] = y;
+                node_line[n] = line_no;
+            }
+            y += dy;
+            line_no += 1;
+        }
+    }
+    for row in &rows {
         for &n in row {
-            node_level[n] = l;
             if let Some(h) = nodes[n].hub {
-                let pos = pinned.get(&c.parts[h].id).copied().unwrap_or((x[n], row_y(l)));
+                let pos = pinned.get(&c.parts[h].id).copied().unwrap_or((x[n], node_y[n]));
                 x[n] = pos.0;
+                node_y[n] = pos.1;
                 d.items.push(Item { part: h, role: Role::Hub, pos, size: (nodes[n].w, hub_h) });
             }
         }
@@ -262,18 +287,26 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
         }
         v
     };
-    let mut arcs: HashMap<usize, usize> = HashMap::new();
-    let mut lanes: HashMap<usize, usize> = HashMap::new();
+    let mut arcs: HashMap<i32, usize> = HashMap::new();
+    let mut lanes: HashMap<i32, usize> = HashMap::new();
     let mut pairs: HashMap<(usize, usize), usize> = HashMap::new();
     for (k, &(part, _, _)) in ends.iter().enumerate() {
         let chain = &chains[k];
+        let (_, a0, b0) = ends[k];
+        let level_pair = chain.len() == 1 && (hub[&a0].pos.1 - hub[&b0].pos.1).abs() >= 1.0;
+        let chain = &if level_pair {
+            let (na, nb) = (node_of[&a0], node_of[&b0]);
+            if node_y[na] > node_y[nb] { vec![na, nb] } else { vec![nb, na] }
+        } else {
+            chain.clone()
+        };
         let path = if chain.len() == 1 {
             let (_, a, b) = ends[k];
             let (ia, ib) = (&hub[&a], &hub[&b]);
             let (l, r) = if ia.pos.0 < ib.pos.0 { (ia, ib) } else { (ib, ia) };
-            let lv = node_level[node_of[&l.part]];
-            let blocked = rows[lv].iter().any(|&n| nodes[n].hub.is_some() && x[n] > l.pos.0 + 1.0 && x[n] < r.pos.0 - 1.0);
-            if !blocked && (l.pos.1 - r.pos.1).abs() < 1.0 {
+            let lv = l.pos.1 as i32;
+            let blocked = hub.values().any(|h| (h.pos.1 - l.pos.1).abs() < 1.0 && h.pos.0 > l.pos.0 + 1.0 && h.pos.0 < r.pos.0 - 1.0);
+            if !blocked {
                 vec![(l.pos.0 + l.size.0 / 2.0, l.pos.1), (r.pos.0 - r.size.0 / 2.0, r.pos.1)]
             } else {
                 let n = arcs.entry(lv).or_default();
@@ -305,12 +338,11 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
             xs.push(xb);
             let mut pts = vec![(xa, lo.top())];
             let mut cur = xa;
-            let l0 = node_level[chain[0]];
             for (s, &nx) in xs.iter().enumerate().skip(1) {
-                let l = l0 + s - 1;
+                let below = node_y[chain[s - 1]];
                 if (nx - cur).abs() >= 1.0 {
-                    let lane = lanes.entry(l).or_default();
-                    let mid = row_y(l) - 135.0 + (*lane % 7) as f32 * 9.0 - 27.0;
+                    let lane = lanes.entry(below as i32).or_default();
+                    let mid = below - 135.0 + (*lane % 7) as f32 * 9.0 - 27.0;
                     *lane += 1;
                     pts.push((cur, mid));
                     pts.push((nx, mid));

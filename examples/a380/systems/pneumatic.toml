@@ -1,0 +1,132 @@
+[[pneumatic.duct]]
+id = "bleed{n}"
+count = 4
+
+[[pneumatic.duct]]
+id = "manifold_l"
+volume = "0.3 m3"
+
+[[pneumatic.duct]]
+id = "manifold_c"
+volume = "0.3 m3"
+
+[[pneumatic.duct]]
+id = "manifold_r"
+volume = "0.3 m3"
+
+[[pneumatic.duct]]
+id = "apu_duct"
+
+[[pneumatic.source]]
+id = "bleed{n}_port"
+count = 4
+duct = "bleed{n}"
+pressure = "90 psi"
+temperature = "450 degC"
+flow = "6 kg/s"
+available_when = "eng{n}.n3 > 30"
+
+[[pneumatic.source]]
+id = "apu_load_compressor"
+duct = "apu_duct"
+pressure = "55 psi"
+temperature = "220 degC"
+flow = "2.4 kg/s"
+available_when = "apu.available"
+
+[[pneumatic.valve]]
+id = "prv1"
+between = ["bleed1", "manifold_l"]
+open_when = "bleed1_sw.on && !fire1_handle.on"
+regulate = "44 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "prv2"
+between = ["bleed2", "manifold_l"]
+open_when = "bleed2_sw.on && !fire2_handle.on"
+regulate = "44 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "prv3"
+between = ["bleed3", "manifold_r"]
+open_when = "bleed3_sw.on && !fire3_handle.on"
+regulate = "44 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "prv4"
+between = ["bleed4", "manifold_r"]
+open_when = "bleed4_sw.on && !fire4_handle.on"
+regulate = "44 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "xbleed_l"
+between = ["manifold_l", "manifold_c"]
+open_when = "xbleed_l_sw.on || apu_bleed.open"
+flow = "5 kg/s"
+
+[[pneumatic.valve]]
+id = "xbleed_r"
+between = ["manifold_c", "manifold_r"]
+open_when = "xbleed_r_sw.on || apu_bleed.open"
+flow = "5 kg/s"
+
+[[pneumatic.valve]]
+id = "apu_bleed"
+between = ["apu_duct", "manifold_c"]
+open_when = "apu_bleed_sw.on && apu.available"
+
+[[pneumatic.consumer]]
+id = "pack1"
+duct = "manifold_l"
+flow = "1.6 kg/s"
+on_when = "pack1_sw.on && !(fadec1.starter || fadec2.starter)"
+
+[[pneumatic.consumer]]
+id = "pack2"
+duct = "manifold_r"
+flow = "1.6 kg/s"
+on_when = "pack2_sw.on && !(fadec3.starter || fadec4.starter)"
+
+[[pneumatic.consumer]]
+id = "start_valve1"
+duct = "manifold_l"
+flow = "1.5 kg/s"
+minimum = "20 psi"
+on_when = "fadec1.starter"
+
+[[pneumatic.consumer]]
+id = "start_valve2"
+duct = "manifold_l"
+flow = "1.5 kg/s"
+minimum = "20 psi"
+on_when = "fadec2.starter"
+
+[[pneumatic.consumer]]
+id = "start_valve3"
+duct = "manifold_r"
+flow = "1.5 kg/s"
+minimum = "20 psi"
+on_when = "fadec3.starter"
+
+[[pneumatic.consumer]]
+id = "start_valve4"
+duct = "manifold_r"
+flow = "1.5 kg/s"
+minimum = "20 psi"
+on_when = "fadec4.starter"
+
+[[pneumatic.consumer]]
+id = "wing_ai_l"
+duct = "manifold_l"
+flow = "0.6 kg/s"
+on_when = "wing_ai_sw.on"
+
+[[pneumatic.consumer]]
+id = "wing_ai_r"
+duct = "manifold_r"
+flow = "0.6 kg/s"
+on_when = "wing_ai_sw.on"

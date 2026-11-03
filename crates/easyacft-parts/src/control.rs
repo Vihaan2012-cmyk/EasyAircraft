@@ -21,7 +21,7 @@ pub static SPECS: &[PartSpec] = &[
         fields: &[
             req("engine", Kind::Ref(&["engine.gas_turbine"]), "the engine it controls"),
             req("lever", Kind::Expr(N), "thrust lever: 0 idle to 1 full, negative for reverse"),
-            opt("governs", Kind::Text, "n1", "n1 or n2"),
+            opt("governs", Kind::Text, "n1", "n1, or n2 for the core spool (n3 on three spools)"),
             opt("idle", Kind::Expr(N), "22", "idle setting, percent"),
             opt("max", Kind::Expr(N), "100", "rating at full lever, percent; a table() for real ratings"),
             opt("max_reverse", Kind::Expr(N), "70", "setting at full reverse, percent"),
@@ -133,8 +133,9 @@ impl Control {
         for p in &c.parts {
             match (p.domain, p.kind) {
                 ("fadec", "controller") => {
-                    let (Some(n1), Some(n2), Some(egt), Some(run)) = (slot(c, p, "engine", "n1"), slot(c, p, "engine", "n2"), slot(c, p, "engine", "egt"), slot(c, p, "engine", "running")) else { continue };
-                    let eng = &c.parts[p.part("engine").unwrap()];
+                    let Some(eng) = p.part("engine").map(|i| &c.parts[i]) else { continue };
+                    let core = if eng.num("spools") >= 3.0 { "n3" } else { "n2" };
+                    let (Some(n1), Some(n2), Some(egt), Some(run)) = (slot(c, p, "engine", "n1"), slot(c, p, "engine", core), slot(c, p, "engine", "egt"), slot(c, p, "engine", "running")) else { continue };
                     let wf_d = GasPath::new(Params::from_part(eng, base)).d.wf.max(1e-4);
                     let e = ["lever", "idle", "max", "max_reverse", "master", "start", "autothrust_active", "autothrust_target", "channel_a_failed", "channel_b_failed"].map(|k| expr_of(p, k));
                     let k = [p.num("acceleration"), p.num("deceleration"), p.num("egt_limit"), p.num("speed_limit"), p.num("fuel_on_at"), p.num("starter_cutout"), p.num("light_off_time"), p.num("start_egt_limit"), p.num("hung_time"), p.num("reverser_time").max(0.1), p.num("start_fuel")];
