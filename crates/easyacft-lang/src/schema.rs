@@ -96,6 +96,8 @@ impl CheckedPart {
 pub struct Slots {
     pub names: Vec<(String, Type)>,
     pub index: HashMap<String, usize>,
+    /// Folder table files are read from: the file being checked.
+    pub base: std::path::PathBuf,
 }
 
 impl Slots {
@@ -115,6 +117,11 @@ impl Names for Slots {
     }
     fn suggest(&self, name: &str) -> Option<String> {
         closest(name, self.names.iter().map(|(n, _)| n.as_str()))
+    }
+    fn table(&self, path: &str) -> Result<crate::expr::Table, String> {
+        let full = self.base.join(path);
+        let text = std::fs::read_to_string(&full).map_err(|e| format!("cannot read `{}`: {e}", full.display()))?;
+        crate::expr::Table::parse(&text).map_err(|e| format!("`{path}`: {e}"))
     }
 }
 
@@ -276,7 +283,10 @@ pub fn check(model: &Model, catalog: &dyn Catalog) -> (Checked, Vec<Diagnostic>)
                     }
                     Value::Refs(ok)
                 }
-                (Kind::Expr(want), Field::Str(src)) => match expr::compile(src, &out.slots) {
+                (Kind::Expr(want), Field::Str(src)) => match {
+                    out.slots.base = model.sources.files.get(file).and_then(|(n, _)| std::path::Path::new(n).parent().map(|p| p.to_path_buf())).unwrap_or_default();
+                    expr::compile(src, &out.slots)
+                } {
                     Ok(prog) if prog.ty == want => Value::Expr(prog),
                     Ok(prog) => {
                         diags.push(bad(&format!("{} (this expression gives {})", want.name(), prog.ty.name())));

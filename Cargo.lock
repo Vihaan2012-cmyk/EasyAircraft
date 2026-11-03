@@ -9,6 +9,7 @@ dependencies = [
  "easyacft-core",
  "easyacft-lang",
  "easyacft-parts",
+ "toml_edit",
 ]
 
 [[package]]

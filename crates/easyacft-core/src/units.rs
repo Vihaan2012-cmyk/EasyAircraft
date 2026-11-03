@@ -40,7 +40,7 @@ impl Dim {
     }
 
     pub fn name(self) -> String {
-        const KNOWN: [(Dim, &str); 19] = [
+        const KNOWN: [(Dim, &str); 20] = [
             (Dim::NONE, "a plain number"),
             (Dim::MASS, "mass"),
             (Dim::LENGTH, "length"),
@@ -60,6 +60,7 @@ impl Dim {
             (Dim::VOLUME_FLOW, "volume flow"),
             (Dim::SPEED, "speed"),
             (Dim::TORQUE, "energy or torque"),
+            (Dim([0, 2, -2, 0, 0]), "energy per mass"),
         ];
         if let Some((_, n)) = KNOWN.iter().find(|(d, _)| *d == self) {
             return (*n).to_owned();
@@ -141,6 +142,7 @@ const UNITS: &[Unit] = &[
     u("hp", 745.699_872, Dim::POWER),
     u("J", 1.0, Dim::ENERGY),
     u("kJ", 1e3, Dim::ENERGY),
+    u("MJ", 1e6, Dim::ENERGY),
     u("Wh", 3600.0, Dim::ENERGY),
     u("Ah", 3600.0, Dim::CHARGE),
     u("C", 1.0, Dim::CHARGE),

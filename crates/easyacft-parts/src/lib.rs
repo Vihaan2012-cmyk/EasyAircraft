@@ -1,7 +1,9 @@
 //! EasyAcft part catalogue and the aircraft runtime.
 
 pub mod catalog;
+pub mod control;
 pub mod electrical;
+pub mod engine;
 pub mod fuel;
 pub mod hydraulic;
 pub mod logic;
@@ -106,6 +108,13 @@ impl Aircraft {
         }
         if let Some(d) = fuel::Fuel::new(&checked) {
             domains.push((rate_for(&model, "fuel", 0.05), Box::new(d)));
+        }
+        let base = model.sources.files.first().and_then(|(n, _)| Path::new(n).parent().map(|p| p.to_path_buf())).unwrap_or_default();
+        if let Some(d) = engine::Engines::new(&checked, &base) {
+            domains.push((rate_for(&model, "engines", 0.01), Box::new(d)));
+        }
+        if let Some(d) = control::Control::new(&checked, &base) {
+            domains.push((rate_for(&model, "control", 0.02), Box::new(d)));
         }
         if let Some(d) = systems::Systems::new(&checked) {
             domains.push((rate_for(&model, "systems", 0.02), Box::new(d)));

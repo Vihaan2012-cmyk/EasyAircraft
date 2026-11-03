@@ -43,7 +43,12 @@ pub struct Runner {
     reload_s: f64,
     time_ref: Option<Ref>,
     last_time: Option<f64>,
+    forces: Vec<(usize, [f64; 3], [f64; 3], f64, bool)>,
+    force_refs: Option<([Ref; 6], [Ref; 6], Ref)>,
 }
+
+const PLUG: [&str; 6] = ["fside_plug_acf", "fnrml_plug_acf", "faxil_plug_acf", "L_plug_acf", "M_plug_acf", "N_plug_acf"];
+const PROP: [&str; 6] = ["fside_prop", "fnrml_prop", "faxil_prop", "L_prop", "M_prop", "N_prop"];
 
 fn stamp(p: &Path) -> Option<SystemTime> {
     std::fs::metadata(p).and_then(|m| m.modified()).ok()
@@ -56,7 +61,7 @@ impl Runner {
                 if !report.diagnostics.is_empty() {
                     sim.log(&report.render());
                 }
-                let mut r = Runner { aircraft, dir: dir.to_path_buf(), bound: Vec::new(), stamps: Vec::new(), reload_s: 0.0, time_ref: sim.find("sim/time/total_flight_time_sec"), last_time: None };
+                let mut r = Runner { aircraft, dir: dir.to_path_buf(), bound: Vec::new(), stamps: Vec::new(), reload_s: 0.0, time_ref: sim.find("sim/time/total_flight_time_sec"), last_time: None, forces: Vec::new(), force_refs: None };
                 r.bind(sim);
                 Some(r)
             }
@@ -78,6 +83,33 @@ impl Runner {
             self.bound.push(Bound { dataref, index, slot, to_easyacft: b.write });
         }
         self.stamps = self.aircraft.files.iter().map(|f| (PathBuf::from(f), stamp(Path::new(f)))).collect();
+        self.forces = easyacft_parts::engine::forces(&self.aircraft.checked);
+        let find = |n: &str| sim.find(&format!("sim/flightmodel/forces/{n}"));
+        let plug: Option<Vec<Ref>> = PLUG.iter().map(|n| find(n)).collect();
+        let prop: Option<Vec<Ref>> = PROP.iter().map(|n| find(n)).collect();
+        let ov = sim.find("sim/operation/override/override_engine_forces");
+        self.force_refs = match (plug, prop, ov) {
+            (Some(a), Some(b), Some(o)) if !self.forces.is_empty() => Some((a.try_into().unwrap(), b.try_into().unwrap(), o)),
+            _ => None,
+        };
+    }
+
+    fn apply_forces(&self, sim: &dyn Sim) {
+        let Some((plug, prop, ov)) = self.force_refs else { return };
+        let pick = |replace: bool| -> Vec<([f64; 3], [f64; 3], f64)> { self.forces.iter().filter(|f| f.4 == replace).map(|f| (f.1, f.2, self.aircraft.slots[f.0] * f.3)).collect() };
+        let replaced = pick(true);
+        if !replaced.is_empty() {
+            sim.set(ov, None, 1.0);
+            for (r, v) in prop.iter().zip(easyacft_parts::engine::sum_forces(&replaced)) {
+                sim.set(*r, None, v);
+            }
+        }
+        let added = pick(false);
+        if !added.is_empty() {
+            for (r, v) in plug.iter().zip(easyacft_parts::engine::sum_forces(&added)) {
+                sim.set(*r, None, sim.get(*r, None) + v);
+            }
+        }
     }
 
     /// One X-Plane frame; `frame_s` is used only when sim time is unavailable.
@@ -99,6 +131,7 @@ impl Runner {
         for b in self.bound.iter().filter(|b| !b.to_easyacft) {
             sim.set(b.dataref, b.index, self.aircraft.slots[b.slot]);
         }
+        self.apply_forces(sim);
         self.reload_s += frame_s.max(0.0);
         if self.reload_s >= 1.0 {
             self.reload_s = 0.0;
@@ -207,6 +240,39 @@ mod tests {
         let toggle = r.commands().into_iter().find(|(n, _, _)| n == "easyacft/sw/toggle").unwrap();
         r.command(toggle.1, toggle.2);
         assert_eq!(r.aircraft.get("sw.on"), Some(1.0));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn forces_add_to_the_plugin_force_datarefs() {
+        let dir = std::env::temp_dir().join(format!("easyacft-xpf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("aircraft.toml"), "[[logic.flag]]
+id = \"on\"
+when = \"true\"
+[[output.force]]
+id = \"thrust\"
+force = \"if(on.on, 1000 N, 0 N)\"
+x = \"5 m\"
+y = \"-2 m\"
+z = \"0 m\"
+").unwrap();
+        let mut refs: Vec<String> = vec!["sim/time/total_flight_time_sec".into()];
+        refs.extend(PLUG.iter().chain(PROP.iter()).map(|n| format!("sim/flightmodel/forces/{n}")));
+        refs.push("sim/operation/override/override_engine_forces".into());
+        let sim = Mock { refs, ..Default::default() };
+        let mut r = Runner::load(&dir, &sim).expect("loads");
+        for k in 0..3 {
+            sim.set(0, None, k as f64 * 0.1);
+            for i in 1..=6 {
+                sim.set(i, None, 0.0);
+            }
+            r.frame(&sim, 0.1);
+        }
+        assert!((sim.get(3, None) + 1000.0).abs() < 1e-6, "faxil_plug_acf {}", sim.get(3, None));
+        assert!(sim.get(5, None) > 0.0, "thrust below the cg pitches up");
+        assert!(sim.get(6, None) < 0.0, "thrust right of the cg yaws left");
+        assert_eq!(sim.get(13, None), 0.0, "X-Plane keeps its own engines");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

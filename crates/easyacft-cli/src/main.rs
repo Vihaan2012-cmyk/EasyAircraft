@@ -22,7 +22,8 @@ const CODES: &[(&str, &str)] = &[
 ];
 
 fn usage() -> ExitCode {
-    eprintln!("usage:\n  easyacft check <aircraft dir>\n  easyacft sim <aircraft dir> [--for 10s] [--every 1s] [--set name=value]... [--print name,name]\n  easyacft names <aircraft dir>\n  easyacft kinds\n  easyacft explain <code>");
+    eprintln!("usage:\n  easyacft check <aircraft dir>\n  easyacft sim <aircraft dir> [--for 10s] [--every 1s] [--set name=value]... [--print name,name]\n  easyacft names <aircraft dir>\n  easyacft kinds\n  easyacft explain <code>
+  easyacft fit <aircraft dir> <engine id> <points.toml> [--tune name,name]");
     ExitCode::from(2)
 }
 
@@ -81,6 +82,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("fit") if args.len() >= 4 => fit(&args[1..]),
         Some("sim") if args.len() >= 2 => {
             let Some(mut a) = load(&args[1]) else { return ExitCode::FAILURE };
             let (mut total, mut every, mut print) = (10.0, 1.0, Vec::<String>::new());
@@ -129,4 +131,82 @@ fn main() -> ExitCode {
         }
         _ => usage(),
     }
+}
+
+fn fit(args: &[String]) -> ExitCode {
+    use easyacft_parts::engine::{fit, fit_error, FitPoint, Params};
+    let Some(a) = load(&args[0]) else { return ExitCode::FAILURE };
+    let Some(part) = a.checked.parts.iter().find(|p| p.id == args[1] && p.kind == "gas_turbine") else {
+        eprintln!("no gas turbine called `{}`", args[1]);
+        return ExitCode::FAILURE;
+    };
+    let base = std::path::Path::new(&args[0]).to_path_buf();
+    let params = Params::from_part(part, &base);
+    let text = match std::fs::read_to_string(&args[2]) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("cannot read `{}`: {e}", args[2]);
+            return ExitCode::FAILURE;
+        }
+    };
+    let doc = match text.parse::<toml_edit::ImDocument<String>>() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("`{}` is not valid TOML: {}", args[2], e.message());
+            return ExitCode::FAILURE;
+        }
+    };
+    let q = |v: Option<&toml_edit::Item>, dim| v.and_then(|x| x.as_str()).and_then(|s| easyacft_core::parse_quantity(s).ok()).filter(|x| x.dim == dim).map(|x| x.si);
+    let points: Vec<FitPoint> = doc
+        .get("point")
+        .and_then(|p| p.as_array_of_tables())
+        .map(|arr| {
+            arr.iter()
+                .map(|t| FitPoint {
+                    thrust_share: t.get("thrust").and_then(|x| x.as_float().or(x.as_integer().map(|i| i as f64))).unwrap_or(1.0),
+                    fuel_flow: q(t.get("fuel_flow"), easyacft_core::Dim::MASS_FLOW),
+                    egt: q(t.get("egt"), easyacft_core::Dim::TEMPERATURE),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if points.is_empty() {
+        eprintln!("`{}` has no [[point]] tables", args[2]);
+        return ExitCode::FAILURE;
+    }
+    let tune: Vec<String> = args.iter().position(|a| a == "--tune").and_then(|i| args.get(i + 1)).map(|t| t.split(',').map(str::to_owned).collect()).unwrap_or_default();
+    let show = |p: &Params, title: &str| {
+        let (err, rows) = fit_error(p, &points);
+        println!("{title} (error {err:.5})");
+        println!("  thrust   fuel flow  target      error   EGT");
+        for (pt, (wf, egt, _)) in points.iter().zip(rows) {
+            let target = pt.fuel_flow.map_or("-".to_owned(), |t| format!("{t:.3}"));
+            let e = pt.fuel_flow.map_or("-".to_owned(), |t| format!("{:+.1} %", (wf - t) / t * 100.0));
+            println!("  {:>5.0} %  {:>7.3}    {:>8}  {:>8}  {:.0} C", pt.thrust_share * 100.0, wf, target, e, egt - 273.15);
+        }
+    };
+    show(&params, "as written");
+    if !tune.is_empty() {
+        let names: Vec<&str> = tune.iter().map(String::as_str).collect();
+        let tuned = fit(params.clone(), &points, &names, 10);
+        show(&tuned, "tuned");
+        let pairs = [
+            ("fan_efficiency", tuned.eta_c[0]),
+            ("lpc_efficiency", tuned.eta_c[1]),
+            ("ipc_efficiency", tuned.eta_c[2]),
+            ("hpc_efficiency", tuned.eta_c[3]),
+            ("hpt_efficiency", tuned.eta_t[0]),
+            ("ipt_efficiency", tuned.eta_t[1]),
+            ("lpt_efficiency", tuned.eta_t[2]),
+            ("burner_efficiency", tuned.eta_b),
+            ("cooling", tuned.cooling),
+        ];
+        for (k, v) in pairs.iter().filter(|(k, _)| names.contains(k)) {
+            println!("{k} = {v:.4}");
+        }
+        if names.contains(&"airflow") {
+            println!("airflow = \"{:.1} kg/s\"", tuned.airflow);
+        }
+    }
+    ExitCode::SUCCESS
 }

@@ -35,6 +35,7 @@ enum Tok {
     Unit(String),
     Ident(String),
     Op(&'static str),
+    Str(String),
     LParen,
     RParen,
     Comma,
@@ -57,6 +58,12 @@ fn lex(src: &str) -> Result<Vec<(Tok, Range<usize>)>, ExprError> {
             }
             let v: f64 = src[start..i].parse().map_err(|_| ExprError { span: start..i, message: "not a number".into(), help: None })?;
             out.push((Tok::Num(v), start..i));
+            continue;
+        }
+        if c == '\'' {
+            let end = src[i + 1..].find('\'').map(|e| i + 1 + e).ok_or_else(|| ExprError { span: i..src.len(), message: "text is missing its closing `'`".into(), help: None })?;
+            out.push((Tok::Str(src[i + 1..end].to_owned()), i..end + 1));
+            i = end + 1;
             continue;
         }
         if c == '[' {
@@ -115,12 +122,13 @@ pub enum Ast {
     Unary(&'static str, Box<Ast>, Range<usize>),
     Binary(&'static str, Box<Ast>, Box<Ast>, Range<usize>),
     Call(String, Vec<Ast>, Range<usize>),
+    Str(String, Range<usize>),
 }
 
 impl Ast {
     pub fn span(&self) -> Range<usize> {
         match self {
-            Ast::Num(_, _, s) | Ast::Bool(_, s) | Ast::Name(_, s) | Ast::Unary(_, _, s) | Ast::Binary(_, _, _, s) | Ast::Call(_, _, s) => s.clone(),
+            Ast::Num(_, _, s) | Ast::Bool(_, s) | Ast::Name(_, s) | Ast::Unary(_, _, s) | Ast::Binary(_, _, _, s) | Ast::Call(_, _, s) | Ast::Str(_, s) => s.clone(),
         }
     }
 }
@@ -236,6 +244,7 @@ impl Parser {
                 }
             }
             Tok::Unit(_) => err(span, "a unit needs a number in front of it"),
+            Tok::Str(t) => Ok(Ast::Str(t, span)),
             _ => err(span, "expected a value, a name or `(`"),
         }
     }
@@ -277,6 +286,7 @@ pub enum Op {
     OffDelay(usize),
     Latch(usize),
     Rising(usize),
+    Table(usize, u8),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -284,6 +294,73 @@ pub struct Program {
     pub ops: Vec<Op>,
     pub states: usize,
     pub ty: Type,
+    pub tables: Vec<Table>,
+}
+
+/// A 1-D (`x, y` rows) or 2-D (header row of column keys) lookup table, linear and clamped.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Table {
+    pub xs: Vec<f64>,
+    pub cols: Vec<f64>,
+    pub values: Vec<Vec<f64>>,
+}
+
+fn interp(xs: &[f64], ys: &[f64], x: f64) -> f64 {
+    if xs.is_empty() {
+        return 0.0;
+    }
+    if x <= xs[0] {
+        return ys[0];
+    }
+    for k in 1..xs.len() {
+        if x <= xs[k] {
+            let t = (x - xs[k - 1]) / (xs[k] - xs[k - 1]).max(1e-12);
+            return ys[k - 1] + t * (ys[k] - ys[k - 1]);
+        }
+    }
+    *ys.last().unwrap()
+}
+
+impl Table {
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let rows: Vec<Vec<&str>> = text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(|l| l.split(',').map(str::trim).collect()).collect();
+        let num = |s: &str, r: usize| s.parse::<f64>().map_err(|_| format!("row {}: `{s}` is not a number", r + 1));
+        let Some(first) = rows.first() else { return Err("the table is empty".into()) };
+        let two_d = first.len() > 2 || first[0].parse::<f64>().is_err();
+        let mut t = Table::default();
+        if two_d {
+            t.cols = first[1..].iter().map(|c| num(c, 0)).collect::<Result<_, _>>()?;
+            for (r, row) in rows.iter().enumerate().skip(1) {
+                t.xs.push(num(row[0], r)?);
+                let vals: Vec<f64> = row[1..].iter().map(|c| num(c, r)).collect::<Result<_, _>>()?;
+                if vals.len() != t.cols.len() {
+                    return Err(format!("row {} has {} values, the header has {}", r + 1, vals.len(), t.cols.len()));
+                }
+                t.values.push(vals);
+            }
+        } else {
+            for (r, row) in rows.iter().enumerate() {
+                if row.len() != 2 {
+                    return Err(format!("row {} needs two values", r + 1));
+                }
+                t.xs.push(num(row[0], r)?);
+                t.values.push(vec![num(row[1], r)?]);
+            }
+        }
+        if t.xs.windows(2).any(|w| w[1] <= w[0]) || t.cols.windows(2).any(|w| w[1] <= w[0]) {
+            return Err("keys must increase down the first column and along the header".into());
+        }
+        Ok(t)
+    }
+
+    pub fn lookup(&self, x: f64, y: f64) -> f64 {
+        if self.cols.is_empty() {
+            let ys: Vec<f64> = self.values.iter().map(|v| v[0]).collect();
+            return interp(&self.xs, &ys, x);
+        }
+        let at_cols: Vec<f64> = (0..self.cols.len()).map(|c| interp(&self.xs, &self.values.iter().map(|v| v[c]).collect::<Vec<_>>(), x)).collect();
+        interp(&self.cols, &at_cols, y)
+    }
 }
 
 /// Resolves expression names to value slots.
@@ -292,12 +369,17 @@ pub trait Names {
     fn suggest(&self, _name: &str) -> Option<String> {
         None
     }
+    /// Reads a table file named in an expression.
+    fn table(&self, path: &str) -> Result<Table, String> {
+        Err(format!("cannot read `{path}` here"))
+    }
 }
 
 struct Compiler<'a> {
     names: &'a dyn Names,
     ops: Vec<Op>,
     states: usize,
+    tables: Vec<Table>,
 }
 
 fn need(span: Range<usize>, got: Type, want: &str) -> ExprError {
@@ -322,6 +404,7 @@ impl Compiler<'_> {
                 self.ops.push(Op::Push(*b as u8 as f64));
                 Type::Bool
             }
+            Ast::Str(_, s) => return err(s.clone(), "text only goes in `table('file.csv', ...)`"),
             Ast::Name(n, s) => match self.names.lookup(n) {
                 Some((slot, t)) => {
                     self.ops.push(Op::Load(slot));
@@ -437,6 +520,31 @@ impl Compiler<'_> {
                         self.ops.push(if f == "min" { Op::Min } else { Op::Max });
                         a
                     }
+                    "table" => {
+                        if !(2..=3).contains(&args.len()) {
+                            return err(s.clone(), "`table` takes a file and one or two keys: table('n1.csv', air.altitude, air.temperature)");
+                        }
+                        let Ast::Str(path, ps) = &args[0] else { return err(args[0].span(), "the first value is the table file, in single quotes") };
+                        let t = self.names.table(path).map_err(|m| ExprError { span: ps.clone(), message: m, help: None })?;
+                        let two = args.len() == 3;
+                        if two && t.cols.is_empty() {
+                            return err(s.clone(), format!("`{path}` has one key column but two keys were given"));
+                        }
+                        if !two && !t.cols.is_empty() {
+                            return err(s.clone(), format!("`{path}` needs two keys"));
+                        }
+                        for a in &args[1..] {
+                            if self.node(a)? == Type::Bool {
+                                return Err(need(a.span(), Type::Bool, "a number"));
+                            }
+                        }
+                        if !two {
+                            self.ops.push(Op::Push(0.0));
+                        }
+                        self.ops.push(Op::Table(self.tables.len(), 0));
+                        self.tables.push(t);
+                        Type::Num(Dim::NONE)
+                    }
                     "abs" => {
                         want(1)?;
                         let t = self.node(&args[0])?;
@@ -460,7 +568,7 @@ impl Compiler<'_> {
                         return Err(ExprError {
                             span: s.start..s.start + f.len(),
                             message: format!("unknown function `{f}`"),
-                            help: Some("available: delay, off_delay, latch, rising, min, max, abs, if".into()),
+                            help: Some("available: delay, off_delay, latch, rising, min, max, abs, if, table".into()),
                         })
                     }
                 }
@@ -471,9 +579,9 @@ impl Compiler<'_> {
 
 pub fn compile(src: &str, names: &dyn Names) -> Result<Program, ExprError> {
     let ast = parse(src)?;
-    let mut c = Compiler { names, ops: Vec::new(), states: 0 };
+    let mut c = Compiler { names, ops: Vec::new(), states: 0, tables: Vec::new() };
     let ty = c.node(&ast)?;
-    Ok(Program { ops: c.ops, states: c.states, ty })
+    Ok(Program { ops: c.ops, states: c.states, ty, tables: c.tables })
 }
 
 impl Program {
@@ -522,6 +630,11 @@ impl Program {
                     let out = c && !b(state[k]);
                     state[k] = c as u8 as f64;
                     st.push(out as u8 as f64)
+                }
+                Op::Table(t, _) => {
+                    let y = st.pop().unwrap_or(0.0);
+                    let x = st.pop().unwrap_or(0.0);
+                    st.push(self.tables.get(t).map_or(0.0, |tb| tb.lookup(x, y)))
                 }
                 Op::If => {
                     let e = st.pop().unwrap_or(0.0);
@@ -589,6 +702,28 @@ mod tests {
         assert_eq!(compile("dc1.current / dc1.voltage", &names()).unwrap().ty, Type::Num(Dim::RESISTANCE.pow(-1)));
         assert_eq!(compile("0.8 kg/s", &names()).unwrap().ty, Type::Num(Dim::MASS_FLOW));
         assert_eq!(compile("2 m/s2 * 1 s", &names()).unwrap().ty, Type::Num(Dim::SPEED));
+    }
+
+    #[test]
+    fn tables_interpolate_in_one_and_two_keys() {
+        let t1 = Table::parse("# n1 by altitude\n0, 80\n1000, 90\n").unwrap();
+        assert_eq!(t1.lookup(500.0, 0.0), 85.0);
+        assert_eq!(t1.lookup(5000.0, 0.0), 90.0);
+        let t2 = Table::parse("alt\\temp, 0, 30\n0, 80, 84\n1000, 90, 94\n").unwrap();
+        assert_eq!(t2.lookup(500.0, 15.0), 87.0);
+        assert!(Table::parse("0, 1\n0, 2\n").is_err());
+        struct T;
+        impl Names for T {
+            fn lookup(&self, _: &str) -> Option<(usize, Type)> {
+                Some((0, Type::Num(Dim::LENGTH)))
+            }
+            fn table(&self, p: &str) -> Result<Table, String> {
+                if p == "n1.csv" { Table::parse("0, 80\n1000, 90") } else { Err(format!("no `{p}`")) }
+            }
+        }
+        let p = compile("table('n1.csv', x) + 1", &T).unwrap();
+        assert_eq!(p.eval(&[500.0], &mut [], 0.1), 86.0);
+        assert!(compile("table('nope.csv', x)", &T).unwrap_err().message.contains("no `nope.csv`"));
     }
 
     #[test]
