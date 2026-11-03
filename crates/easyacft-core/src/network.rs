@@ -81,6 +81,14 @@ impl Network {
         }
     }
 
+    pub fn set_resistance(&mut self, link: LinkId, resistance: f64) {
+        let r = resistance.max(0.0);
+        if self.links[link].resistance != r {
+            self.links[link].resistance = r;
+            self.last.iter_mut().for_each(|v| *v = None);
+        }
+    }
+
     pub fn potential(&self, node: NodeId) -> f64 {
         self.potential[node]
     }

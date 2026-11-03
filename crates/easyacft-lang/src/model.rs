@@ -250,7 +250,9 @@ pub fn load(path: &Path) -> (Model, Vec<Diagnostic>) {
 
 /// Loads from text, for tests and editors.
 pub fn load_str(name: &str, text: &str) -> (Model, Vec<Diagnostic>) {
-    let dir = std::env::temp_dir().join(format!("easyacft-{}-{}", std::process::id(), name.replace(['/', '\\'], "_")));
+    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let k = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("easyacft-{}-{k}-{}", std::process::id(), name.replace(['/', '\\'], "_")));
     let _ = std::fs::create_dir_all(&dir);
     let p = dir.join("aircraft.toml");
     let _ = std::fs::write(&p, text);

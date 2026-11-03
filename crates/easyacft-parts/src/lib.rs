@@ -2,7 +2,12 @@
 
 pub mod catalog;
 pub mod electrical;
+pub mod fuel;
+pub mod hydraulic;
 pub mod logic;
+pub mod pneumatic;
+pub mod systems;
+pub mod util;
 
 use easyacft_core::{Rate, Snapshot};
 use easyacft_lang::{check, load, Checked, CheckedPart, Diagnostic, Model, Program, Severity, Sources};
@@ -86,10 +91,24 @@ impl Aircraft {
         }
         let mut slots = vec![0.0; checked.slots.names.len()];
         logic::init(&checked, &mut slots);
+        fuel::init(&checked, &mut slots);
+        systems::init(&checked, &mut slots);
         let mut domains: Vec<(Rate, Box<dyn Domain>)> = Vec::new();
         domains.push((rate_for(&model, "logic", 0.01), Box::new(logic::Logic::new(&checked))));
         if let Some(e) = electrical::Electrical::new(&checked) {
             domains.push((rate_for(&model, "electrical", 0.01), Box::new(e)));
+        }
+        if let Some(d) = hydraulic::Hydraulic::new(&checked) {
+            domains.push((rate_for(&model, "hydraulic", 0.005), Box::new(d)));
+        }
+        if let Some(d) = pneumatic::Pneumatic::new(&checked) {
+            domains.push((rate_for(&model, "pneumatic", 0.02), Box::new(d)));
+        }
+        if let Some(d) = fuel::Fuel::new(&checked) {
+            domains.push((rate_for(&model, "fuel", 0.05), Box::new(d)));
+        }
+        if let Some(d) = systems::Systems::new(&checked) {
+            domains.push((rate_for(&model, "systems", 0.02), Box::new(d)));
         }
         let files = model.sources.files.iter().map(|(n, _)| n.clone()).collect();
         Ok((Self { name: model.name.clone(), files, bindings: model.bindings.clone(), checked, slots, domains, time: 0.0 }, report))

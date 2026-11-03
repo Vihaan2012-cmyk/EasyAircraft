@@ -1,6 +1,6 @@
 //! Electrical domain: buses, sources, switching, protection, loads and shedding.
 
-use crate::catalog::out;
+use crate::util::Slots;
 use crate::{expr_of, Domain, Expr};
 use easyacft_core::Network;
 use easyacft_lang::{Checked, CheckedPart};
@@ -10,28 +10,6 @@ const SWITCH_OHM: f64 = 1e-4;
 const REGULATION: f64 = 0.02;
 const TRIP_HEAT: f64 = 10.0;
 const UNSHED_MARGIN: f64 = 0.9;
-
-struct Slots {
-    base: HashMap<&'static str, usize>,
-}
-
-impl Slots {
-    fn of(p: &CheckedPart, names: &[&'static str]) -> Self {
-        Self { base: names.iter().map(|n| (*n, out(p, n))).collect() }
-    }
-    fn get(&self, s: &[f64], n: &str) -> f64 {
-        s[self.base[n]]
-    }
-    fn on(&self, s: &[f64], n: &str) -> bool {
-        self.get(s, n) != 0.0
-    }
-    fn put(&self, s: &mut [f64], n: &str, v: f64) {
-        s[self.base[n]] = v;
-    }
-    fn flag(&self, s: &mut [f64], n: &str, v: bool) {
-        s[self.base[n]] = v as u8 as f64;
-    }
-}
 
 struct Bus {
     node: usize,

@@ -189,8 +189,17 @@ impl Parser {
                     _ => None,
                 };
                 match unit {
-                    Some((u, us)) => {
+                    Some((mut u, mut us)) => {
                         self.next();
+                        while let (Some((Tok::Op(op @ ("/" | "*")), _)), Some((Tok::Ident(more), ms))) = (self.toks.get(self.at).cloned(), self.toks.get(self.at + 1).cloned()) {
+                            let joined = format!("{u}{op}{more}");
+                            if parse_unit(&more).is_err() || parse_unit(&joined).is_err() {
+                                break;
+                            }
+                            u = joined;
+                            us = us.start..ms.end;
+                            self.at += 2;
+                        }
                         let (f, off, d) = parse_unit(&u).map_err(|e| ExprError { span: us.clone(), message: e.to_string(), help: None })?;
                         Ok(Ast::Num(v * f + off, d, span.start..us.end))
                     }
@@ -578,6 +587,8 @@ mod tests {
         assert_eq!(run("if(gen1.ready, 115 V, 0 V)", &[1.0, 0.0, 0.0, 0.0]), 115.0);
         assert_eq!(run("min(dc1.voltage, 28 V) + 1 V", &[0.0, 0.0, 30.0, 0.0]), 29.0);
         assert_eq!(compile("dc1.current / dc1.voltage", &names()).unwrap().ty, Type::Num(Dim::RESISTANCE.pow(-1)));
+        assert_eq!(compile("0.8 kg/s", &names()).unwrap().ty, Type::Num(Dim::MASS_FLOW));
+        assert_eq!(compile("2 m/s2 * 1 s", &names()).unwrap().ty, Type::Num(Dim::SPEED));
     }
 
     #[test]
