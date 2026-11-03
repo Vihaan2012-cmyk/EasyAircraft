@@ -206,6 +206,9 @@ pub fn check(model: &Model, catalog: &dyn Catalog) -> (Checked, Vec<Diagnostic>)
         let mut values = Vec::new();
         for spec in s.fields {
             let decl = p.get(spec.key);
+            if decl.is_none() && spec.default == Some("") && matches!(spec.kind, Kind::Ref(_)) {
+                continue;
+            }
             let raw = match (decl, spec.default) {
                 (Some(d), _) => d.value.clone(),
                 (None, Some(def)) => match spec.kind {

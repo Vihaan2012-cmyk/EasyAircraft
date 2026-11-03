@@ -57,6 +57,8 @@ impl Report {
 
 pub struct Aircraft {
     pub name: String,
+    pub files: Vec<String>,
+    pub bindings: Vec<easyacft_lang::model::Binding>,
     pub checked: Checked,
     pub slots: Vec<f64>,
     domains: Vec<(Rate, Box<dyn Domain>)>,
@@ -89,7 +91,8 @@ impl Aircraft {
         if let Some(e) = electrical::Electrical::new(&checked) {
             domains.push((rate_for(&model, "electrical", 0.01), Box::new(e)));
         }
-        Ok((Self { name: model.name.clone(), checked, slots, domains, time: 0.0 }, report))
+        let files = model.sources.files.iter().map(|(n, _)| n.clone()).collect();
+        Ok((Self { name: model.name.clone(), files, bindings: model.bindings.clone(), checked, slots, domains, time: 0.0 }, report))
     }
 
     pub fn step(&mut self, dt: f64) {

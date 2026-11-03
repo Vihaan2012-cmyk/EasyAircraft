@@ -1,0 +1,14 @@
+[package]
+name = "easyacft-plugin"
+description = "Drop-in X-Plane plugin that runs an aircraft's easyacft folder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "easyacft_plugin"
+crate-type = ["cdylib"]
+
+[dependencies]
+easyacft-xp = { path = "../easyacft-xp" }

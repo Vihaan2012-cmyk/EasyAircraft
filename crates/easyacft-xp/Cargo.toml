@@ -1,0 +1,11 @@
+[package]
+name = "easyacft-xp"
+description = "EasyAcft X-Plane binding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+easyacft-core = { path = "../easyacft-core" }
+easyacft-parts = { path = "../easyacft-parts" }

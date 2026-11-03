@@ -1,0 +1,15 @@
+[package]
+name = "easyacft-ffi"
+description = "EasyAcft C API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "easyacft"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+easyacft-core = { path = "../easyacft-core" }
+easyacft-parts = { path = "../easyacft-parts" }

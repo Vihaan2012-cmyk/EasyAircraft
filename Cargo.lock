@@ -16,6 +16,14 @@ name = "easyacft-core"
 version = "0.1.0"
 
 [[package]]
+name = "easyacft-ffi"
+version = "0.1.0"
+dependencies = [
+ "easyacft-core",
+ "easyacft-parts",
+]
+
+[[package]]
 name = "easyacft-lang"
 version = "0.1.0"
 dependencies = [
@@ -29,6 +37,21 @@ version = "0.1.0"
 dependencies = [
  "easyacft-core",
  "easyacft-lang",
+]
+
+[[package]]
+name = "easyacft-plugin"
+version = "0.1.0"
+dependencies = [
+ "easyacft-xp",
+]
+
+[[package]]
+name = "easyacft-xp"
+version = "0.1.0"
+dependencies = [
+ "easyacft-core",
+ "easyacft-parts",
 ]
 
 [[package]]
