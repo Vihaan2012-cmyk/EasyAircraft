@@ -43,7 +43,7 @@ pub fn draw(painter: &Painter, rect: Rect, p: &Params, get: &dyn Fn(&str) -> Opt
     let thin = Stroke::new(1.0f32, faint);
     let font = FontId::proportional(12.0);
     let small = FontId::proportional(10.5);
-    let axis = rect.top() + rect.height() * 0.58;
+    let axis = rect.top() + 150.0;
     let left = rect.left() + 40.0;
     let width = rect.width() - 80.0;
     let unit = width / (st.len() as f32 + 2.0);
@@ -93,8 +93,8 @@ pub fn draw(painter: &Painter, rect: Rect, p: &Params, get: &dyn Fn(&str) -> Opt
         let end = centres.last().map_or(fx1, |c| c.1);
         let top = axis - 120.0;
         painter.line_segment([Pos2::new(fx0, top), Pos2::new(end - unit * 0.5, top)], line);
-        painter.line_segment([Pos2::new(fx1, axis - 76.0), Pos2::new(end - unit * 1.2, axis - 76.0)], thin);
-        painter.text(Pos2::new((fx1 + end) / 2.0, axis - 98.0), Align2::CENTER_CENTER, format!("bypass {:.1}:1", p.bpr), small.clone(), faint);
+        painter.line_segment([Pos2::new(fx1, axis - 96.0), Pos2::new(end - unit * 1.2, axis - 96.0)], thin);
+        painter.text(Pos2::new((fx1 + end) / 2.0, axis - 108.0), Align2::CENTER_CENTER, format!("bypass {:.1}:1", p.bpr), small.clone(), faint);
     }
     let names = ["LP", "IP", "HP"];
     let outs = ["n1", "n2", "n3"];
@@ -116,23 +116,19 @@ pub fn draw(painter: &Painter, rect: Rect, p: &Params, get: &dyn Fn(&str) -> Opt
         painter.text(Pos2::new(b - 10.0, y + 3.0), Align2::RIGHT_TOP, format!("{} spool {:.0} rpm  {pct}", names[spool], p.rpm[spool]), small.clone(), faint);
         depth += 26.0;
     }
-    let stat = |label: &str, text: String, x: f32| {
-        painter.text(Pos2::new(x, axis + 100.0), Align2::CENTER_TOP, label, small.clone(), faint);
-        painter.text(Pos2::new(x, axis + 114.0), Align2::CENTER_TOP, text, font.clone(), ink);
-    };
     let c = |n: &str| get(n).unwrap_or(0.0);
-    let find = |n: &str| centres.iter().find(|x| x.2.name == n).map(|x| (x.0 + x.1) / 2.0);
-    if let Some(x) = find("HPC").or_else(|| find("IPC")) {
-        stat("P3 / T3", format!("{:.0} psi  {:.0} °C", c("p3") / 6894.757, c("t3") - 273.15), x);
-    }
-    if let Some(x) = find("Burner") {
-        stat("TET / fuel", format!("{:.0} °C  {:.3} kg/s", c("tet") - 273.15, c("fuel_flow")), x);
-    }
-    if let Some(x) = centres.last().map(|x| x.1 + unit * 0.6) {
-        stat("EGT / thrust", format!("{:.0} °C  {:.1} kN", c("egt") - 273.15, c("thrust") / 1e3), x);
-    }
-    if let Some((x, _, _)) = centres.first() {
-        stat("airflow", format!("{:.1} kg/s", c("airflow")), *x);
+    let stats = [
+        ("airflow", format!("{:.1} kg/s", c("airflow"))),
+        ("P3 / T3", format!("{:.0} psi  {:.0} °C", c("p3") / 6894.757, c("t3") - 273.15)),
+        ("TET / fuel", format!("{:.0} °C  {:.3} kg/s", c("tet") - 273.15, c("fuel_flow"))),
+        ("EGT", format!("{:.0} °C", c("egt") - 273.15)),
+        ("thrust", format!("{:.1} kN", c("thrust") / 1e3)),
+    ];
+    let w = width / stats.len() as f32;
+    for (k, (label, text)) in stats.iter().enumerate() {
+        let x = left + w * (k as f32 + 0.5);
+        painter.text(Pos2::new(x, axis + 100.0), Align2::CENTER_TOP, *label, small.clone(), faint);
+        painter.text(Pos2::new(x, axis + 114.0), Align2::CENTER_TOP, text, font.clone(), ink);
     }
 }
 

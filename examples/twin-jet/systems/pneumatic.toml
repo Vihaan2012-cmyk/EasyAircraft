@@ -1,0 +1,61 @@
+[[pneumatic.duct]]
+id = "bleed{n}"
+count = 2
+
+[[pneumatic.duct]]
+id = "manifold"
+volume = "0.2 m3"
+
+[[pneumatic.duct]]
+id = "apu_duct"
+
+[[pneumatic.source]]
+id = "bleed{n}_port"
+count = 2
+duct = "bleed{n}"
+pressure = "90 psi"
+temperature = "450 degC"
+flow = "3 kg/s"
+available_when = "eng{n}.n2 > 30"
+
+[[pneumatic.source]]
+id = "apu_load_compressor"
+duct = "apu_duct"
+pressure = "50 psi"
+temperature = "200 degC"
+flow = "1.2 kg/s"
+available_when = "apu.available"
+
+[[pneumatic.valve]]
+id = "prv{n}"
+count = 2
+between = ["bleed{n}", "manifold"]
+open_when = "bleed{n}_sw.on && !fire{n}_handle.on"
+regulate = "44 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "apu_bleed"
+between = ["apu_duct", "manifold"]
+open_when = "apu_bleed_sw.on && apu.available"
+
+[[pneumatic.consumer]]
+id = "pack{n}"
+count = 2
+duct = "manifold"
+flow = "0.6 kg/s"
+on_when = "pack{n}_sw.on && !(fadec1.starter || fadec2.starter)"
+
+[[pneumatic.consumer]]
+id = "start_valve{n}"
+count = 2
+duct = "manifold"
+flow = "1 kg/s"
+minimum = "20 psi"
+on_when = "fadec{n}.starter"
+
+[[pneumatic.consumer]]
+id = "wing_ai"
+duct = "manifold"
+flow = "0.4 kg/s"
+on_when = "wing_ai_sw.on"

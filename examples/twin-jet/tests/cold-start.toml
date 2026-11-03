@@ -1,0 +1,44 @@
+# Battery, APU, both engines, generators: a normal start from cold and dark.
+[[step]]
+at = "0 s"
+set = { "bat_sw.on" = 1, "fuel_pump1_sw.on" = 1, "fuel_pump2_sw.on" = 1 }
+
+[[expect]]
+at = "2 s"
+that = "dc_ess.powered && dc1.voltage > 22 V && !ac1.powered"
+
+[[step]]
+at = "5 s"
+set = { "apu_master.on" = 1 }
+
+[[step]]
+at = "6 s"
+set = { "apu_start.on" = 1 }
+
+[[expect]]
+at = "80 s"
+that = "apu.available && ac1.powered && ac2.powered && manifold.pressure > 20 psi"
+
+[[step]]
+at = "85 s"
+set = { "eng_mode.position" = 2, "eng2_master.on" = 1 }
+
+[[expect]]
+at = "200 s"
+that = "eng2.running && eng2.n1 > 20 && gen2.ready && glc2.closed"
+
+[[step]]
+at = "205 s"
+set = { "eng1_master.on" = 1 }
+
+[[expect]]
+at = "330 s"
+that = "eng1.running && glc1.closed && !agc.closed && green.available && yellow.available"
+
+[[step]]
+at = "335 s"
+set = { "eng_mode.position" = 1, "apu_master.on" = 0, "tla1.value" = 0.8, "tla2.value" = 0.8 }
+
+[[expect]]
+at = "400 s"
+that = "eng1.n1 > 75 && eng2.n1 > 75 && eng1.thrust > 80 kN && !master_caution.lit && !master_warning.lit"

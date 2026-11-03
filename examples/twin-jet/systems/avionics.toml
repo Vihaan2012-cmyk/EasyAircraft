@@ -1,0 +1,46 @@
+[[computer.unit]]
+id = "adiru{n}"
+count = 2
+power = ["dc_ess", "hot_bat{n}"]
+powered_when = "adirs{n}_mode.position > 0"
+boot_time = "3 s"
+
+[[computer.unit]]
+id = "fmc"
+power = ["dc1", "dc2"]
+boot_time = "20 s"
+channels = 2
+
+[[sensor.pitot]]
+id = "pitot{n}"
+count = 2
+air = "air"
+heat_when = "probe_heaters.powered"
+
+[[sensor.static_port]]
+id = "static{n}"
+count = 2
+air = "air"
+
+[[computer.air_data]]
+id = "adc{n}"
+count = 2
+pitot = "pitot{n}"
+static = "static{n}"
+air = "air"
+computer = "adiru{n}"
+
+[[computer.inertial]]
+id = "ir{n}"
+count = 2
+air = "air"
+computer = "adiru{n}"
+mode = "adirs{n}_mode.position"
+align_time = "420 s"
+
+[[data.link]]
+id = "ias{n}_bus"
+count = 2
+from = "adiru{n}"
+value = "adc{n}.ias / 1 m/s"
+rate = "16 Hz"

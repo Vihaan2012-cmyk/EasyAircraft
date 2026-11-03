@@ -1,0 +1,36 @@
+# Both engines running, APU off: losing a generator puts both AC buses on the other one.
+[[step]]
+at = "0 s"
+set = { "bat_sw.on" = 1, "apu_master.on" = 1 }
+
+[[step]]
+at = "1 s"
+set = { "apu_start.on" = 1 }
+
+[[step]]
+at = "70 s"
+set = { "eng_mode.position" = 2, "eng1_master.on" = 1, "eng2_master.on" = 1 }
+
+[[step]]
+at = "200 s"
+set = { "eng_mode.position" = 1, "apu_master.on" = 0 }
+
+[[expect]]
+at = "300 s"
+that = "glc1.closed && glc2.closed && !btc1.closed && !btc2.closed && !apu.running"
+
+[[step]]
+at = "301 s"
+set = { "gen1.failed" = 1 }
+
+[[expect]]
+at = "305 s"
+that = "btc1.closed && btc2.closed && ac1.powered && ac2.powered && master_caution.lit"
+
+[[step]]
+at = "306 s"
+set = { "galley_sw.on" = 1 }
+
+[[expect]]
+at = "310 s"
+that = "galley_load.shed || gen2.load < 90 kW"

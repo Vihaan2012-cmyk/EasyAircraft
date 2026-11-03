@@ -1,0 +1,71 @@
+[[fire.zone]]
+id = "eng{n}_fire"
+count = 2
+fire_when = "eng{n}_overheat.active"
+
+[[fire.zone]]
+id = "apu_fire"
+fire_when = "false"
+
+[[fire.bottle]]
+id = "eng{n}_bottle"
+count = 2
+zones = ["eng{n}_fire"]
+discharge_when = "fire{n}_handle.on && agent{n}_pb.pressed"
+
+[[fire.bottle]]
+id = "apu_bottle"
+zones = ["apu_fire"]
+discharge_when = "apu_fire_handle.on && apu_agent_pb.pressed"
+
+# A long EGT exceedance starts a fire and fails the engine
+[[failure.trigger]]
+id = "eng{n}_overheat"
+count = 2
+part = "eng{n}"
+when = "delay(eng{n}.egt > 1300 K, 20 s)"
+
+[[failure.trigger]]
+id = "brake_fade"
+part = "brakes_l"
+when = "delay(brakes_l.temperature > 900 K, 30 s)"
+
+[[light.unit]]
+id = "beacon"
+bus = "dc2"
+on_when = "beacon_sw.on"
+pattern = "beacon"
+
+[[light.unit]]
+id = "strobes"
+bus = "dc2"
+on_when = "strobe_sw.on"
+pattern = "double"
+
+[[light.unit]]
+id = "landing_lights"
+bus = "ac1"
+on_when = "landing_sw.on"
+
+[[cockpit.annunciator]]
+id = "master_caution"
+when = "!ac1.powered || !ac2.powered || green.low || yellow.low || left.low || right.low || bleed_fault.on || (eng1.running && !glc1.closed && gen1_sw.on) || (eng2.running && !glc2.closed && gen2_sw.on)"
+test = "ann_test"
+
+[[cockpit.annunciator]]
+id = "master_warning"
+when = "eng1_fire.detected || eng2_fire.detected || apu_fire.detected || cabin.excess_altitude"
+test = "ann_test"
+
+[[logic.flag]]
+id = "bleed_fault"
+when = "delay(eng1.running && bleed1_sw.on && manifold.pressure < 20 psi, 10 s)"
+
+[[sound.event]]
+id = "apu_start_sound"
+trigger = "apu.starting"
+value = "apu.n / 100"
+
+[[sound.event]]
+id = "fire_bell"
+trigger = "master_warning.lit"

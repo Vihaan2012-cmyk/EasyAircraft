@@ -1,0 +1,54 @@
+# A generic 120 kN two-spool turbofan
+[[engine.gas_turbine]]
+id = "eng{n}"
+count = 2
+air = "air"
+fuel_flow = "eng{n}_feed.flow"
+design_thrust = "120 kN"
+airflow = "400 kg/s"
+bypass_ratio = 5.5
+fan_pr = 1.6
+lpc_pr = 1.4
+hpc_pr = 14
+lp_rpm = "5000 rpm"
+hp_rpm = "14000 rpm"
+lp_inertia = 60
+hp_inertia = 8
+starter_torque = "if(fadec{n}.starter && start_valve{n}.supplied, 1200 N*m, 0 N*m)"
+offtake = "gen{n}.load / 0.9"
+bleed = "bleed{n}_port.flow"
+reverser = "fadec{n}.reverser"
+
+[[fadec.controller]]
+id = "fadec{n}"
+count = 2
+engine = "eng{n}"
+lever = "tla{n}.value"
+master = "eng{n}_master.on && dc_ess.powered && !fire{n}_handle.on"
+start = "eng_mode.position == 2"
+idle = "25"
+max = "100"
+fuel_on_at = 12
+starter_cutout = 45
+
+[[apu.unit]]
+id = "apu"
+master = "apu_master.on && dc_ess.powered && !apu_fire_handle.on"
+start = "apu_start.on"
+bleed_load = "apu_bleed.flow"
+generator_load = "apu_gen.load"
+generator_rating = "90 kW"
+
+[[output.force]]
+id = "eng1_force"
+force = "eng1.thrust"
+x = "-5.7 m"
+y = "-1.8 m"
+z = "-2 m"
+
+[[output.force]]
+id = "eng2_force"
+force = "eng2.thrust"
+x = "5.7 m"
+y = "-1.8 m"
+z = "-2 m"

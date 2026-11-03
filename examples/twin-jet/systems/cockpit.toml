@@ -1,3 +1,4 @@
+# Overhead
 [[cockpit.switch]]
 id = "bat_sw"
 
@@ -18,11 +19,112 @@ id = "galley_sw"
 initial = true
 
 [[cockpit.switch]]
-id = "eng{n}_running"
-count = 2
+id = "apu_master"
 
 [[cockpit.switch]]
-id = "apu_running"
+id = "apu_start"
 
+[[cockpit.switch]]
+id = "apu_bleed_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "bleed{n}_sw"
+count = 2
+initial = true
+
+[[cockpit.switch]]
+id = "xbleed_sw"
+
+[[cockpit.switch]]
+id = "pack{n}_sw"
+count = 2
+initial = true
+
+[[cockpit.switch]]
+id = "wing_ai_sw"
+
+[[cockpit.switch]]
+id = "probe_heat_sw"
+initial = true
+
+[[cockpit.switch]]
+id = "fuel_pump{n}_sw"
+count = 2
+initial = true
+
+[[cockpit.switch]]
+id = "xfeed_sw"
+
+[[cockpit.switch]]
+id = "edp{n}_sw"
+count = 2
+initial = true
+
+[[cockpit.switch]]
+id = "elec_pump_sw"
+
+[[cockpit.switch]]
+id = "ptu_sw"
+initial = true
+
+[[cockpit.selector]]
+id = "adirs{n}_mode"
+count = 2
+positions = 3
+
+[[cockpit.switch]]
+id = "beacon_sw"
+
+[[cockpit.switch]]
+id = "strobe_sw"
+
+[[cockpit.switch]]
+id = "landing_sw"
+
+[[cockpit.switch]]
+id = "ann_test"
+
+# Pedestal
+[[cockpit.switch]]
+id = "eng{n}_master"
+count = 2
+
+# 0 crank, 1 normal, 2 ignition and start
+[[cockpit.selector]]
+id = "eng_mode"
+positions = 3
+initial = 1
+
+# Thrust levers, 0 idle to 1 full
+[[input.number]]
+id = "tla{n}"
+count = 2
+
+[[cockpit.guarded_switch]]
+id = "fire{n}_handle"
+count = 2
+
+[[cockpit.guarded_switch]]
+id = "apu_fire_handle"
+
+[[cockpit.pushbutton]]
+id = "agent{n}_pb"
+count = 2
+
+[[cockpit.pushbutton]]
+id = "apu_agent_pb"
+
+[[cockpit.switch]]
+id = "gear_lever"
+initial = true
+
+[[input.number]]
+id = "brake_l"
+
+[[input.number]]
+id = "brake_r"
+
+# Ground crew
 [[cockpit.switch]]
 id = "gpu_connected"

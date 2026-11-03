@@ -397,6 +397,7 @@ impl App {
             line(&[at(l[0]), at(l[1])], stroke(live, failed), failed);
         }
         let mut hit = None;
+        let mut edge_labels = Vec::new();
         for e in &d.edges {
             let (live, failed, text) = self.part_state(&a.checked.parts[e.part]);
             let pts: Vec<Pos2> = e.path.iter().map(|&p| at(p)).collect();
@@ -411,11 +412,17 @@ impl App {
             }
             let (tp, al) = if e.vertical { (c + Vec2::new(11.0 * z, 0.0), Align2::LEFT_CENTER) } else { (c - Vec2::new(0.0, 9.0 * z), Align2::CENTER_BOTTOM) };
             if labels {
-                painter.text(tp, al, format!("{} {text}", a.checked.parts[e.part].id), small.clone(), faint);
+                edge_labels.push((tp, al, format!("{} {text}", a.checked.parts[e.part].id)));
             }
             if resp.hover_pos().is_some_and(|h| r.expand(5.0).contains(h)) {
                 hit = Some(e.part);
             }
+        }
+        for (tp, al, t) in edge_labels {
+            let g = painter.layout_no_wrap(t, small.clone(), faint);
+            let r = al.anchor_size(tp, g.size()).expand(1.5);
+            painter.rect_filled(r, 2.0, self.theme.paper);
+            painter.galley(r.min + Vec2::splat(1.5), g, faint);
         }
         for it in &d.items {
             let p = at(it.pos);
@@ -660,7 +667,7 @@ impl App {
             ui.label(format!("{}.{}", p.domain, p.kind));
             if p.kind == "gas_turbine" {
                 let params = easyacft_parts::engine::Params::from_part(&p, &base);
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().min(1100.0), 330.0), Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().min(1100.0), 290.0), Sense::hover());
                 let painter = ui.painter_at(rect);
                 painter.rect_filled(rect, 0.0, th.paper);
                 let id = p.id.clone();
@@ -1170,6 +1177,7 @@ fn main() -> eframe::Result<()> {
     let tab = flag("--tab");
     let domain = flag("--domain");
     let select = flag("--select");
+    let scenario = flag("--scenario");
     let run: f64 = flag("--run").and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let sets: Vec<(String, f64)> = args.windows(2).filter(|w| w[0] == "--set").filter_map(|w| w[1].split_once('=').map(|(n, v)| (n.to_owned(), v.parse().unwrap_or(0.0)))).collect();
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([1400.0, 860.0]).with_title("EasyAcft Studio");
@@ -1186,6 +1194,11 @@ fn main() -> eframe::Result<()> {
             let mut app = App::new(dir);
             for (n, v) in &sets {
                 app.set(n, *v);
+            }
+            if let (Some(a), Some(f)) = (&mut app.aircraft, &scenario) {
+                if let Err(e) = std::fs::read_to_string(f).map_err(|e| e.to_string()).and_then(|t| easyacft_parts::scenario::run(a, &t, 0.05)) {
+                    app.status = e;
+                }
             }
             if let Some(a) = &mut app.aircraft {
                 let mut t = 0.0;

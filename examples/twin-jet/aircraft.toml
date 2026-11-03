@@ -1,7 +1,46 @@
 [aircraft]
 name = "Example Twin"
 easyacft = "1.0"
-include = ["systems/cockpit.toml", "systems/electrical.toml"]
+include = [
+    "systems/environment.toml",
+    "systems/cockpit.toml",
+    "systems/electrical.toml",
+    "systems/fuel.toml",
+    "systems/engines.toml",
+    "systems/pneumatic.toml",
+    "systems/hydraulic.toml",
+    "systems/airframe.toml",
+    "systems/protection.toml",
+    "systems/avionics.toml",
+]
 
 [rates]
 electrical = "10 ms"
+hydraulic = "20 ms"
+fuel = "50 ms"
+pneumatic = "20 ms"
+
+[bindings]
+"sim/cockpit2/electrical/battery_on[0]" = { to = "bat_sw.on" }
+"sim/cockpit2/electrical/generator_on[0]" = { to = "gen1_sw.on" }
+"sim/cockpit2/electrical/generator_on[1]" = { to = "gen2_sw.on" }
+"sim/cockpit2/electrical/APU_generator_on" = { to = "apu_gen_sw.on" }
+"sim/cockpit/electrical/gpu_on" = { to = "ext_pwr_sw.on" }
+"sim/cockpit2/engine/actuators/throttle_ratio[0]" = { to = "tla1.value" }
+"sim/cockpit2/engine/actuators/throttle_ratio[1]" = { to = "tla2.value" }
+"sim/cockpit2/engine/actuators/mixture_ratio[0]" = { to = "eng1_master.on" }
+"sim/cockpit2/engine/actuators/mixture_ratio[1]" = { to = "eng2_master.on" }
+"sim/cockpit2/controls/gear_handle_down" = { to = "gear_lever.on" }
+"sim/cockpit2/controls/left_brake_ratio" = { to = "brake_l.value" }
+"sim/cockpit2/controls/right_brake_ratio" = { to = "brake_r.value" }
+"sim/cockpit2/switches/beacon_on" = { to = "beacon_sw.on" }
+"sim/cockpit2/switches/strobe_lights_on" = { to = "strobe_sw.on" }
+"sim/cockpit2/switches/landing_lights_on" = { to = "landing_sw.on" }
+"sim/cockpit2/engine/indicators/N1_percent[0]" = "eng1.n1"
+"sim/cockpit2/engine/indicators/N1_percent[1]" = "eng2.n1"
+"sim/cockpit2/engine/indicators/N2_percent[0]" = "eng1.n2"
+"sim/cockpit2/engine/indicators/N2_percent[1]" = "eng2.n2"
+"sim/cockpit2/engine/indicators/EGT_deg_C[0]" = { from = "eng1.egt", unit = "degC" }
+"sim/cockpit2/engine/indicators/EGT_deg_C[1]" = { from = "eng2.egt", unit = "degC" }
+"sim/cockpit2/engine/indicators/fuel_flow_kg_sec[0]" = "eng1.fuel_flow"
+"sim/cockpit2/engine/indicators/fuel_flow_kg_sec[1]" = "eng2.fuel_flow"

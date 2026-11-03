@@ -71,6 +71,21 @@ fn main() -> ExitCode {
             }
             None => ExitCode::FAILURE,
         },
+        Some("kinds") if args.len() == 2 => {
+            let Some(s) = easyacft_parts::catalog::all().iter().find(|s| format!("{}.{}", s.domain, s.kind) == args[1]) else {
+                eprintln!("no part kind `{}`; `easyacft kinds` lists them", args[1]);
+                return ExitCode::FAILURE;
+            };
+            println!("[[{}.{}]]  {}
+", s.domain, s.kind, s.help);
+            for f in s.fields {
+                let d = f.default.map(|d| format!("= {d:?}")).unwrap_or_else(|| "(required)".into());
+                println!("  {:<22} {:<28} {}", f.key, d, f.help);
+            }
+            println!("
+values: {}", s.outputs.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", "));
+            ExitCode::SUCCESS
+        }
         Some("kinds") => {
             for s in easyacft_parts::catalog::all() {
                 println!("{}.{}  {}", s.domain, s.kind, s.help);

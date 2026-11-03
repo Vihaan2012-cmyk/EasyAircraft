@@ -39,7 +39,7 @@ pub fn render(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, g
             let _ = writeln!(o, r#"<line x1="{}" y1="{cy}" x2="{}" y2="{cy}" {}/>"#, cx - 5.0, cx + 5.0, st(true, false, "none"));
         }
         let (tx, ty, anchor) = if e.vertical { (cx + 11.0, cy + 4.0, "start") } else { (cx, cy - 11.0, "middle") };
-        let _ = writeln!(o, r#"<text x="{tx}" y="{ty}" font-size="10" text-anchor="{anchor}" fill="{faint}">{} {}</text>"#, esc(&p.id), esc(&text));
+        let _ = writeln!(o, r##"<text x="{tx}" y="{ty}" font-size="10" text-anchor="{anchor}" fill="{faint}" stroke="#fff" stroke-width="3" paint-order="stroke">{} {}</text>"##, esc(&p.id), esc(&text));
     }
     for it in &d.items {
         let p = &c.parts[it.part];

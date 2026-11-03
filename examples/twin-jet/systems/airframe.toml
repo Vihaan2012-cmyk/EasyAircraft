@@ -1,0 +1,90 @@
+[[gear.leg]]
+id = "nose_gear"
+circuit = "green"
+down_when = "gear_lever.on"
+time = "8 s"
+
+[[gear.leg]]
+id = "main_gear_{n}"
+count = 2
+circuit = "green"
+down_when = "gear_lever.on"
+time = "10 s"
+
+[[gear.brake]]
+id = "brakes_l"
+circuit = "yellow"
+pedal = "brake_l.value"
+max_pressure = "3000 psi"
+air = "air"
+
+[[gear.brake]]
+id = "brakes_r"
+circuit = "yellow"
+pedal = "brake_r.value"
+max_pressure = "3000 psi"
+air = "air"
+
+[[cabin.pressurization]]
+id = "cabin"
+air = "air"
+volume = "330 m3"
+inflow = "pack1.flow + pack2.flow"
+
+[[ice.surface]]
+id = "wing_ice"
+air = "air"
+heated_when = "wing_ai.supplied"
+
+[[ice.surface]]
+id = "pitot_ice"
+air = "air"
+heated_when = "probe_heaters.powered"
+build_time = "60 s"
+
+[[oxygen.crew]]
+id = "crew_oxygen"
+pressure = "1850 psi"
+
+[[oxygen.passenger]]
+id = "pax_oxygen"
+deploy_when = "cabin.altitude > 14000 ft"
+
+[[weight.station]]
+id = "empty"
+mass = "42000 kg"
+arm = "17.2 m"
+
+[[weight.station]]
+id = "crew"
+mass = "400 kg"
+arm = "3 m"
+
+[[weight.station]]
+id = "cabin_load"
+mass = "12000 kg"
+arm = "16.5 m"
+
+[[weight.station]]
+id = "hold_fwd"
+mass = "1500 kg"
+arm = "10 m"
+
+[[weight.station]]
+id = "hold_aft"
+mass = "1500 kg"
+arm = "25 m"
+
+[[weight.balance]]
+id = "wb"
+stations = ["empty", "crew", "cabin_load", "hold_fwd", "hold_aft", "left", "right", "centre"]
+mac_leading_edge = "16.0 m"
+mac = "4.2 m"
+
+[[wear.counter]]
+id = "brake_wear_l"
+rate = "if(brakes_l.pressure > 100 psi, 0.00002, 0)"
+
+[[wear.counter]]
+id = "brake_wear_r"
+rate = "if(brakes_r.pressure > 100 psi, 0.00002, 0)"

@@ -1,0 +1,60 @@
+[[hydraulic.circuit]]
+id = "green"
+nominal = "3000 psi"
+fluid = "14 L"
+
+[[hydraulic.circuit]]
+id = "yellow"
+nominal = "3000 psi"
+fluid = "12 L"
+
+[[hydraulic.pump]]
+id = "edp1"
+circuit = "green"
+pressure = "3000 psi"
+flow = "140 L/min"
+running_when = "edp1_sw.on && eng1.n2 > 25"
+
+[[hydraulic.pump]]
+id = "edp2"
+circuit = "yellow"
+pressure = "3000 psi"
+flow = "140 L/min"
+running_when = "edp2_sw.on && eng2.n2 > 25"
+
+[[hydraulic.pump]]
+id = "elec_pump"
+circuit = "yellow"
+pressure = "3000 psi"
+flow = "25 L/min"
+running_when = "elec_pump_motor.powered"
+
+[[hydraulic.ptu]]
+id = "ptu"
+between = ["green", "yellow"]
+flow = "60 L/min"
+enabled_when = "ptu_sw.on"
+
+[[hydraulic.accumulator]]
+id = "brake_acc"
+circuit = "yellow"
+volume = "2 L"
+precharge = "1000 psi"
+
+[[hydraulic.consumer]]
+id = "flight_controls_g"
+circuit = "green"
+flow = "20 L/min"
+moving_when = "!air.on_ground"
+
+[[hydraulic.consumer]]
+id = "flight_controls_y"
+circuit = "yellow"
+flow = "20 L/min"
+moving_when = "!air.on_ground"
+
+[[hydraulic.consumer]]
+id = "spoilers"
+circuit = "green"
+flow = "30 L/min"
+moving_when = "false"

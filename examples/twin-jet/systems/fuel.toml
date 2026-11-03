@@ -1,0 +1,78 @@
+[[fuel.tank]]
+id = "left"
+capacity = "6000 kg"
+quantity = "4500 kg"
+arm = "17.5 m"
+
+[[fuel.tank]]
+id = "right"
+capacity = "6000 kg"
+quantity = "4500 kg"
+arm = "17.5 m"
+
+[[fuel.tank]]
+id = "centre"
+capacity = "6500 kg"
+quantity = "2000 kg"
+arm = "16.8 m"
+
+[[fuel.line]]
+id = "feed_l"
+
+[[fuel.line]]
+id = "feed_r"
+
+[[fuel.pump]]
+id = "pump_l"
+tank = "left"
+outlet = "feed_l"
+flow = "2.5 kg/s"
+running_when = "fuel_pump1_motor.powered"
+
+[[fuel.pump]]
+id = "pump_r"
+tank = "right"
+outlet = "feed_r"
+flow = "2.5 kg/s"
+running_when = "fuel_pump2_motor.powered"
+
+# Centre tank pumps push harder so the centre empties first
+[[fuel.pump]]
+id = "ctr_pump_{n}"
+count = 2
+tank = "centre"
+outlet = "feed_l"
+pressure = "30 psi"
+flow = "2 kg/s"
+running_when = "fuel_pump1_motor.powered && centre.quantity > 50 kg"
+
+[[fuel.valve]]
+id = "xfeed"
+between = ["feed_l", "feed_r"]
+open_when = "xfeed_sw.on || centre.quantity > 50 kg"
+
+# Suction feed when the pumps stop
+[[fuel.valve]]
+id = "suction_l"
+between = ["left", "feed_l"]
+flow = "0.5 kg/s"
+
+[[fuel.valve]]
+id = "suction_r"
+between = ["right", "feed_r"]
+flow = "0.5 kg/s"
+
+[[fuel.feed]]
+id = "eng1_feed"
+line = "feed_l"
+demand = "if(fire1_handle.on, 0 kg/s, fadec1.fuel_command)"
+
+[[fuel.feed]]
+id = "eng2_feed"
+line = "feed_r"
+demand = "if(fire2_handle.on, 0 kg/s, fadec2.fuel_command)"
+
+[[fuel.feed]]
+id = "apu_feed"
+line = "feed_l"
+demand = "if(apu_fire_handle.on, 0 kg/s, apu.fuel_flow)"

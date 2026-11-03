@@ -255,15 +255,16 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
         let mut v = want.clamp(l, r);
         let taken = used.get(&(h, top)).cloned().unwrap_or_default();
         let mut k = 0u32;
-        while taken.iter().any(|t| (t - v).abs() < 26.0) && k < 16 {
+        while taken.iter().any(|t| (t - v).abs() < 40.0) && k < 16 {
             k += 1;
-            let step = 26.0 * k.div_ceil(2) as f32 * if k % 2 == 1 { 1.0 } else { -1.0 };
+            let step = 40.0 * k.div_ceil(2) as f32 * if k % 2 == 1 { 1.0 } else { -1.0 };
             v = (want + step).clamp(l, r);
         }
         v
     };
     let mut arcs: HashMap<usize, usize> = HashMap::new();
     let mut lanes: HashMap<usize, usize> = HashMap::new();
+    let mut pairs: HashMap<(usize, usize), usize> = HashMap::new();
     for (k, &(part, _, _)) in ends.iter().enumerate() {
         let chain = &chains[k];
         let path = if chain.len() == 1 {
@@ -324,10 +325,19 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
             let lb = (b[0].0 - b[1].0).abs() + (b[0].1 - b[1].1).abs();
             la.total_cmp(&lb)
         });
-        let (mark, vertical) = match seg {
+        let (mut mark, vertical) = match seg {
             Some(s) => (((s[0].0 + s[1].0) / 2.0, (s[0].1 + s[1].1) / 2.0), (s[0].0 - s[1].0).abs() < 1.0),
             None => ((0.0, 0.0), false),
         };
+        let (_, ea, eb) = ends[k];
+        let n = pairs.entry((ea.min(eb), ea.max(eb))).or_insert(0usize);
+        let step = 30.0 * n.div_ceil(2) as f32 * if *n % 2 == 1 { 1.0 } else { -1.0 };
+        *n += 1;
+        if vertical {
+            mark.1 += step;
+        } else {
+            mark.0 += step * 2.0;
+        }
         d.edges.push(Edge { part, path, mark, vertical });
     }
 

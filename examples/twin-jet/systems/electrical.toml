@@ -51,7 +51,7 @@ bus = "gen{n}_out"
 voltage = "115 V"
 frequency = "400 Hz"
 rating = "90 kVA"
-driven_when = "eng{n}_running.on"
+driven_when = "eng{n}.running && eng{n}.n2 > 30"
 
 [[electrical.contactor]]
 id = "glc{n}"
@@ -69,7 +69,7 @@ bus = "apu_gen_out"
 voltage = "115 V"
 frequency = "400 Hz"
 rating = "90 kVA"
-driven_when = "apu_running.on"
+driven_when = "apu.available"
 
 [[electrical.bus]]
 id = "tie"
@@ -101,7 +101,7 @@ close_when = "ext_pwr_sw.on && ext.available"
 id = "btc{n}"
 count = 2
 between = ["ac{n}", "tie"]
-close_when = "!glc{n}.closed"
+close_when = "!glc{n}.closed || (!(glc1.closed && glc2.closed) && !agc.closed && !epc.closed)"
 
 [[electrical.tru]]
 id = "tr{n}"
@@ -139,7 +139,49 @@ power = "4 kW"
 shed_priority = 2
 
 [[electrical.load]]
-id = "fuel_pump{n}"
+id = "fuel_pump{n}_motor"
 bus = "ac{n}"
 count = 2
-power = "3 kW"
+power = "1.5 kW"
+on_when = "fuel_pump{n}_sw.on"
+
+[[electrical.load]]
+id = "elec_pump_motor"
+bus = "ac2"
+power = "6 kW"
+on_when = "elec_pump_sw.on"
+shed_priority = 3
+
+[[electrical.load]]
+id = "probe_heaters"
+bus = "ac1"
+power = "1.2 kW"
+on_when = "probe_heat_sw.on"
+
+[[electrical.load]]
+id = "lights_ext"
+bus = "dc2"
+power = "600 W"
+on_when = "beacon_sw.on || strobe_sw.on || landing_sw.on"
+
+[[electrical.inverter]]
+id = "static_inv"
+input = "hot_bat1"
+output = "ac_ess"
+voltage = "115 V"
+rating = "1 kVA"
+on_when = "!ac1.powered && bat_sw.on"
+
+[[electrical.bus]]
+id = "ac_ess"
+nominal = "115 V"
+
+[[electrical.contactor]]
+id = "ac_ess_feed"
+between = ["ac1", "ac_ess"]
+close_when = "ac1.powered"
+
+[[electrical.load]]
+id = "ess_instruments"
+bus = "ac_ess"
+power = "300 W"

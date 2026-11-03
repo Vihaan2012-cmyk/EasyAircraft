@@ -8,6 +8,10 @@
 //! [[expect]]
 //! at = "40 s"
 //! that = "dc1.voltage > 27 V"
+//!
+//! [trace]
+//! print = ["dc1.voltage"]
+//! every = "5 s"
 //! ```
 
 use crate::{Aircraft, Expr};
@@ -53,6 +57,9 @@ pub fn run(a: &mut Aircraft, text: &str, dt: f64) -> Result<Vec<Outcome>, String
             checks.push((at, that.to_owned(), Expr::new(&p)));
         }
     }
+    let trace: Vec<String> = doc.get("trace").and_then(|t| t.get("print")).and_then(Item::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+    let every = doc.get("trace").and_then(|t| t.get("every")).map(|e| time(Some(e))).transpose()?.unwrap_or(5.0);
+    let mut next_trace = 0.0;
     steps.sort_by(|x, y| x.0.total_cmp(&y.0));
     checks.sort_by(|x, y| x.0.total_cmp(&y.0));
     let end = steps.iter().map(|s| s.0).chain(checks.iter().map(|c| c.0)).fold(0.0, f64::max);
@@ -61,6 +68,11 @@ pub fn run(a: &mut Aircraft, text: &str, dt: f64) -> Result<Vec<Outcome>, String
     let mut pending: std::collections::VecDeque<_> = checks.into();
     loop {
         let t = a.time - start;
+        if !trace.is_empty() && t + 1e-9 >= next_trace {
+            let cols: Vec<String> = trace.iter().map(|n| format!("{n}={:.3}", a.get(n).unwrap_or(f64::NAN))).collect();
+            println!("t={t:.1} {}", cols.join(" "));
+            next_trace += every;
+        }
         while si < steps.len() && steps[si].0 <= t + 1e-9 {
             a.set(&steps[si].1, steps[si].2);
             si += 1;
