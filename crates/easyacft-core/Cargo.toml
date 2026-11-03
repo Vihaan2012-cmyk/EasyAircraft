@@ -1,0 +1,9 @@
+[package]
+name = "easyacft-core"
+description = "EasyAcft solver core: units, flow networks, scheduling and snapshots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
