@@ -13,6 +13,31 @@ pub type SetF = unsafe extern "C" fn(*mut c_void, c_float);
 pub type FlightLoop = unsafe extern "C" fn(c_float, c_float, c_int, *mut c_void) -> c_float;
 pub type CommandFn = unsafe extern "C" fn(CommandRef, c_int, *mut c_void) -> c_int;
 type Any = *const c_void;
+pub type WindowId = *mut c_void;
+pub type DrawFn = unsafe extern "C" fn(WindowId, *mut c_void);
+pub type ClickFn = unsafe extern "C" fn(WindowId, c_int, c_int, c_int, *mut c_void) -> c_int;
+pub type KeyFn = unsafe extern "C" fn(WindowId, c_char, c_int, c_char, *mut c_void, c_int);
+pub type CursorFn = unsafe extern "C" fn(WindowId, c_int, c_int, *mut c_void) -> c_int;
+pub type WheelFn = unsafe extern "C" fn(WindowId, c_int, c_int, c_int, c_int, *mut c_void) -> c_int;
+
+#[repr(C)]
+pub struct CreateWindow {
+    pub size: c_int,
+    pub left: c_int,
+    pub top: c_int,
+    pub right: c_int,
+    pub bottom: c_int,
+    pub visible: c_int,
+    pub draw: DrawFn,
+    pub click: ClickFn,
+    pub key: KeyFn,
+    pub cursor: CursorFn,
+    pub wheel: WheelFn,
+    pub refcon: *mut c_void,
+    pub decoration: c_int,
+    pub layer: c_int,
+    pub right_click: ClickFn,
+}
 
 #[allow(non_snake_case)]
 pub struct Api {
@@ -38,6 +63,19 @@ pub struct Api {
     pub UnregisterCommandHandler: unsafe extern "C" fn(CommandRef, CommandFn, c_int, *mut c_void),
     pub DebugString: unsafe extern "C" fn(*const c_char),
     pub GetNthAircraftModel: unsafe extern "C" fn(c_int, *mut c_char, *mut c_char),
+    pub CreateWindowEx: unsafe extern "C" fn(*const CreateWindow) -> WindowId,
+    pub DestroyWindow: unsafe extern "C" fn(WindowId),
+    pub GetWindowGeometry: unsafe extern "C" fn(WindowId, *mut c_int, *mut c_int, *mut c_int, *mut c_int),
+    pub SetWindowIsVisible: unsafe extern "C" fn(WindowId, c_int),
+    pub GetWindowIsVisible: unsafe extern "C" fn(WindowId) -> c_int,
+    pub SetWindowTitle: unsafe extern "C" fn(WindowId, *const c_char),
+    pub DrawString: unsafe extern "C" fn(*const c_float, c_int, c_int, *const c_char, *const c_int, c_int),
+    pub FindPluginsMenu: unsafe extern "C" fn() -> *mut c_void,
+    pub CreateMenu: unsafe extern "C" fn(*const c_char, *mut c_void, c_int, Any, *mut c_void) -> *mut c_void,
+    pub AppendMenuItem: unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void, c_int) -> c_int,
+    pub AppendMenuItemWithCommand: unsafe extern "C" fn(*mut c_void, *const c_char, CommandRef) -> c_int,
+    pub DestroyMenu: unsafe extern "C" fn(*mut c_void),
+    pub RemoveMenuItem: unsafe extern "C" fn(*mut c_void, c_int),
 }
 
 #[cfg(windows)]
@@ -103,6 +141,19 @@ impl Api {
             UnregisterCommandHandler: get!("UnregisterCommandHandler"),
             DebugString: get!("DebugString"),
             GetNthAircraftModel: get!("GetNthAircraftModel"),
+            CreateWindowEx: get!("CreateWindowEx"),
+            DestroyWindow: get!("DestroyWindow"),
+            GetWindowGeometry: get!("GetWindowGeometry"),
+            SetWindowIsVisible: get!("SetWindowIsVisible"),
+            GetWindowIsVisible: get!("GetWindowIsVisible"),
+            SetWindowTitle: get!("SetWindowTitle"),
+            DrawString: get!("DrawString"),
+            FindPluginsMenu: get!("FindPluginsMenu"),
+            CreateMenu: get!("CreateMenu"),
+            AppendMenuItem: get!("AppendMenuItem"),
+            AppendMenuItemWithCommand: get!("AppendMenuItemWithCommand"),
+            DestroyMenu: get!("DestroyMenu"),
+            RemoveMenuItem: get!("RemoveMenuItem"),
         })
     }
 }

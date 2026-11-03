@@ -2,9 +2,12 @@
 
 mod diagram;
 mod edit;
+mod engine_view;
+mod inspector;
 mod live;
 mod png;
 mod svg;
+mod why;
 
 use diagram::{Diagram, Role, DOMAINS};
 use easyacft_lang::{load, Model, Type};
@@ -25,26 +28,27 @@ enum Tab {
     Tables,
     Fit,
     Compare,
+    Computers,
 }
 
-struct App {
-    dir: String,
-    aircraft: Option<Aircraft>,
-    model: Option<Model>,
+pub struct App {
+    pub dir: String,
+    pub aircraft: Option<Aircraft>,
+    pub model: Option<Model>,
     report: String,
     running: bool,
     speed: f64,
     tab: Tab,
     domain: usize,
-    selected: Option<usize>,
+    pub selected: Option<usize>,
     search: String,
-    plots: Vec<(String, Vec<[f64; 2]>)>,
+    pub plots: Vec<(String, Vec<[f64; 2]>)>,
     pinned: HashMap<String, (f32, f32)>,
     dragging: Option<usize>,
     offset: Vec2,
-    edits: HashMap<String, String>,
+    pub edits: HashMap<String, String>,
     live: Option<live::Client>,
-    status: String,
+    pub status: String,
     add_kind: String,
     add_id: String,
     add_file: usize,
@@ -59,6 +63,77 @@ struct App {
     shot: Option<(String, u32)>,
     zoom: f32,
     fit: bool,
+    pub history: edit::History,
+    pub all_settings: bool,
+    pub bind_out: String,
+    pub bind_ref: String,
+    pub bind_unit: String,
+    pub bind_write: bool,
+    trial: Option<easyacft_core::Snapshot>,
+    timeline: std::collections::VecDeque<(f64, easyacft_core::Snapshot)>,
+    scrub: Option<usize>,
+    recording: Option<Vec<(f64, String, f64)>>,
+    record_start: f64,
+    connect_from: Option<usize>,
+    theme: Theme,
+    template: usize,
+    new_dir: String,
+    show_changes: bool,
+    zoomed: bool,
+    fit_size: Vec2,
+}
+
+#[derive(Clone, Copy)]
+struct Theme {
+    ink: Color32,
+    faint: Color32,
+    fill: Color32,
+    paper: Color32,
+}
+
+fn hex(s: &str) -> Option<Color32> {
+    let h = s.trim().trim_matches('"').trim_start_matches('#');
+    let v = u32::from_str_radix(h, 16).ok()?;
+    (h.len() == 6).then(|| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8))
+}
+
+/// Colours from `studio-theme.toml` next to the aircraft (ink, faint, fill, paper as "#rrggbb").
+fn read_theme(dir: &str) -> Theme {
+    let mut t = Theme { ink: Color32::from_gray(20), faint: Color32::from_gray(150), fill: Color32::from_gray(248), paper: Color32::from_gray(248) };
+    let text = std::fs::read_to_string(Path::new(dir).join("studio-theme.toml")).unwrap_or_default();
+    for l in text.lines() {
+        let Some((k, v)) = l.split_once('=') else { continue };
+        let Some(c) = hex(v) else { continue };
+        match k.trim() {
+            "ink" => t.ink = c,
+            "faint" => t.faint = c,
+            "fill" => t.fill = c,
+            "paper" => t.paper = c,
+            _ => {}
+        }
+    }
+    t
+}
+
+/// Aircraft folders offered as templates for a new aircraft.
+fn templates() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(e) = std::env::current_exe() {
+        for a in e.ancestors().skip(1).take(4) {
+            roots.push(a.join("examples"));
+        }
+    }
+    roots.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples"));
+    for r in roots {
+        if let Ok(rd) = std::fs::read_dir(&r) {
+            let mut v: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.join("aircraft.toml").exists()).collect();
+            if !v.is_empty() {
+                v.sort();
+                return v;
+            }
+        }
+    }
+    Vec::new()
 }
 
 fn layout_file(dir: &str) -> PathBuf {
@@ -106,7 +181,7 @@ pub fn unit(t: Type, v: f64) -> String {
     }
 }
 
-const SETTABLE: &[&str] = &["on", "pressed", "guard_open", "failed", "pulled", "frozen", "bad_data", "channel_failed", "position", "value", "mass"];
+pub const SETTABLE: &[&str] = &["on", "pressed", "guard_open", "failed", "pulled", "frozen", "bad_data", "channel_failed", "position", "value", "mass"];
 const MORE: &[&str] = &["logic", "weight", "gear", "cabin", "ice", "oxygen", "fadec", "apu", "fire", "light", "sound", "failure", "data", "sensor", "wear", "input", "output", "environment"];
 
 impl App {
@@ -143,6 +218,24 @@ impl App {
             shot: None,
             zoom: 1.0,
             fit: true,
+            history: edit::History::default(),
+            all_settings: false,
+            bind_out: String::new(),
+            bind_ref: String::new(),
+            bind_unit: String::new(),
+            bind_write: false,
+            trial: None,
+            timeline: Default::default(),
+            scrub: None,
+            recording: None,
+            record_start: 0.0,
+            connect_from: None,
+            theme: read_theme(""),
+            template: 0,
+            new_dir: String::new(),
+            show_changes: false,
+            zoomed: false,
+            fit_size: Vec2::ZERO,
         };
         if !a.dir.is_empty() {
             a.reload();
@@ -173,6 +266,10 @@ impl App {
             }
         }
         self.tables = scan_tables(&path);
+        self.theme = read_theme(&self.dir);
+        if let Some(of) = std::fs::read_to_string(path.join("aircraft.toml")).ok().and_then(|t| t.parse::<toml_edit::DocumentMut>().ok()).and_then(|d| d.get("variant").and_then(|v| v.get("of")).and_then(|v| v.as_str()).map(str::to_owned)) {
+            self.compare_dir = path.join(of).display().to_string();
+        }
         self.edits.clear();
     }
 
@@ -184,12 +281,15 @@ impl App {
         }
     }
 
-    fn get(&self, name: &str) -> Option<f64> {
+    pub fn get(&self, name: &str) -> Option<f64> {
         let a = self.aircraft.as_ref()?;
         a.slot(name).map(|s| self.value(s))
     }
 
-    fn set(&mut self, name: &str, v: f64) {
+    pub fn set(&mut self, name: &str, v: f64) {
+        if let (Some(r), Some(a)) = (&mut self.recording, &self.aircraft) {
+            r.push((a.time - self.record_start, name.to_owned(), v));
+        }
         if let Some(l) = &mut self.live {
             l.send(name, v);
         }
@@ -206,13 +306,24 @@ impl App {
             l.poll();
         }
         let live = self.live.as_ref().is_some_and(|l| l.connected);
-        if self.running && !live {
+        if self.running && !live && self.scrub.is_none() {
             if let Some(a) = &mut self.aircraft {
                 let mut left = dt * self.speed;
                 while left > 1e-9 {
                     let s = left.min(0.05);
                     a.step(s);
                     left -= s;
+                }
+            }
+        }
+        if let Some(a) = &self.aircraft {
+            if self.scrub.is_none() && self.timeline.back().is_none_or(|(t, _)| a.time - t >= 1.0 || a.time < *t) {
+                if self.timeline.back().is_some_and(|(t, _)| a.time < *t) {
+                    self.timeline.clear();
+                }
+                self.timeline.push_back((a.time, a.snapshot()));
+                while self.timeline.len() > 300 {
+                    self.timeline.pop_front();
                 }
             }
         }
@@ -241,7 +352,11 @@ impl App {
         let domain = DOMAINS[self.domain];
         let d: Diagram = diagram::build(&a.checked, domain, &self.pinned);
         let (resp, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+        if !self.zoomed && self.fit_size != resp.rect.size() {
+            self.fit = true;
+        }
         if self.fit {
+            self.fit_size = resp.rect.size();
             let (mut w, mut h) = (1.0f32, 1.0f32);
             for it in &d.items {
                 w = w.max(it.pos.0 + it.size.0 / 2.0 + 30.0);
@@ -256,15 +371,16 @@ impl App {
             if scroll != 0.0 {
                 let old = self.zoom;
                 self.zoom = (self.zoom * (1.0 + scroll * 0.002)).clamp(0.2, 3.0);
+                self.zoomed = true;
                 let anchor = h - resp.rect.min - self.offset;
                 self.offset -= anchor * (self.zoom / old - 1.0);
             }
         }
         let z = self.zoom;
         let origin = resp.rect.min.to_vec2() + self.offset;
-        let ink = ui.visuals().text_color();
-        let faint = ui.visuals().weak_text_color();
-        let fill = ui.visuals().panel_fill;
+        let (ink, faint, fill) = (self.theme.ink, self.theme.faint, self.theme.fill);
+        painter.rect_filled(resp.rect, 0.0, self.theme.paper);
+        let labels = z >= 0.55;
         let font = FontId::proportional(12.0 * z);
         let small = FontId::proportional(10.5 * z);
         let at = |p: (f32, f32)| Pos2::new(p.0 * z, p.1 * z) + origin;
@@ -280,6 +396,7 @@ impl App {
             let (live, failed, _) = self.part_state(&a.checked.parts[*part]);
             line(&[at(l[0]), at(l[1])], stroke(live, failed), failed);
         }
+        let mut hit = None;
         for e in &d.edges {
             let (live, failed, text) = self.part_state(&a.checked.parts[e.part]);
             let pts: Vec<Pos2> = e.path.iter().map(|&p| at(p)).collect();
@@ -287,14 +404,19 @@ impl App {
             let c = at(e.mark);
             let r = Rect::from_center_size(c, Vec2::splat(14.0 * z));
             painter.rect_filled(r, 2.0, fill);
-            painter.rect_stroke(r, 2.0, stroke(live, failed));
+            let sel = self.selected == Some(e.part);
+            painter.rect_stroke(r, 2.0, if sel { Stroke::new(3.0f32, ink) } else { stroke(live, failed) });
             if live {
                 painter.line_segment([c - Vec2::new(5.0 * z, 0.0), c + Vec2::new(5.0 * z, 0.0)], stroke(true, false));
             }
             let (tp, al) = if e.vertical { (c + Vec2::new(11.0 * z, 0.0), Align2::LEFT_CENTER) } else { (c - Vec2::new(0.0, 9.0 * z), Align2::CENTER_BOTTOM) };
-            painter.text(tp, al, format!("{} {text}", a.checked.parts[e.part].id), small.clone(), faint);
+            if labels {
+                painter.text(tp, al, format!("{} {text}", a.checked.parts[e.part].id), small.clone(), faint);
+            }
+            if resp.hover_pos().is_some_and(|h| r.expand(5.0).contains(h)) {
+                hit = Some(e.part);
+            }
         }
-        let mut hit = None;
         for it in &d.items {
             let p = at(it.pos);
             let part = &a.checked.parts[it.part];
@@ -313,11 +435,13 @@ impl App {
             match it.role {
                 Role::Hub => {
                     painter.text(Pos2::new(rect.left() + 8.0 * z, p.y), Align2::LEFT_CENTER, &part.id, font.clone(), ink);
-                    painter.text(Pos2::new(rect.right() - 8.0 * z, p.y), Align2::RIGHT_CENTER, text, small.clone(), faint);
+                    if labels {
+                        painter.text(Pos2::new(rect.right() - 8.0 * z, p.y), Align2::RIGHT_CENTER, text, small.clone(), faint);
+                    }
                 }
                 _ => {
                     painter.text(p, Align2::CENTER_CENTER, &part.id, small.clone(), ink);
-                    if !text.is_empty() {
+                    if labels && !text.is_empty() {
                         let (y, al) = if it.role == Role::Source { (rect.bottom() + 3.0, Align2::CENTER_TOP) } else { (rect.top() - 3.0, Align2::CENTER_BOTTOM) };
                         painter.text(Pos2::new(p.x, y), al, text, small.clone(), faint);
                     }
@@ -327,10 +451,69 @@ impl App {
                 hit = Some(it.part);
             }
         }
+        let shift = ui.input(|i| i.modifiers.shift);
         if resp.drag_started() {
-            self.dragging = hit;
+            if shift {
+                self.connect_from = hit.filter(|&i| diagram::role(&a.checked.parts[i]).is_some_and(|r| r.0 == Role::Hub));
+            } else {
+                self.dragging = hit;
+            }
         }
-        if resp.dragged() {
+        if let (Some(from), Some(h)) = (self.connect_from, resp.hover_pos()) {
+            if let Some(it) = d.items.iter().find(|x| x.part == from) {
+                painter.add(egui::Shape::dashed_line(&[at(it.pos), h], Stroke::new(1.5f32, ink), 5.0, 4.0));
+            }
+        }
+        if resp.drag_stopped() && self.connect_from.is_some() {
+            let from = self.connect_from.take().unwrap();
+            if let Some(to) = hit.filter(|&i| i != from && a.checked.parts[i].domain == a.checked.parts[from].domain && diagram::role(&a.checked.parts[i]).is_some_and(|r| r.0 == Role::Hub)) {
+                let (fa, fb) = (a.checked.parts[from].id.clone(), a.checked.parts[to].id.clone());
+                let kind = match a.checked.parts[from].domain {
+                    "electrical" => "contactor",
+                    "hydraulic" => "ptu",
+                    _ => "valve",
+                };
+                let domain = a.checked.parts[from].domain;
+                let file = self.model.as_ref().and_then(|m| m.sources.files.get(a.checked.parts[from].file)).map(|f| PathBuf::from(&f.0));
+                if let Some(file) = file {
+                    let id = format!("{fa}_{fb}");
+                    self.history.touch(&file);
+                    let r = edit::add(&file, domain, kind, &id).and_then(|_| edit::set(&file, &id, "between", &format!("[\"{fa}\", \"{fb}\"]")).map(|_| ()));
+                    self.history.commit();
+                    match r {
+                        Ok(()) => {
+                            self.status = format!("added {domain}.{kind} {id}");
+                            self.reload();
+                            self.selected = self.aircraft.as_ref().and_then(|a| a.checked.find(&id));
+                        }
+                        Err(e) => self.status = e,
+                    }
+                }
+            }
+            return;
+        }
+        let mut fail_set = None;
+        if let Some(i) = hit {
+            let id = a.checked.parts[i].id.clone();
+            let failed = self.get(&format!("{id}.failed")).is_some_and(|v| v != 0.0);
+            let mut act = 0;
+            resp.clone().context_menu(|ui| {
+                if ui.button(if failed { "Repair" } else { "Fail" }).clicked() {
+                    act = 1;
+                    ui.close_menu();
+                }
+                if ui.button("Select").clicked() {
+                    act = 2;
+                    ui.close_menu();
+                }
+            });
+            match act {
+                1 => fail_set = Some((format!("{id}.failed"), if failed { 0.0 } else { 1.0 })),
+                2 => self.selected = Some(i),
+                _ => {}
+            }
+        }
+        if resp.dragged() && self.connect_from.is_none() {
             match self.dragging {
                 Some(i) => {
                     let id = a.checked.parts[i].id.clone();
@@ -348,144 +531,61 @@ impl App {
             self.selected = hit;
             self.edits.clear();
         }
+        painter.text(resp.rect.right_top() + Vec2::new(-8.0, 8.0), Align2::RIGHT_TOP, "drag to move, shift-drag between two to connect, right-click to fail, scroll to zoom", FontId::proportional(10.5), faint);
         let rest = diagram::listed(&a.checked, domain);
         if !rest.is_empty() {
             let names: Vec<String> = rest.iter().map(|&i| a.checked.parts[i].id.clone()).collect();
             painter.text(resp.rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, format!("Not drawn: {}", names.join(", ")), small, faint);
         }
-    }
-
-    fn inspector(&mut self, ui: &mut egui::Ui) {
-        let Some(sel) = self.selected else {
-            ui.label("Select a part on the diagram or in the list.");
-            return;
-        };
-        let Some(a) = &self.aircraft else { return };
-        let Some(part) = a.checked.parts.get(sel).cloned() else { return };
-        let spec = catalog::all().iter().find(|s| s.domain == part.domain && s.kind == part.kind).copied();
-        ui.heading(&part.id);
-        ui.label(format!("{}.{}", part.domain, part.kind));
-        if self.help {
-            if let Some(s) = spec {
-                ui.label(s.help);
-            }
-        }
-        ui.separator();
-        let outs: Vec<(String, Type)> = spec.map(|s| s.outputs.iter().map(|(n, t)| (n.to_string(), *t)).collect()).unwrap_or_default();
-        let mut sets = Vec::new();
-        let mut plot = None;
-        egui::Grid::new("outs").num_columns(3).show(ui, |ui| {
-            for (n, t) in &outs {
-                let full = format!("{}.{n}", part.id);
-                let v = self.get(&full).unwrap_or(0.0);
-                ui.label(n);
-                if SETTABLE.contains(&n.as_str()) {
-                    if *t == Type::Bool {
-                        let mut b = v != 0.0;
-                        if ui.checkbox(&mut b, unit(*t, v)).changed() {
-                            sets.push((full.clone(), b as u8 as f64));
-                        }
-                    } else {
-                        let mut x = v;
-                        if ui.add(egui::DragValue::new(&mut x).speed(0.1)).changed() {
-                            sets.push((full.clone(), x));
-                        }
-                    }
-                } else {
-                    ui.label(unit(*t, v));
-                }
-                if ui.small_button("plot").clicked() {
-                    plot = Some(full);
-                }
-                ui.end_row();
-            }
-        });
-        for (n, v) in sets {
+        if let Some((n, v)) = fail_set {
             self.set(&n, v);
-        }
-        if let Some(full) = plot {
-            if !self.plots.iter().any(|p| p.0 == full) {
-                self.plots.push((full, Vec::new()));
-            }
-        }
-        let Some(a) = &self.aircraft else { return };
-        let mut jump = None;
-        if !part.exprs.is_empty() {
-            ui.separator();
-            ui.label("Why");
-            for (k, src) in &part.exprs {
-                ui.monospace(format!("{k} = {src}"));
-                for name in names_in(src) {
-                    if let Some(v) = self.get(&name) {
-                        let t = a.checked.slots.index.get(&name).map(|&i| a.checked.slots.names[i].1).unwrap_or(Type::Num(easyacft_core::Dim::NONE));
-                        if ui.link(format!("    {name} = {}", unit(t, v))).clicked() {
-                            jump = name.split('.').next().and_then(|id| a.checked.find(id));
-                        }
-                    }
-                }
-            }
-        }
-        if jump.is_some() {
-            self.selected = jump;
-            self.edits.clear();
-            return;
-        }
-        ui.separator();
-        ui.label("Settings");
-        let Some(model) = &self.model else { return };
-        let decl = model.parts.iter().find(|p| p.id == part.id).cloned();
-        let file = decl.as_ref().and_then(|d| model.sources.files.get(d.file)).map(|f| PathBuf::from(&f.0));
-        if let Some(s) = spec {
-            egui::Grid::new("fields").num_columns(2).show(ui, |ui| {
-                for f in s.fields {
-                    let current = decl.as_ref().and_then(|d| d.get(f.key)).map(|x| match &x.value {
-                        easyacft_lang::model::Field::Str(s) => format!("\"{s}\""),
-                        easyacft_lang::model::Field::Num(n) => format!("{n}"),
-                        easyacft_lang::model::Field::Bool(b) => format!("{b}"),
-                        easyacft_lang::model::Field::List(l) => format!("[{}]", l.iter().map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join(", ")),
-                    });
-                    let entry = self.edits.entry(f.key.to_owned()).or_insert_with(|| current.clone().unwrap_or_default());
-                    ui.label(f.key).on_hover_text(f.help);
-                    let hint = f.default.map(|d| format!("default {d}")).unwrap_or_else(|| "required".into());
-                    ui.add(egui::TextEdit::singleline(entry).hint_text(hint).desired_width(220.0));
-                    ui.end_row();
-                }
-            });
-        }
-        let mut reload = false;
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                if let Some(f) = &file {
-                    let mut msg = Vec::new();
-                    for (k, v) in &self.edits {
-                        let had = decl.as_ref().and_then(|d| d.get(k)).is_some();
-                        if v.is_empty() && !had {
-                            continue;
-                        }
-                        if let Err(e) = edit::set(f, &part.id, k, v) {
-                            msg.push(e);
-                        }
-                    }
-                    if !msg.is_empty() {
-                        self.status = msg.join("; ");
-                    }
-                    reload = true;
-                }
-            }
-            if ui.button("Remove part").clicked() {
-                if let Some(f) = &file {
-                    let _ = edit::remove(f, &part.id);
-                    self.selected = None;
-                    reload = true;
-                }
-            }
-        });
-        if reload {
-            self.reload();
         }
     }
 
     fn left(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui.add_enabled(self.history.can_undo(), egui::Button::new("Undo")).clicked() {
+                if let Err(e) = self.history.undo() {
+                    self.status = e;
+                }
+                self.reload();
+            }
+            ui.toggle_value(&mut self.show_changes, "Changes");
+        });
+        if self.show_changes {
+            let ch = self.history.changes();
+            if ch.is_empty() {
+                ui.small("Nothing changed since opening.");
+            }
+            for (f, add, del) in ch {
+                ui.small(format!("{f}  +{add} -{del}"));
+            }
+        }
+        egui::CollapsingHeader::new("New aircraft").show(ui, |ui| {
+            let t = templates();
+            let name = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            egui::ComboBox::from_id_salt("template").selected_text(t.get(self.template).map(name).unwrap_or_else(|| "no templates found".into())).show_ui(ui, |ui| {
+                for (i, p) in t.iter().enumerate() {
+                    ui.selectable_value(&mut self.template, i, name(p));
+                }
+            });
+            ui.add(egui::TextEdit::singleline(&mut self.new_dir).hint_text("new folder"));
+            if ui.button("Create").clicked() && !self.new_dir.trim().is_empty() {
+                if let Some(src) = t.get(self.template) {
+                    match edit::copy_dir(src, Path::new(self.new_dir.trim())) {
+                        Ok(()) => {
+                            self.dir = self.new_dir.trim().to_owned();
+                            self.aircraft = None;
+                            self.history = edit::History::default();
+                            self.reload();
+                            self.fit = true;
+                        }
+                        Err(e) => self.status = e,
+                    }
+                }
+            }
+        });
+        ui.separator();
         let search = ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Search (Ctrl+K)"));
         if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::K)) {
             search.request_focus();
@@ -507,7 +607,10 @@ impl App {
         });
         if ui.button("Add").clicked() && !self.add_id.trim().is_empty() {
             if let (Some(f), Some((d, k))) = (files.get(self.add_file), self.add_kind.split_once('.')) {
-                match edit::add(Path::new(f), d, k, self.add_id.trim()) {
+                self.history.touch(Path::new(f));
+                let r = edit::add(Path::new(f), d, k, self.add_id.trim());
+                self.history.commit();
+                match r {
                     Ok(()) => {
                         let id = self.add_id.trim().to_owned();
                         self.reload();
@@ -547,28 +650,88 @@ impl App {
     fn engine_tab(&mut self, ui: &mut egui::Ui) {
         let Some(a) = &self.aircraft else { return };
         let base = PathBuf::from(&self.dir);
-        let engines: Vec<easyacft_lang::CheckedPart> = a.checked.parts.iter().filter(|p| p.domain == "engine").cloned().collect();
+        let engines: Vec<easyacft_lang::CheckedPart> = a.checked.parts.iter().filter(|p| p.domain == "engine" || p.domain == "fadec" || p.domain == "apu").cloned().collect();
         if engines.is_empty() {
             ui.label("No engines in this aircraft.");
         }
+        let th = self.theme;
         for p in engines {
             ui.heading(&p.id);
+            ui.label(format!("{}.{}", p.domain, p.kind));
             if p.kind == "gas_turbine" {
-                let g = easyacft_parts::engine::GasPath::new(easyacft_parts::engine::Params::from_part(&p, &base));
-                let opr: f64 = g.p.pr.iter().product();
-                ui.label(format!("Design point: TET {:.0} K, fuel {:.3} kg/s, pressure ratio {opr:.1}, thrust {:.1} kN", g.d.t4, g.d.wf, g.d.thrust / 1e3));
-                ui.label(format!("Turbine pressure ratios: HP {:.2}  IP {:.2}  LP {:.2}", g.d.pr_t[2], g.d.pr_t[1], g.d.pr_t[0]));
+                let params = easyacft_parts::engine::Params::from_part(&p, &base);
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().min(1100.0), 330.0), Sense::hover());
+                let painter = ui.painter_at(rect);
+                painter.rect_filled(rect, 0.0, th.paper);
+                let id = p.id.clone();
+                let get = |n: &str| self.get(&format!("{id}.{n}"));
+                engine_view::draw(&painter, rect, &params, &get, th.ink, th.faint, th.fill);
+                let g = easyacft_parts::engine::GasPath::new(params);
+                egui::CollapsingHeader::new(format!("{} design point", p.id)).show(ui, |ui| {
+                    egui::Grid::new(format!("d_{}", p.id)).show(ui, |ui| {
+                        for (k, v) in engine_view::design_rows(&g) {
+                            ui.label(k);
+                            ui.label(v);
+                            ui.end_row();
+                        }
+                    });
+                });
             }
             let spec = catalog::all().iter().find(|s| s.domain == p.domain && s.kind == p.kind).unwrap();
-            egui::Grid::new(format!("eng_{}", p.id)).show(ui, |ui| {
-                for (n, t) in spec.outputs {
-                    let v = self.get(&format!("{}.{n}", p.id)).unwrap_or(0.0);
-                    ui.label(*n);
-                    ui.label(unit(*t, v));
-                    ui.end_row();
-                }
+            egui::CollapsingHeader::new(format!("{} values", p.id)).default_open(p.kind != "gas_turbine").show(ui, |ui| {
+                egui::Grid::new(format!("eng_{}", p.id)).show(ui, |ui| {
+                    for (n, t) in spec.outputs {
+                        let v = self.get(&format!("{}.{n}", p.id)).unwrap_or(0.0);
+                        ui.label(*n);
+                        ui.label(unit(*t, v));
+                        ui.end_row();
+                    }
+                });
             });
             ui.separator();
+        }
+    }
+
+    fn computers_tab(&mut self, ui: &mut egui::Ui) {
+        let Some(a) = &self.aircraft else { return };
+        let rows: Vec<(usize, String, &'static str, &'static str)> = a.checked.parts.iter().enumerate().filter(|(_, p)| matches!(p.domain, "computer" | "data" | "sensor")).map(|(i, p)| (i, p.id.clone(), p.domain, p.kind)).collect();
+        if rows.is_empty() {
+            ui.label("No computers, data links or sensors in this aircraft.");
+            return;
+        }
+        let mut pick = None;
+        egui::Grid::new("computers").striped(true).show(ui, |ui| {
+            ui.strong("part");
+            ui.strong("kind");
+            ui.strong("state");
+            ui.end_row();
+            for (i, id, d, k) in rows {
+                if ui.link(&id).clicked() {
+                    pick = Some(i);
+                }
+                ui.label(format!("{d}.{k}"));
+                let g = |n: &str| self.get(&format!("{id}.{n}"));
+                let on = |n: &str| g(n).is_some_and(|v| v != 0.0);
+                let state = if on("failed") {
+                    "failed".to_owned()
+                } else {
+                    match (d, k) {
+                        ("computer", "unit") if on("booting") => "booting".into(),
+                        ("computer", "unit") if on("running") => format!("running, channel {:.0}{}", g("channel").unwrap_or(0.0), if on("bad_data") { ", bad data" } else if on("frozen") { ", frozen" } else { "" }),
+                        ("computer", "unit") => if on("powered") { "powered".into() } else { "off".into() },
+                        ("data", "link") => format!("{} {:.3}, status {:.0}, age {:.2} s", if on("valid") { "valid" } else { "stale" }, g("value").unwrap_or(0.0), g("status").unwrap_or(0.0), g("age").unwrap_or(0.0)),
+                        ("computer", "air_data") => format!("{} {:.0} kt {:.0} ft", if on("valid") { "valid" } else { "invalid" }, g("ias").unwrap_or(0.0) * 1.943_844, g("altitude").unwrap_or(0.0) / 0.3048),
+                        ("computer", "inertial") => if on("aligning") { "aligning".into() } else if on("aligned") { format!("aligned, drift {:.0} m", g("position_error").unwrap_or(0.0)) } else { "off".into() },
+                        _ => String::new(),
+                    }
+                };
+                ui.label(state);
+                ui.end_row();
+            }
+        });
+        if pick.is_some() {
+            self.selected = pick;
+            self.edits.clear();
         }
     }
 
@@ -624,12 +787,24 @@ impl App {
                 if ui.button("Save table").clicked() {
                     save = Some(k);
                 }
+                let nums: Vec<Vec<f64>> = rows.iter().filter_map(|r| r.iter().map(|c| c.parse::<f64>().ok()).collect::<Option<Vec<f64>>>()).collect();
+                if nums.len() >= 2 && nums[0].len() >= 2 {
+                    egui_plot::Plot::new(format!("tp{k}")).height(180.0).show(ui, |pu| {
+                        for col in 1..nums[0].len() {
+                            let pts: Vec<[f64; 2]> = nums.iter().filter(|r| r.len() > col).map(|r| [r[0], r[col]]).collect();
+                            pu.line(egui_plot::Line::new(egui_plot::PlotPoints::from(pts)).color(Color32::from_gray(40)));
+                        }
+                    });
+                }
             });
         }
         if let Some(k) = save {
             let (path, rows) = &self.tables[k];
             let text: String = rows.iter().map(|r| r.join(", ") + "\n").collect();
-            match std::fs::write(path, text) {
+            self.history.touch(path);
+            let r = std::fs::write(path, text);
+            self.history.commit();
+            match r {
                 Ok(()) => self.reload(),
                 Err(e) => self.status = e.to_string(),
             }
@@ -666,22 +841,6 @@ impl App {
             }
         });
     }
-}
-
-fn names_in(src: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    for ch in src.chars().chain(std::iter::once(' ')) {
-        if ch.is_alphanumeric() || ch == '_' || ch == '.' {
-            cur.push(ch);
-        } else {
-            if cur.contains('.') && cur.starts_with(|c: char| c.is_alphabetic() || c == '_') && !out.contains(&cur) {
-                out.push(cur.clone());
-            }
-            cur.clear();
-        }
-    }
-    out
 }
 
 fn scan_tables(dir: &Path) -> Vec<(PathBuf, Vec<Vec<String>>)> {
@@ -810,6 +969,54 @@ impl eframe::App for App {
                     ui.label(format!("t = {:.1} s", a.time));
                 }
                 ui.separator();
+                match self.trial.is_some() {
+                    false => {
+                        if ui.button("Try").on_hover_text("snapshot now; keep or discard what you do next").clicked() {
+                            self.trial = self.aircraft.as_ref().map(|a| a.snapshot());
+                        }
+                    }
+                    true => {
+                        if ui.button("Keep").clicked() {
+                            self.trial = None;
+                        }
+                        if ui.button("Discard").clicked() {
+                            if let (Some(a), Some(s)) = (&mut self.aircraft, self.trial.take()) {
+                                a.restore(&s);
+                            }
+                        }
+                    }
+                }
+                if self.recording.is_none() {
+                    if ui.button("Record test").clicked() {
+                        self.recording = Some(Vec::new());
+                        self.record_start = self.aircraft.as_ref().map_or(0.0, |a| a.time);
+                    }
+                } else if ui.button("Stop and save test").clicked() {
+                    let steps = self.recording.take().unwrap_or_default();
+                    if let Some(a) = &self.aircraft {
+                        let end = a.time - self.record_start;
+                        let mut text = String::new();
+                        for (t, n, v) in steps {
+                            text += &format!("[[step]]\nat = \"{t:.2} s\"\nset = {{ \"{n}\" = {v} }}\n\n");
+                        }
+                        for (i, p) in a.checked.parts.iter().enumerate() {
+                            if p.domain == "electrical" && p.kind == "bus" {
+                                let on = a.slots[a.checked.slots.index[&format!("{}.powered", p.id)]] != 0.0;
+                                text += &format!("[[expect]]\nat = \"{end:.2} s\"\nthat = \"{}{}.powered\"\n\n", if on { "" } else { "!" }, p.id);
+                            }
+                            let _ = i;
+                        }
+                        let dir = Path::new(&self.dir).join("tests");
+                        let _ = std::fs::create_dir_all(&dir);
+                        let n = std::fs::read_dir(&dir).map(|r| r.count()).unwrap_or(0) + 1;
+                        let f = dir.join(format!("recorded-{n}.toml"));
+                        self.status = match std::fs::write(&f, text) {
+                            Ok(()) => format!("saved {}; run it with easyacft test", f.display()),
+                            Err(e) => e.to_string(),
+                        };
+                    }
+                }
+                ui.separator();
                 let attached = self.live.as_ref().is_some_and(|l| l.connected);
                 if ui.button(if attached { "Detach from X-Plane" } else { "Attach to X-Plane" }).clicked() {
                     self.live = if attached { None } else { live::Client::connect() };
@@ -820,7 +1027,7 @@ impl eframe::App for App {
                 ui.label(&self.status);
             });
             ui.horizontal(|ui| {
-                for (t, n) in [(Tab::Diagram, "Systems"), (Tab::Engine, "Engines"), (Tab::Plot, "Plots"), (Tab::Log, "Maintenance log"), (Tab::Health, "Health"), (Tab::Tables, "Tables"), (Tab::Fit, "Engine fit"), (Tab::Compare, "Compare")] {
+                for (t, n) in [(Tab::Diagram, "Systems"), (Tab::Engine, "Engines"), (Tab::Computers, "Computers"), (Tab::Plot, "Plots"), (Tab::Log, "Maintenance log"), (Tab::Health, "Health"), (Tab::Tables, "Tables"), (Tab::Fit, "Engine fit"), (Tab::Compare, "Compare")] {
                     ui.selectable_value(&mut self.tab, t, n);
                 }
                 if self.tab == Tab::Diagram {
@@ -832,6 +1039,23 @@ impl eframe::App for App {
                     }
                     if ui.button("Fit").clicked() {
                         self.fit = true;
+                        self.zoomed = false;
+                    }
+                }
+                if self.timeline.len() > 1 {
+                    ui.separator();
+                    let last = self.timeline.len() - 1;
+                    let mut k = self.scrub.unwrap_or(last);
+                    let label = format!("replay {:.0} s", self.timeline[k].0 - self.timeline[last].0);
+                    if ui.add(egui::Slider::new(&mut k, 0..=last).show_value(false).text(label)).changed() {
+                        self.scrub = Some(k);
+                        if let Some(a) = &mut self.aircraft {
+                            a.restore(&self.timeline[k].1);
+                        }
+                    }
+                    if self.scrub.is_some() && ui.button("Go on from here").clicked() {
+                        let k = self.scrub.take().unwrap();
+                        self.timeline.truncate(k + 1);
                     }
                 }
             });
@@ -844,7 +1068,7 @@ impl eframe::App for App {
             });
         }
         egui::SidePanel::left("left").default_width(220.0).show(ctx, |ui| self.left(ui));
-        egui::SidePanel::right("right").default_width(340.0).show(ctx, |ui| {
+        egui::SidePanel::right("right").default_width(360.0).max_width(460.0).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
         });
         egui::CentralPanel::default().show(ctx, |ui| match self.tab {
@@ -877,6 +1101,9 @@ impl eframe::App for App {
                 egui::ScrollArea::vertical().show(ui, |ui| self.tables_tab(ui));
             }
             Tab::Fit => self.fit_tab(ui),
+            Tab::Computers => {
+                egui::ScrollArea::vertical().show(ui, |ui| self.computers_tab(ui));
+            }
             Tab::Compare => self.compare_tab(ui),
         });
         ctx.request_repaint_after(std::time::Duration::from_millis(33));
@@ -978,6 +1205,7 @@ fn main() -> eframe::Result<()> {
                 Some("tables") => Tab::Tables,
                 Some("fit") => Tab::Fit,
                 Some("compare") => Tab::Compare,
+                Some("computers") => Tab::Computers,
                 _ => Tab::Diagram,
             };
             app.selected = select.and_then(|id| app.aircraft.as_ref().and_then(|a| a.checked.find(&id)));

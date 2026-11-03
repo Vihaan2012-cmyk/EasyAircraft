@@ -1,6 +1,7 @@
 //! Runs an EasyAcft aircraft inside X-Plane: dataref bindings, published values, commands, reload.
 
 pub mod live;
+pub mod panel;
 pub mod xplm;
 
 use easyacft_parts::Aircraft;

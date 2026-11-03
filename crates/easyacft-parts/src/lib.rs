@@ -10,6 +10,7 @@ pub mod fuel;
 pub mod hydraulic;
 pub mod logic;
 pub mod pneumatic;
+pub mod scenario;
 pub mod systems;
 pub mod util;
 

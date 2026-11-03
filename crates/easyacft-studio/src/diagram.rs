@@ -49,7 +49,7 @@ pub fn text_w(s: &str) -> f32 {
     s.chars().count() as f32 * 6.4
 }
 
-fn role(p: &CheckedPart) -> Option<(Role, &'static str)> {
+pub fn role(p: &CheckedPart) -> Option<(Role, &'static str)> {
     Some(match (p.domain, p.kind) {
         ("electrical", "bus") | ("hydraulic", "circuit") | ("fuel", "line") | ("fuel", "tank") | ("pneumatic", "duct") => (Role::Hub, ""),
         ("electrical", "battery" | "generator" | "ext_power") => (Role::Source, "bus"),
@@ -63,7 +63,7 @@ fn role(p: &CheckedPart) -> Option<(Role, &'static str)> {
     })
 }
 
-fn edge_ends(p: &CheckedPart) -> Option<(usize, usize)> {
+pub fn edge_ends(p: &CheckedPart) -> Option<(usize, usize)> {
     match (p.domain, p.kind) {
         ("electrical", "contactor" | "breaker") | ("hydraulic", "ptu") | ("fuel", "valve") | ("pneumatic", "valve") => {
             let e = p.parts("between");

@@ -47,6 +47,11 @@ fn tables_mut(doc: &mut DocumentMut) -> Vec<&mut Table> {
 
 /// Sets `key` of part `id` in `file`; true if the part was found. Counted parts change for every copy.
 pub fn set(file: &Path, id: &str, key: &str, text: &str) -> Result<bool, String> {
+    set_as(file, id, key, text, false)
+}
+
+/// As `set`; `string` writes the text as a TOML string whatever it looks like.
+pub fn set_as(file: &Path, id: &str, key: &str, text: &str, string: bool) -> Result<bool, String> {
     let src = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
     let mut doc: DocumentMut = src.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
     let mut found = false;
@@ -55,7 +60,7 @@ pub fn set(file: &Path, id: &str, key: &str, text: &str) -> Result<bool, String>
             if text.trim().is_empty() {
                 t.remove(key);
             } else {
-                t[key] = value(parse_value(text));
+                t[key] = value(if string { Value::from(text.trim()) } else { parse_value(text) });
             }
             found = true;
             break;
@@ -104,6 +109,97 @@ pub fn remove(file: &Path, id: &str) -> Result<bool, String> {
         std::fs::write(file, doc.to_string()).map_err(|e| e.to_string())?;
     }
     Ok(found)
+}
+
+/// Undo for every file Studio writes, and what changed since the folder was opened.
+#[derive(Default)]
+pub struct History {
+    opened: std::collections::BTreeMap<std::path::PathBuf, String>,
+    undo: Vec<Vec<(std::path::PathBuf, String)>>,
+    pending: Vec<(std::path::PathBuf, String)>,
+}
+
+impl History {
+    /// Call before writing `file`; edits until `commit` undo together.
+    pub fn touch(&mut self, file: &Path) {
+        let text = std::fs::read_to_string(file).unwrap_or_default();
+        self.opened.entry(file.to_path_buf()).or_insert_with(|| text.clone());
+        if !self.pending.iter().any(|(p, _)| p == file) {
+            self.pending.push((file.to_path_buf(), text));
+        }
+    }
+
+    pub fn commit(&mut self) {
+        if !self.pending.is_empty() {
+            self.undo.push(std::mem::take(&mut self.pending));
+        }
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn undo(&mut self) -> Result<(), String> {
+        let Some(step) = self.undo.pop() else { return Ok(()) };
+        for (p, t) in step {
+            std::fs::write(&p, t).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Files changed since opening, with lines added and removed.
+    pub fn changes(&self) -> Vec<(String, usize, usize)> {
+        self.opened
+            .iter()
+            .filter_map(|(p, old)| {
+                let new = std::fs::read_to_string(p).unwrap_or_default();
+                if &new == old {
+                    return None;
+                }
+                let a: Vec<&str> = old.lines().collect();
+                let b: Vec<&str> = new.lines().collect();
+                let added = b.iter().filter(|l| !a.contains(l)).count();
+                let removed = a.iter().filter(|l| !b.contains(l)).count();
+                Some((p.display().to_string(), added, removed))
+            })
+            .collect()
+    }
+}
+
+/// Adds a dataref binding to the aircraft's main file.
+pub fn bind(file: &Path, dataref: &str, path: &str, write: bool, unit: &str) -> Result<(), String> {
+    let src = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
+    let mut doc: DocumentMut = src.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    let b = doc.as_table_mut().entry("bindings").or_insert(Item::Table(Table::new()));
+    let Some(bt) = b.as_table_mut() else { return Err("`bindings` is not a section".into()) };
+    if unit.is_empty() && !write {
+        bt[dataref] = value(path);
+    } else {
+        let mut t = toml_edit::InlineTable::new();
+        t.insert(if write { "to" } else { "from" }, path.into());
+        if !unit.is_empty() {
+            t.insert("unit", unit.into());
+        }
+        bt[dataref] = value(t);
+    }
+    std::fs::write(file, doc.to_string()).map_err(|e| e.to_string())
+}
+
+/// Copies a template aircraft folder to a new one.
+pub fn copy_dir(from: &Path, to: &Path) -> Result<(), String> {
+    if to.join("aircraft.toml").exists() {
+        return Err(format!("{} already has an aircraft", to.display()));
+    }
+    std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
+    for e in std::fs::read_dir(from).map_err(|e| e.to_string())?.flatten() {
+        let (src, dst) = (e.path(), to.join(e.file_name()));
+        if src.is_dir() {
+            copy_dir(&src, &dst)?;
+        } else if src.file_name().is_some_and(|n| n != "studio-layout.toml" && n != "persistent.txt") {
+            std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

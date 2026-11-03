@@ -12,6 +12,9 @@ const CODES: &[(&str, &str)] = &[
     ("E0007", "A part with `count` needs `{n}` in its id so each copy has its own name."),
     ("E0008", "A setting must be text, a number, true/false or a list."),
     ("E0009", "Two parts have the same id."),
+    ("E0010", "A [variant] file must name the aircraft it changes with `of`."),
+    ("E0011", "A variant removes a part the base aircraft does not have."),
+    ("E0012", "A variant changes a part into a different kind; remove it and add a new one instead."),
     ("E0101", "The part kind does not exist. `easyacft kinds` lists them."),
     ("E0102", "The part has no setting with this name."),
     ("E0103", "A setting has the wrong type or unit."),
@@ -24,7 +27,8 @@ const CODES: &[(&str, &str)] = &[
 fn usage() -> ExitCode {
     eprintln!("usage:\n  easyacft check <aircraft dir>\n  easyacft sim <aircraft dir> [--for 10s] [--every 1s] [--set name=value]... [--print name,name]\n  easyacft names <aircraft dir>\n  easyacft kinds\n  easyacft explain <code>
   easyacft fit <aircraft dir> <engine id> <points.toml> [--tune name,name]
-  easyacft import <file.acf | MSFS aircraft folder> <new folder>");
+  easyacft import <file.acf | MSFS aircraft folder> <new folder>
+  easyacft test <aircraft dir> [scenario.toml]...   (default: every file in <dir>/tests)");
     ExitCode::from(2)
 }
 
@@ -106,6 +110,47 @@ fn main() -> ExitCode {
                     eprintln!("{e}");
                     ExitCode::FAILURE
                 }
+            }
+        }
+        Some("test") if args.len() >= 2 => {
+            let mut files: Vec<PathBuf> = args[2..].iter().map(PathBuf::from).collect();
+            if files.is_empty() {
+                let dir = PathBuf::from(&args[1]).join("tests");
+                files = std::fs::read_dir(&dir).map(|r| r.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect()).unwrap_or_default();
+                files.sort();
+            }
+            if files.is_empty() {
+                eprintln!("no scenarios: put .toml files in {}/tests or name them", args[1]);
+                return ExitCode::FAILURE;
+            }
+            let mut failed = 0;
+            for f in &files {
+                let Some(mut a) = load(&args[1]) else { return ExitCode::FAILURE };
+                let text = match std::fs::read_to_string(f) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("{}: {e}", f.display());
+                        return ExitCode::FAILURE;
+                    }
+                };
+                match easyacft_parts::scenario::run(&mut a, &text, 1.0 / 60.0) {
+                    Ok(out) => {
+                        for o in out {
+                            println!("{} {} at {:.1} s: {}", if o.passed { "ok  " } else { "FAIL" }, f.display(), o.at, o.that);
+                            failed += !o.passed as usize;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("{}: {e}", f.display());
+                        failed += 1;
+                    }
+                }
+            }
+            if failed > 0 {
+                eprintln!("{failed} failed");
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
             }
         }
         Some("sim") if args.len() >= 2 => {

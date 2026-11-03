@@ -426,6 +426,7 @@ version = "0.1.0"
 dependencies = [
  "easyacft-core",
  "easyacft-lang",
+ "toml_edit 0.22.23",
 ]
 
 [[package]]
@@ -452,6 +453,7 @@ name = "easyacft-xp"
 version = "0.1.0"
 dependencies = [
  "easyacft-core",
+ "easyacft-lang",
  "easyacft-parts",
 ]
 

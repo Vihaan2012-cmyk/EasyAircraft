@@ -97,6 +97,7 @@ struct Loader {
     model: Model,
     diags: Vec<Diagnostic>,
     seen: Vec<PathBuf>,
+    variant: bool,
 }
 
 const RESERVED: [&str; 5] = ["aircraft", "include", "bindings", "rates", "variant"];
@@ -127,6 +128,28 @@ impl Loader {
             }
         };
         let root = doc.as_table();
+        let was_variant = self.variant;
+        if let Some(v) = root.get("variant").and_then(Item::as_table) {
+            match v.get("of").and_then(Item::as_str) {
+                Some(of) => {
+                    let base = path.parent().unwrap_or(Path::new(".")).join(of);
+                    let base = if base.is_dir() { base.join("aircraft.toml") } else { base };
+                    self.file(&base, Some((id, span(v.get("of").unwrap()))));
+                }
+                None => self.diags.push(Diagnostic::error("E0010", "a [variant] needs `of`, the aircraft it changes", id, span(root.get("variant").unwrap())).help("for example `of = \"../twin-jet\"`")),
+            }
+            if let Some(r) = v.get("remove").and_then(Item::as_array) {
+                for x in r.iter() {
+                    let Some(rid) = x.as_str() else { continue };
+                    let before = self.model.parts.len();
+                    self.model.parts.retain(|p| p.id != rid);
+                    if self.model.parts.len() == before {
+                        self.diags.push(Diagnostic::error("E0011", format!("the base aircraft has no `{rid}` to remove"), id, value_span(x)));
+                    }
+                }
+            }
+            self.variant = true;
+        }
         if let Some(a) = root.get("aircraft").and_then(Item::as_table) {
             if let Some(n) = a.get("name").and_then(Item::as_str) {
                 self.model.name = n.to_owned();
@@ -168,6 +191,7 @@ impl Loader {
             };
             self.domain(domain, table, id);
         }
+        self.variant = was_variant;
     }
 
     fn bindings(&mut self, b: &Table, id: usize) {
@@ -239,6 +263,23 @@ impl Loader {
                 }
                 for n in 1..=count {
                     let pid = raw_id.replace("{n}", &n.to_string());
+                    if self.variant {
+                        if let Some(prev) = self.model.parts.iter_mut().find(|p| p.id == pid) {
+                            if prev.domain != domain || prev.kind != kind {
+                                let msg = format!("`{pid}` is a {}.{} in the base aircraft, not a {domain}.{kind}", prev.domain, prev.kind);
+                                self.diags.push(Diagnostic::error("E0012", msg, id, span(t.get("id").unwrap())));
+                                continue;
+                            }
+                            for f in &fields {
+                                let f = FieldDecl { value: substitute(&f.value, n), ..f.clone() };
+                                match prev.fields.iter_mut().find(|x| x.key == f.key) {
+                                    Some(x) => *x = f,
+                                    None => prev.fields.push(f),
+                                }
+                            }
+                            continue;
+                        }
+                    }
                     if let Some(prev) = self.model.parts.iter().find(|p| p.id == pid) {
                         let at = prev.span.clone();
                         let pf = prev.file;
@@ -256,7 +297,7 @@ impl Loader {
 /// Loads `aircraft.toml` (or the file given) and everything it includes.
 pub fn load(path: &Path) -> (Model, Vec<Diagnostic>) {
     let root = if path.is_dir() { path.join("aircraft.toml") } else { path.to_path_buf() };
-    let mut l = Loader { model: Model::default(), diags: Vec::new(), seen: Vec::new() };
+    let mut l = Loader { model: Model::default(), diags: Vec::new(), seen: Vec::new(), variant: false };
     l.file(&root, None);
     (l.model, l.diags)
 }
@@ -308,5 +349,40 @@ mod tests {
         assert_eq!(d[0].code, "E0002");
         let (_, d) = load_str("inc", "include = [\"missing.toml\"]\n");
         assert_eq!(d[0].code, "E0001");
+    }
+
+    #[test]
+    fn variants_change_add_and_remove_parts() {
+        let dir = std::env::temp_dir().join(format!("easyacft-variant-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("base")).unwrap();
+        std::fs::create_dir_all(dir.join("long")).unwrap();
+        std::fs::write(dir.join("base/aircraft.toml"), "[aircraft]
+name = \"Base\"
+[[electrical.bus]]
+id = \"dc{n}\"
+count = 2
+nominal = \"28 V\"
+[[electrical.bus]]
+id = \"spare\"
+").unwrap();
+        std::fs::write(dir.join("long/aircraft.toml"), "[variant]
+of = \"../base\"
+remove = [\"spare\"]
+[aircraft]
+name = \"Long\"
+[[electrical.bus]]
+id = \"dc2\"
+nominal = \"24 V\"
+[[electrical.bus]]
+id = \"dc3\"
+").unwrap();
+        let (m, d) = load(&dir.join("long"));
+        assert!(d.is_empty(), "{d:?}");
+        assert_eq!(m.name, "Long");
+        let ids: Vec<&str> = m.parts.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, ["dc1", "dc2", "dc3"]);
+        assert_eq!(m.part("dc2").unwrap().get("nominal").unwrap().value, Field::Str("24 V".into()));
+        assert_eq!(m.part("dc1").unwrap().get("nominal").unwrap().value, Field::Str("28 V".into()));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
