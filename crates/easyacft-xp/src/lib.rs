@@ -1,5 +1,6 @@
 //! Runs an EasyAcft aircraft inside X-Plane: dataref bindings, published values, commands, reload.
 
+pub mod live;
 pub mod xplm;
 
 use easyacft_parts::Aircraft;
@@ -47,6 +48,7 @@ pub struct Runner {
     last_time: Option<f64>,
     forces: Vec<(usize, [f64; 3], [f64; 3], f64, bool)>,
     force_refs: Option<([Ref; 6], [Ref; 6], Ref)>,
+    pub live: live::Server,
 }
 
 const PLUG: [&str; 6] = ["fside_plug_acf", "fnrml_plug_acf", "faxil_plug_acf", "L_plug_acf", "M_plug_acf", "N_plug_acf"];
@@ -63,7 +65,7 @@ impl Runner {
                 if !report.diagnostics.is_empty() {
                     sim.log(&report.render());
                 }
-                let mut r = Runner { aircraft, dir: dir.to_path_buf(), bound: Vec::new(), stamps: Vec::new(), reload_s: 0.0, time_ref: sim.find("sim/time/total_flight_time_sec"), last_time: None, forces: Vec::new(), force_refs: None };
+                let mut r = Runner { aircraft, dir: dir.to_path_buf(), bound: Vec::new(), stamps: Vec::new(), reload_s: 0.0, time_ref: sim.find("sim/time/total_flight_time_sec"), last_time: None, forces: Vec::new(), force_refs: None, live: live::Server::start() };
                 r.bind(sim);
                 Some(r)
             }
@@ -134,6 +136,7 @@ impl Runner {
             sim.set(b.dataref, b.index, (self.aircraft.slots[b.slot] - b.offset) / b.factor);
         }
         self.apply_forces(sim);
+        self.live.serve(&mut self.aircraft, frame_s);
         self.reload_s += frame_s.max(0.0);
         if self.reload_s >= 1.0 {
             self.reload_s = 0.0;

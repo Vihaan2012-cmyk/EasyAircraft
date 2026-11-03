@@ -68,6 +68,9 @@ pub struct CheckedPart {
     pub id: String,
     pub values: Vec<(&'static str, Value)>,
     pub slot: usize,
+    /// Source text of each expression setting, for explaining a state.
+    pub exprs: Vec<(&'static str, String)>,
+    pub file: usize,
 }
 
 impl CheckedPart {
@@ -193,7 +196,12 @@ pub fn check(model: &Model, catalog: &dyn Catalog) -> (Checked, Vec<Diagnostic>)
         for (name, ty) in s.outputs {
             out.slots.add(format!("{}.{name}", p.id), *ty);
         }
-        out.parts.push(CheckedPart { domain: s.domain, kind: s.kind, id: p.id.clone(), values: Vec::new(), slot });
+        let exprs = s.fields.iter().filter(|f| matches!(f.kind, Kind::Expr(_))).filter_map(|f| match p.get(f.key).map(|d| &d.value).or(None) {
+            Some(Field::Str(t)) => Some((f.key, t.clone())),
+            _ => f.default.map(|d| (f.key, d.to_owned())),
+        });
+        let exprs = exprs.collect();
+        out.parts.push(CheckedPart { domain: s.domain, kind: s.kind, id: p.id.clone(), values: Vec::new(), slot, exprs, file: p.file });
     }
     let ids: Vec<String> = out.parts.iter().map(|p| p.id.clone()).collect();
     let index: HashMap<&str, usize> = ids.iter().enumerate().map(|(i, p)| (p.as_str(), i)).collect();
