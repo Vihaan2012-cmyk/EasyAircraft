@@ -100,6 +100,7 @@ pub const SPEC: PartSpec = PartSpec {
         ("ozone", N),
         ("ozone_average", N),
         ("ozone_high", B),
+        ("co2_high", B),
         ("pmv", N),
         ("ppd", N),
         ("smoke", N),
@@ -144,6 +145,7 @@ const OUTPUTS: &[&str] = &[
     "ozone",
     "ozone_average",
     "ozone_high",
+    "co2_high",
     "pmv",
     "ppd",
     "smoke",
@@ -172,6 +174,8 @@ const FURNISHING_C: f64 = 1200.0;
 const FURNISHING_UA_PER_KG: f64 = 0.6;
 /// Skin recovery factor on the fuselage boundary layer.
 const SKIN_RECOVERY: f64 = 0.89;
+/// Carbon dioxide limit, ppm.
+const CO2_LIMIT: f64 = 5000.0;
 
 pub struct Zone {
     pub mixer: usize,
@@ -529,6 +533,8 @@ impl Zone {
         s.put(slots, "ozone", self.ozone.sea_level(cabin_p));
         s.put(slots, "ozone_average", self.ozone.twa);
         s.flag(slots, "ozone_high", self.ozone.sea_level(cabin_p) > super::quality::OZONE_PEAK || self.ozone.twa > super::quality::OZONE_TWA);
+        // FAR 25.831 holds carbon dioxide to half a percent by volume, sea-level equivalent.
+        s.flag(slots, "co2_high", self.co2.max(seat_co2) * cabin_p / P_SL > CO2_LIMIT);
         s.put(slots, "pmv", vote);
         s.put(slots, "ppd", ppd);
         s.put(slots, "smoke", detector);

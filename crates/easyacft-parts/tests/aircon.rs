@@ -213,6 +213,7 @@ fn packs_cool_a_hot_cabin_on_the_ground() {
     let strat = get(&a, "fwd.stratification");
     assert!(strat.abs() < 4.0, "head-to-ankle {strat:.2} K in the resolved zone");
     assert!(get(&a, "fwd.co2") < 1500.0 && get(&a, "fwd.co2") > 420.0, "{:.0} ppm", get(&a, "fwd.co2"));
+    assert_eq!(a.get("fwd.co2_high"), Some(0.0));
     assert!(get(&a, "fus.differential").abs() < 0.3 * PSI, "outflow valve open on the ground");
     assert!(get(&a, "avncs.equipment_temperature") < 340.0);
     all_finite(&a).unwrap();
@@ -503,3 +504,15 @@ fn without_anti_ice_turbine_fog_ices_the_condenser() {
     all_finite(&a).unwrap();
 }
 
+
+#[test]
+fn a_full_cabin_with_no_fresh_air_breaks_the_carbon_dioxide_limit() {
+    let mut a = aircraft();
+    ground(&mut a);
+    a.set("packs_on.on", 0.0);
+    a.set("pax.value", 400.0);
+    for _ in 0..(3600 * 5) {
+        a.step(0.2);
+    }
+    assert_eq!(a.get("aft.co2_high"), Some(1.0), "no fresh air for an hour with a full cabin: {:.0} ppm", get(&a, "aft.co2"));
+}
