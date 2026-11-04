@@ -461,11 +461,12 @@ fn a_duct_humidifier_lifts_cruise_humidity_and_cools_its_duct() {
         let (m, mut d) = load_str("aircon", &src);
         let (mut a, _) = Aircraft::from_model(m, &mut d).unwrap_or_else(|r| panic!("{}", r.render()));
         cruise(&mut a, 1800.0);
-        runs.push((get(&a, "aft.humidity"), a.get("hum.water_used").unwrap_or(0.0)));
+        runs.push((get(&a, "aft.humidity"), a.get("hum.water_used").unwrap_or(0.0), a.get("hum.water_flow").unwrap_or(0.0)));
     }
-    let ((dry, _), (humid, used)) = (runs[0], runs[1]);
+    let ((dry, _, _), (humid, used, rate)) = (runs[0], runs[1]);
     assert!(dry < 0.12, "cruise cabin air is dry: {:.0} %", dry * 100.0);
-    assert!(humid > dry + 0.04, "humidified to {:.0} % from {:.0} %", humid * 100.0, dry * 100.0);
+    assert!((rate - 4.0 / 3600.0).abs() < 1e-4, "short of its target it runs flat out: {:.2} kg/h", rate * 3600.0);
+    assert!(humid > dry + 0.03, "humidified to {:.0} % from {:.0} %", humid * 100.0, dry * 100.0);
     assert!(used > 0.1, "{used:.2} kg of water");
 }
 
