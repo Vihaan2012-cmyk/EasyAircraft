@@ -42,6 +42,7 @@ pub static SPECS: &[PartSpec] = &[
             opt("start_fuel", Kind::Number, "0.06", "start fuel at light-off, share of design fuel flow; it rises fourfold by starter cutout"),
             opt("channel_a_failed", WHEN, "false", "channel A lost"),
             opt("channel_b_failed", WHEN, "false", "channel B lost"),
+            opt("auto_relight", Kind::Bool, "true", "ignition comes on by itself when the engine flames out while running"),
         ],
         outputs: &[
             ("fuel_command", MF),
@@ -55,26 +56,9 @@ pub static SPECS: &[PartSpec] = &[
             ("limiting", B),
             ("reverser", N),
             ("failed", B),
+            ("flameout", B),
+            ("egt_exceedance", T),
         ],
-    },
-    PartSpec {
-        domain: "apu",
-        kind: "unit",
-        help: "An auxiliary power unit with its controller.",
-        fields: &[
-            opt("master", WHEN, "false", "APU master switch"),
-            opt("start", WHEN, "false", "start button"),
-            opt("start_time", Kind::Quantity(Dim::TIME), "45 s", "time to full speed"),
-            opt("bleed_load", Kind::Expr(MF), "0 kg/s", "bleed taken"),
-            opt("bleed_rating", Kind::Quantity(Dim::MASS_FLOW), "1.2 kg/s", "most bleed at full speed"),
-            opt("generator_load", Kind::Expr(Type::Num(Dim::POWER)), "0 W", "generator load"),
-            opt("generator_rating", Kind::Quantity(Dim::POWER), "90 kW", "generator rating"),
-            opt("egt_limit", Kind::Quantity(Dim::TEMPERATURE), "950 K", "protective shutdown EGT"),
-            opt("shutdown_when", WHEN, "false", "other protective shutdowns: fire, low oil, overspeed"),
-            opt("fuel_flow", Kind::Quantity(Dim::MASS_FLOW), "0.035 kg/s", "fuel at full load"),
-            opt("cooldown", Kind::Quantity(Dim::TIME), "60 s", "run-on after master off with bleed used"),
-        ],
-        outputs: &[("n", N), ("egt", T), ("starting", B), ("running", B), ("available", B), ("shutdown", B), ("fuel_flow", MF), ("failed", B)],
     },
 ];
 
@@ -96,23 +80,15 @@ struct Fadec {
     timer: f64,
     egt_start: f64,
     rev: f64,
+    relight: bool,
+    exceed: f64,
     s: Slots,
 }
 
-struct Apu {
-    e: [Option<Expr>; 5],
-    k: [f64; 6],
-    n: f64,
-    egt: f64,
-    running: bool,
-    shutdown: bool,
-    cool: f64,
-    s: Slots,
-}
 
 pub struct Control {
     fadecs: Vec<Fadec>,
-    apus: Vec<Apu>,
+    apus: Vec<crate::apu::Apu>,
 }
 
 fn slot(c: &Checked, p: &CheckedPart, field: &str, out: &str) -> Option<usize> {
@@ -151,19 +127,12 @@ impl Control {
                         timer: 0.0,
                         egt_start: 0.0,
                         rev: 0.0,
-                        s: Slots::of(p, &["fuel_command", "starter", "ignition", "target", "state", "aborted", "channel", "fault", "limiting", "reverser", "failed"]),
+                        relight: p.flag("auto_relight"),
+                        exceed: 0.0,
+                        s: Slots::of(p, &["fuel_command", "starter", "ignition", "target", "state", "aborted", "channel", "fault", "limiting", "reverser", "failed", "flameout", "egt_exceedance"]),
                     });
                 }
-                ("apu", "unit") => ctl.apus.push(Apu {
-                    e: ["master", "start", "bleed_load", "generator_load", "shutdown_when"].map(|k| expr_of(p, k)),
-                    k: [p.num("start_time").max(1.0), p.num("bleed_rating").max(1e-3), p.num("generator_rating").max(1.0), p.num("egt_limit"), p.num("fuel_flow"), p.num("cooldown")],
-                    n: 0.0,
-                    egt: 288.15,
-                    running: false,
-                    shutdown: false,
-                    cool: 0.0,
-                    s: Slots::of(p, &["n", "egt", "starting", "running", "available", "shutdown", "fuel_flow", "failed"]),
-                }),
+                ("apu", "unit") => ctl.apus.push(crate::apu::Apu::new(c, p)),
                 _ => {}
             }
         }
@@ -260,6 +229,9 @@ impl Domain for Control {
                             f.state = OFF;
                             f.wf = 0.0;
                         }
+                        if slots[f.engine[3]] == 0.0 && f.relight {
+                            ignition = true;
+                        }
                     }
                     _ => {
                         f.wf = 0.0;
@@ -280,62 +252,27 @@ impl Domain for Control {
             f.s.flag(slots, "fault", a_bad || b_bad);
             f.s.flag(slots, "limiting", limiting);
             f.s.put(slots, "reverser", f.rev);
+            f.s.flag(slots, "flameout", f.state == RUN && slots[f.engine[3]] == 0.0);
+            if f.state == RUN && egt > egt_lim {
+                f.exceed = f.exceed.max(egt - egt_lim);
+            }
+            f.s.put(slots, "egt_exceedance", f.exceed);
         }
         for a in &mut self.apus {
-            let master = yes(&mut a.e[0], slots, dt) && !a.s.on(slots, "failed");
-            let start = yes(&mut a.e[1], slots, dt);
-            let bleed = ev(&mut a.e[2], slots, dt).max(0.0) / a.k[1];
-            let gen = ev(&mut a.e[3], slots, dt).max(0.0) / a.k[2];
-            let protect = yes(&mut a.e[4], slots, dt) || a.egt > a.k[3];
-            if protect && (a.running || a.n > 0.0) {
-                a.shutdown = true;
-                a.running = false;
-            }
-            if master && start && !a.shutdown {
-                a.running = true;
-            }
-            if !master {
-                if a.running && bleed > 0.0 {
-                    a.cool += dt;
-                }
-                if !(a.running && bleed > 0.0 && a.cool < a.k[5]) {
-                    a.running = false;
-                    a.cool = 0.0;
-                }
-                a.shutdown = false;
-            }
-            let goal = if a.running { 1.0 } else { 0.0 };
-            let rate = if a.running { 1.0 / a.k[0] } else { 1.0 / 20.0 };
-            a.n = if a.n < goal { (a.n + rate * dt).min(goal) } else { (a.n - rate * dt).max(goal) };
-            let lit = a.running && a.n > 0.07;
-            let egt_t = if lit {
-                if a.n < 0.95 { 750.0 + 250.0 * (a.n / 0.95) - 200.0 * a.n } else { 680.0 + 120.0 * bleed + 80.0 * gen }
-            } else {
-                288.15
-            };
-            a.egt += (egt_t - a.egt) * (1.0 - (-dt / 3.0).exp());
-            a.s.put(slots, "n", a.n * 100.0);
-            a.s.put(slots, "egt", a.egt);
-            a.s.flag(slots, "starting", a.running && a.n < 0.95);
-            a.s.flag(slots, "running", a.running);
-            a.s.flag(slots, "available", a.running && a.n >= 0.95);
-            a.s.flag(slots, "shutdown", a.shutdown);
-            a.s.put(slots, "fuel_flow", if lit { a.k[4] * (0.4 + 0.4 * bleed + 0.2 * gen) } else { 0.0 });
+            a.step(slots, dt);
         }
     }
 
     fn state(&self) -> Vec<f64> {
         let mut p = Packer::default();
         for f in &self.fadecs {
-            for v in [f.state, f.wf, f.integral, f.timer, f.egt_start, f.rev] {
+            for v in [f.state, f.wf, f.integral, f.timer, f.egt_start, f.rev, f.exceed] {
                 p.put(v);
             }
         }
-        for a in &self.apus {
-            for v in [a.n, a.egt, a.running as u8 as f64, a.shutdown as u8 as f64, a.cool] {
-                p.put(v);
-            }
-        }
+        let mut v = Vec::new();
+        self.apus.iter().for_each(|a| a.state(&mut v));
+        v.into_iter().for_each(|x| p.put(x));
         p.0
     }
 
@@ -348,13 +285,10 @@ impl Domain for Control {
             f.timer = p.take();
             f.egt_start = p.take();
             f.rev = p.take();
+            f.exceed = p.take();
         }
-        for a in &mut self.apus {
-            a.n = p.take();
-            a.egt = p.take();
-            a.running = p.take() != 0.0;
-            a.shutdown = p.take() != 0.0;
-            a.cool = p.take();
-        }
+        let rest: Vec<f64> = (0..).map_while(|_| (p.1 < p.0.len()).then(|| p.take())).collect();
+        let mut it = rest.into_iter();
+        self.apus.iter_mut().for_each(|a| a.restore(&mut it));
     }
 }

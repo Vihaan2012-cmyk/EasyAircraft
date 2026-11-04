@@ -1,5 +1,6 @@
 //! EasyAcft part catalogue and the aircraft runtime.
 
+pub mod apu;
 pub mod avionics;
 pub mod cabin;
 pub mod catalog;

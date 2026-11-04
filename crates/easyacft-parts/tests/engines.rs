@@ -203,3 +203,18 @@ fn a_piston_engine_starts_and_its_propeller_makes_thrust() {
     assert!((2500.0..4500.0).contains(&t), "static thrust {t:.0} N");
     assert!(a.get("eng.fuel_flow").unwrap() > 0.005);
 }
+
+#[test]
+fn a_flameout_brings_the_igniters_on() {
+    let mut a = aircraft(JET);
+    a.set("master.on", 1.0);
+    a.set("start_sel.on", 1.0);
+    run(&mut a, 90.0);
+    a.set("start_sel.on", 0.0);
+    run(&mut a, 10.0);
+    assert_eq!((a.get("fadec.flameout"), a.get("fadec.ignition")), (Some(0.0), Some(0.0)));
+    a.set("eng.failed", 1.0);
+    run(&mut a, 1.0);
+    assert_eq!(a.get("fadec.flameout"), Some(1.0));
+    assert_eq!(a.get("fadec.ignition"), Some(1.0), "auto-relight");
+}
