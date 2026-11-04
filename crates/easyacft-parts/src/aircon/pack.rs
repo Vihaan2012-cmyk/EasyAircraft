@@ -25,7 +25,7 @@ pub const SPEC: PartSpec = PartSpec {
     kind: "pack",
     help: "An air cycle machine pack fed from a bleed duct, delivering cooled, dried air to a mixer.",
     fields: &[
-        req("duct", Kind::Ref(&["pneumatic.duct"]), "bleed duct it draws from"),
+        req("duct", Kind::Ref(&["pneumatic.duct", "aircon.cabin_air_compressor"]), "bleed duct it draws from, or a cabin air compressor"),
         req("air", Kind::Ref(&["environment.air"]), "outside air and flight state"),
         req("flow", Kind::Quantity(Dim::MASS_FLOW), "normal pack flow, for example \"1.1 kg/s\""),
         opt("on_when", WHEN, "true", "pack valve commanded open: its push-button and the controller"),

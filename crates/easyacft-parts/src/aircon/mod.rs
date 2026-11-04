@@ -8,6 +8,7 @@ pub mod mixer;
 pub mod pack;
 pub mod pressurization;
 pub mod quality;
+pub mod supply;
 pub mod thermo;
 pub mod trim;
 pub mod ventilation;
@@ -30,6 +31,8 @@ pub static SPECS: &[PartSpec] = &[
     ventilation::AVIONICS,
     ventilation::CARGO,
     quality::EXTRACT_FAN,
+    supply::COMPRESSOR,
+    supply::HUMIDIFIER,
     pressurization::FUSELAGE_SPEC,
     pressurization::VALVE_SPEC,
     pressurization::SAFETY_SPEC,
@@ -65,6 +68,8 @@ pub struct AirCon {
     avionics: Vec<ventilation::Avionics>,
     cargo: Vec<ventilation::Cargo>,
     extracts: Vec<quality::ExtractFan>,
+    compressors: Vec<supply::Compressor>,
+    humidifiers: Vec<supply::Humidifier>,
     fuselages: Vec<pressurization::Fuselage>,
     valves: Vec<pressurization::OutflowValve>,
     safety: Vec<pressurization::SafetyValve>,
@@ -107,6 +112,8 @@ impl AirCon {
             avionics: vec![],
             cargo: vec![],
             extracts: vec![],
+            compressors: vec![],
+            humidifiers: vec![],
             fuselages: vec![],
             valves: vec![],
             safety: vec![],
@@ -131,6 +138,11 @@ impl AirCon {
                 ("aircon", "mixer") => {
                     let Some(f) = one(&fus_ix, p.part("fuselage")) else { continue };
                     a.mixers.push(mixer::Mixer::new(c, p, map(&packs_ix, p.parts("packs")), map(&fans_ix, p.parts("recirculation")), f));
+                }
+                ("aircon", "cabin_air_compressor") => a.compressors.extend(supply::Compressor::new(c, p)),
+                ("aircon", "humidifier") => {
+                    let Some(z) = one(&zones_ix, p.part("zone")) else { continue };
+                    a.humidifiers.push(supply::Humidifier::new(p, z));
                 }
                 ("aircon", "extract_fan") => a.extracts.push(quality::ExtractFan::new(p, map(&zones_ix, p.parts("zones")))),
                 ("aircon", "recirc_fan") => a.fans.push(mixer::Fan::new(p, map(&zones_ix, p.parts("zones")))),
@@ -236,6 +248,9 @@ impl AirCon {
         for tv in &self.trims {
             self.hot_air[tv.hot_air].drawn += tv.out.flow;
         }
+        for cac in &mut self.compressors {
+            cac.step(slots, dt);
+        }
         // Packs deliver into their mixer's pressure.
         for (k, p) in self.packs.iter_mut().enumerate() {
             if let Some(m) = self.pack_mixer[k] {
@@ -286,6 +301,18 @@ impl AirCon {
         }
         for z in &mut self.zones {
             z.extract = 0.0;
+            z.humidify = 0.0;
+        }
+        for h in &mut self.humidifiers {
+            let Some(z) = self.zones.get(h.zone) else { continue };
+            let p = self.fuselages[z.fuselage].p;
+            let rh = thermo::relative_humidity(z.w, z.t, p);
+            h.step(slots, dt, rh, z.condensing);
+        }
+        for h in &self.humidifiers {
+            if let Some(z) = self.zones.get_mut(h.zone) {
+                z.humidify += h.rate;
+            }
         }
         for fan in &mut self.extracts {
             let each = fan.step(slots, dt);
@@ -372,6 +399,8 @@ impl AirCon {
         self.avionics.iter().for_each(|x| x.state(&mut v));
         self.cargo.iter().for_each(|x| x.state(&mut v));
         self.extracts.iter().for_each(|x| x.state(&mut v));
+        self.compressors.iter().for_each(|x| x.state(&mut v));
+        self.humidifiers.iter().for_each(|x| x.state(&mut v));
         self.fuselages.iter().for_each(|x| x.state(&mut v));
         self.valves.iter().for_each(|x| x.state(&mut v));
         self.safety.iter().for_each(|x| x.state(&mut v));
@@ -390,6 +419,8 @@ impl AirCon {
         self.avionics.iter_mut().for_each(|x| x.restore(it));
         self.cargo.iter_mut().for_each(|x| x.restore(it));
         self.extracts.iter_mut().for_each(|x| x.restore(it));
+        self.compressors.iter_mut().for_each(|x| x.restore(it));
+        self.humidifiers.iter_mut().for_each(|x| x.restore(it));
         self.fuselages.iter_mut().for_each(|x| x.restore(it));
         self.valves.iter_mut().for_each(|x| x.restore(it));
         self.safety.iter_mut().for_each(|x| x.restore(it));

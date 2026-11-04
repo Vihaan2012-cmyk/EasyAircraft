@@ -423,3 +423,48 @@ fn air_drifts_aft_along_the_cabin_and_takes_smoke_with_it() {
     let (fwd, aft) = (get(&a, "fwd.smoke"), get(&a, "aft.smoke"));
     assert!(fwd > 1.0 && aft > 0.05 * fwd && aft < fwd, "smoke {fwd:.1} mg/m³ forward, {aft:.2} aft");
 }
+
+fn cruise(a: &mut Aircraft, seconds: f64) {
+    ground(a);
+    run(a, 60.0);
+    a.set("air.on_ground", 0.0);
+    a.set("air.airspeed", 230.0);
+    a.set("air.altitude", 10_668.0);
+    for _ in 0..(seconds * 10.0) as usize {
+        a.step(0.1);
+    }
+}
+
+#[test]
+fn electric_cabin_air_compressors_replace_bleed() {
+    let src = ACS
+        .replace("[[aircon.pack]]\nid = \"pack1\"\nduct = \"bleed\"", "[[aircon.cabin_air_compressor]]\nid = \"cac1\"\nair = \"air\"\ndemand = \"pack1.bleed_demand\"\n\n[[aircon.cabin_air_compressor]]\nid = \"cac2\"\nair = \"air\"\ndemand = \"pack2.bleed_demand\"\n\n[[aircon.pack]]\nid = \"pack1\"\nduct = \"cac1\"")
+        .replace("[[aircon.pack]]\nid = \"pack2\"\nduct = \"bleed\"", "[[aircon.pack]]\nid = \"pack2\"\nduct = \"cac2\"");
+    assert!(src.contains("duct = \"cac2\""));
+    let (m, mut d) = load_str("aircon", &src);
+    let (mut a, _) = Aircraft::from_model(m, &mut d).unwrap_or_else(|r| panic!("{}", r.render()));
+    cruise(&mut a, 1200.0);
+    assert_eq!(a.get("pack1.operating"), Some(1.0), "fault {}", get(&a, "pack1.fault"));
+    let kw = get(&a, "cac1.power") / 1000.0;
+    assert!((40.0..300.0).contains(&kw), "{kw:.0} kW of motor load at FL350");
+    let diff = get(&a, "fus.differential") / PSI;
+    assert!((7.0..8.75).contains(&diff), "pressurised on electric air: {diff:.2} psi");
+    assert!(get(&a, "cac1.speed") > 0.8, "thin air needs the compressor near full speed");
+    all_finite(&a).unwrap();
+}
+
+#[test]
+fn a_duct_humidifier_lifts_cruise_humidity_and_cools_its_duct() {
+    let wet = ACS.replace("[[aircon.controller]]", "[[aircon.humidifier]]\nid = \"hum\"\nzone = \"aft\"\ntarget = 0.2\n\n[[aircon.controller]]");
+    let mut runs = Vec::new();
+    for src in [ACS.to_string(), wet] {
+        let (m, mut d) = load_str("aircon", &src);
+        let (mut a, _) = Aircraft::from_model(m, &mut d).unwrap_or_else(|r| panic!("{}", r.render()));
+        cruise(&mut a, 1800.0);
+        runs.push((get(&a, "aft.humidity"), a.get("hum.water_used").unwrap_or(0.0)));
+    }
+    let ((dry, _), (humid, used)) = (runs[0], runs[1]);
+    assert!(dry < 0.12, "cruise cabin air is dry: {:.0} %", dry * 100.0);
+    assert!(humid > dry + 0.04, "humidified to {:.0} % from {:.0} %", humid * 100.0, dry * 100.0);
+    assert!(used > 0.1, "{used:.2} kg of water");
+}

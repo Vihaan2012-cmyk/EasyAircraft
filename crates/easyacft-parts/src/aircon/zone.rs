@@ -228,6 +228,9 @@ pub struct Zone {
     smoke: f64,
     /// Air extract fans take from the zone this step.
     pub extract: f64,
+    /// Water a duct humidifier evaporates into its supply this step, kg/s.
+    pub humidify: f64,
+    pub condensing: bool,
     pub transfer_to: Option<usize>,
     transfer: f64,
     /// Air arriving from the zone before it along the cabin, with its CO2, ozone and smoke.
@@ -316,6 +319,8 @@ impl Zone {
             clo: p.num("clothing").clamp(0.0, 2.0),
             smoke: 0.0,
             extract: 0.0,
+            humidify: 0.0,
+            condensing: false,
             transfer_to,
             transfer: p.num("transfer").clamp(0.0, 0.9),
             transfer_in: Stream::none(t0, P_SL),
@@ -370,7 +375,7 @@ impl Zone {
 
         // Supply duct: trim air mixed in, then the duct walls' lag.
         let arriving = self.transfer_in;
-        let duct = thermo::mix(&[supply, trim, arriving]);
+        let duct = super::supply::Humidifier::apply(self.humidify, thermo::mix(&[supply, trim, arriving]));
         let duct_co2 = if duct.flow > 1e-9 { (supply.flow * supply_co2 + trim.flow * CO2_OUTSIDE + arriving.flow * self.transfer_in_co2) / duct.flow } else { supply_co2 };
         // Wet insulation conducts heat far better than dry.
         let wet = ((self.water + self.ice) / (self.capacity * self.skin_area)).min(1.0);
@@ -533,6 +538,7 @@ impl Zone {
         s.put(slots, "insulation_ice", self.ice);
         s.put(slots, "drip", drip);
         s.flag(slots, "condensing", condensing);
+        self.condensing = condensing;
         s.flag(slots, "duct_overheat", over);
         s.flag(slots, "hot", self.t > selected + 3.0);
         s.flag(slots, "cold", self.t < selected - 3.0);
