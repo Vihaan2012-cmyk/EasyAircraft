@@ -66,6 +66,10 @@ pub struct KindDecl {
     pub help: String,
     pub settings: Vec<KindField>,
     pub values: Vec<KindField>,
+    /// `ports.<name> = "electrical"`: a connection to one bus, circuit, duct or line.
+    pub ports: Vec<KindField>,
+    /// `links.<name> = "hydraulic"`: an element between two of them.
+    pub links: Vec<KindField>,
     pub file: usize,
     pub span: Range<usize>,
 }
@@ -260,8 +264,8 @@ impl Loader {
                 self.diags.push(Diagnostic::error("E0013", format!("write a part kind as a [kinds.{name}] section"), id, span(item)));
                 continue;
             };
-            let mut decl = KindDecl { name: name.to_owned(), help: k.get("help").and_then(Item::as_str).unwrap_or("").to_owned(), settings: vec![], values: vec![], file: id, span: span(item) };
-            for (part, list) in [("settings", &mut decl.settings), ("values", &mut decl.values)] {
+            let mut decl = KindDecl { name: name.to_owned(), help: k.get("help").and_then(Item::as_str).unwrap_or("").to_owned(), settings: vec![], values: vec![], ports: vec![], links: vec![], file: id, span: span(item) };
+            for (part, list) in [("settings", &mut decl.settings), ("values", &mut decl.values), ("ports", &mut decl.ports), ("links", &mut decl.links)] {
                 let Some(sec) = k.get(part) else { continue };
                 let Some(sec) = sec.as_table_like() else {
                     self.diags.push(Diagnostic::error("E0013", format!("`{part}` is a table of name = type"), id, span(sec)));

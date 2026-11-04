@@ -84,3 +84,92 @@ fn bad_kind_declarations_are_reported() {
     let e = aircraft(&missing).err().expect("errors");
     assert!(e.contains("gain"), "{e}");
 }
+
+const NET: &str = r#"
+[kinds.vfg]
+help = "A variable-frequency generator with its own regulator"
+settings.drive_rpm = "expr rpm"
+settings.droop = "ohm"
+values.frequency = "Hz"
+ports.out = "electrical source"
+
+[kinds.ssr]
+help = "A solid-state contactor"
+settings.closed = "expr bool"
+links.poles = "electrical"
+
+[kinds.ram_pump]
+ports.out = "hydraulic source"
+settings.on = "expr bool"
+
+[[cockpit.switch]]
+id = "tie_sw"
+
+[[electrical.bus]]
+id = "gen_bus"
+nominal = "115 V"
+
+[[electrical.bus]]
+id = "far_bus"
+nominal = "115 V"
+
+[[custom.vfg]]
+id = "g1"
+drive_rpm = "12000 rpm"
+droop = "0.05 ohm"
+out = "gen_bus"
+
+[[custom.ssr]]
+id = "k1"
+closed = "tie_sw.on"
+poles = ["gen_bus", "far_bus"]
+
+[[electrical.load]]
+id = "galley"
+bus = "far_bus"
+power = "20 kW"
+
+[[hydraulic.circuit]]
+id = "blue"
+nominal = "3000 psi"
+fluid = "10 L"
+
+[[custom.ram_pump]]
+id = "rat"
+out = "blue"
+on = "true"
+"#;
+
+#[test]
+fn custom_parts_join_the_networks_through_ports_and_links() {
+    let mut a = aircraft(NET).unwrap();
+    a.on_kind("vfg", |p| {
+        p.set("frequency", p.get("drive_rpm") * 2.0);
+        let v = p.level("out");
+        let e = 115.0 + (115.0 - v) * 0.5;
+        p.drive("out", e, 1.0 / p.setting("droop"));
+    });
+    a.on_kind("ssr", |p| {
+        let g = if p.get("closed") != 0.0 { 1000.0 } else { 0.0 };
+        p.conduct("poles", g);
+    });
+    a.on_kind("ram_pump", |p| {
+        p.drive("out", 3000.0 * 6894.757, 30.0 / 60_000.0 / (300.0 * 6894.757));
+    });
+    for _ in 0..120 {
+        a.step(1.0 / 60.0);
+    }
+    let gv = a.get("gen_bus.voltage").unwrap();
+    assert!((gv - 115.0).abs() < 3.0, "the custom generator holds its bus: {gv}");
+    assert_eq!(a.get("far_bus.powered"), Some(0.0), "open contactor");
+    a.set("tie_sw.on", 1.0);
+    for _ in 0..60 {
+        a.step(1.0 / 60.0);
+    }
+    assert_eq!(a.get("far_bus.powered"), Some(1.0));
+    let i = a.get("g1.out_q").unwrap();
+    assert!((150.0..200.0).contains(&i), "20 kW at 115 V through the custom link: {i} A");
+    assert!(a.get("k1.poles_q").unwrap() > 150.0);
+    let p = a.get("blue.pressure").unwrap() / 6894.757;
+    assert!(p > 2500.0, "the custom pump pressurises its circuit: {p} psi");
+}

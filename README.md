@@ -95,6 +95,31 @@ void turbo_pump(easyacft_part *p, double dt, void *user) {
 easyacft_on_kind(aircraft, "turbo_pump", turbo_pump, NULL);
 ```
 
+A custom part can also sit in a network itself. A port joins one bus, circuit, duct or line and behaves like a source of level `e` behind conductance `g`, so flow = g × (e − v); a link is a conductance between two of them:
+
+```toml
+[kinds.vfg]
+settings.droop = "ohm"
+ports.out = "electrical source"
+
+[kinds.ssr]
+settings.closed = "expr bool"
+links.poles = "electrical"
+```
+
+```c
+void vfg(easyacft_part *p, double dt, void *user) {
+    double v = easyacft_part_get(p, "out_v");                 /* bus voltage after the last solve */
+    easyacft_part_set(p, "out_e", 115.0 + 0.5 * (115.0 - v)); /* your regulator */
+    easyacft_part_set(p, "out_g", 1.0 / easyacft_part_setting(p, "droop"));
+}
+void ssr(easyacft_part *p, double dt, void *user) {
+    easyacft_part_set(p, "poles_g", easyacft_part_get(p, "closed") ? 1000.0 : 0.0);
+}
+```
+
+Ports take `electrical`, `hydraulic`, `pneumatic` or `fuel`, optionally followed by `source` or `load` for how Studio draws them. The network writes `<port>_v` and `<port>_q` (and `<link>_q`) back after every solve. Load shedding does not count a custom source's capacity.
+
 The checker holds custom parts to their declaration like any other, and Studio shows them. From your own X-Plane plugin, ask the EasyAcft plugin for the same functions with `EASYACFT_MSG_GET_API` (see `easyacft.h`); your handlers survive hot reloads. Rust code calls `Aircraft::on_kind`. Any plugin, in any language, can also read and write every value through its dataref.
 
 ## Tests

@@ -8,7 +8,12 @@
 //! settings.circuit = "part hydraulic.circuit"
 //! values.flow = "L/min"
 //! values.running = "bool"
+//! ports.out = "hydraulic"
 //! ```
+//!
+//! A port `out` adds the setting `out` (the circuit) and the values `out_e` and `out_g`, which the code sets,
+//! and `out_v` and `out_q`, which the network fills: flow into the circuit = g * (e - v).
+//! A link `x` between two nodes adds the setting `x` (both ends) and values `x_g` (set) and `x_q` (flow a to b).
 
 use crate::Expr;
 use easyacft_core::units::parse_unit;
@@ -17,6 +22,37 @@ use easyacft_lang::model::KindDecl;
 use easyacft_lang::schema::{FieldSpec, Kind, PartSpec, Value};
 use easyacft_lang::{Checked, Diagnostic, Type};
 use std::collections::HashMap;
+
+/// A network connection a custom kind declares.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PortDecl {
+    pub name: &'static str,
+    pub domain: &'static str,
+    pub link: bool,
+    /// Declared `"<domain> source"`: drawn as a supply rather than a user.
+    pub source: bool,
+}
+
+fn port_registry() -> &'static std::sync::RwLock<HashMap<String, Vec<PortDecl>>> {
+    static R: std::sync::OnceLock<std::sync::RwLock<HashMap<String, Vec<PortDecl>>>> = std::sync::OnceLock::new();
+    R.get_or_init(Default::default)
+}
+
+/// Ports and links of a registered custom kind.
+pub fn ports_of(kind: &str) -> Vec<PortDecl> {
+    port_registry().read().ok().and_then(|r| r.get(kind).cloned()).unwrap_or_default()
+}
+
+/// Node kinds, potential and flow of each network a port can join.
+fn network(domain: &str) -> Option<(&'static str, &'static [&'static str], Dim, Dim)> {
+    Some(match domain {
+        "electrical" => ("electrical", &["electrical.bus"], Dim::VOLTAGE, Dim::CURRENT),
+        "hydraulic" => ("hydraulic", &["hydraulic.circuit"], Dim::PRESSURE, Dim::VOLUME_FLOW),
+        "pneumatic" => ("pneumatic", &["pneumatic.duct"], Dim::PRESSURE, Dim::MASS_FLOW),
+        "fuel" => ("fuel", &["fuel.line"], Dim::PRESSURE, Dim::MASS_FLOW),
+        _ => return None,
+    })
+}
 
 fn leak(s: &str) -> &'static str {
     Box::leak(s.to_owned().into_boxed_str())
@@ -86,6 +122,31 @@ pub fn specs(kinds: &[KindDecl], diags: &mut Vec<Diagnostic>) -> Vec<PartSpec> {
                 }
             }
         }
+        let mut decls = Vec::new();
+        for (list, link) in [(&k.ports, false), (&k.links, true)] {
+            for pt in list {
+                let mut words = pt.ty.split_whitespace();
+                let (net_name, role) = (words.next().unwrap_or(""), words.next().unwrap_or("load"));
+                let Some((dom, nodes, pot, flow)) = network(net_name).filter(|_| role == "load" || role == "source") else {
+                    diags.push(Diagnostic::error("E0013", format!("`{}` must be electrical, hydraulic, pneumatic or fuel, optionally followed by source or load", pt.ty), k.file, pt.span.clone()));
+                    ok = false;
+                    continue;
+                };
+                let g = flow.mul(pot.pow(-1));
+                let help = if link { "the two it connects" } else { "what it connects to" };
+                fields.push(FieldSpec { key: leak(&pt.key), kind: if link { Kind::Refs(nodes) } else { Kind::Ref(nodes) }, default: None, help });
+                let names: Vec<(&str, Dim)> = if link { vec![("g", g), ("q", flow)] } else { vec![("e", pot), ("g", g), ("v", pot), ("q", flow)] };
+                for (suffix, d) in names {
+                    outputs.push((leak(&format!("{}_{suffix}", pt.key)), Type::Num(d)));
+                }
+                decls.push(PortDecl { name: leak(&pt.key), domain: dom, link, source: role == "source" });
+            }
+        }
+        if ok {
+            if let Ok(mut r) = port_registry().write() {
+                r.insert(k.name.clone(), decls);
+            }
+        }
         if !outputs.iter().any(|(n, _)| *n == "failed") {
             outputs.push(("failed", Type::Bool));
         }
@@ -152,6 +213,23 @@ impl Part<'_> {
             }
             None => false,
         }
+    }
+    /// Drives port `name` like a source of level `e` behind conductance `g`; `g = 0` disconnects it.
+    pub fn drive(&mut self, name: &str, e: f64, g: f64) {
+        self.set(&format!("{name}_e"), e);
+        self.set(&format!("{name}_g"), g);
+    }
+    /// Sets the conductance of link `name`; 0 opens it.
+    pub fn conduct(&mut self, name: &str, g: f64) {
+        self.set(&format!("{name}_g"), g);
+    }
+    /// Voltage or pressure at port `name` after the last solve.
+    pub fn level(&self, name: &str) -> f64 {
+        self.get(&format!("{name}_v"))
+    }
+    /// Flow into the network at port `name`, or along link `name`.
+    pub fn flow(&self, name: &str) -> f64 {
+        self.get(&format!("{name}_q"))
     }
     /// A number, quantity (SI) or true/false setting.
     pub fn setting(&self, key: &str) -> f64 {

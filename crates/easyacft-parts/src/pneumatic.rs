@@ -104,6 +104,7 @@ struct Consumer {
 
 pub struct Pneumatic {
     net: Network,
+    ports: crate::ports::Ports,
     ducts: Vec<Duct>,
     sources: Vec<Source>,
     valves: Vec<Valve>,
@@ -118,7 +119,7 @@ impl Pneumatic {
         }
         let mut net = Network::new();
         let mut of: HashMap<usize, usize> = HashMap::new();
-        let mut n = Pneumatic { net: Network::new(), ducts: vec![], sources: vec![], valves: vec![], consumers: vec![] };
+        let mut n = Pneumatic { net: Network::new(), ports: Default::default(), ducts: vec![], sources: vec![], valves: vec![], consumers: vec![] };
         for &(i, p) in parts.iter().filter(|(_, p)| p.kind == "duct") {
             of.insert(i, n.ducts.len());
             n.ducts.push(Duct { node: net.add_node(p.num("volume") / (R_AIR * 450.0)), temp: AMBIENT_K, s: Slots::of(p, &["pressure", "temperature", "failed"]) });
@@ -145,6 +146,7 @@ impl Pneumatic {
                 _ => {}
             }
         }
+        n.ports = crate::ports::Ports::new(c, "pneumatic", &mut net, |i| of.get(&i).map(|&d| n.ducts[d].node));
         n.net = net;
         Some(n)
     }
@@ -192,7 +194,9 @@ impl Domain for Pneumatic {
             }
         }
         self.apply_openings();
+        self.ports.stamp(&mut self.net, slots);
         self.net.step(dt);
+        self.ports.read(&self.net, slots);
         let mut heat_in = vec![(0.0, 0.0); self.ducts.len()];
         for (k, s) in self.sources.iter().enumerate() {
             let p = self.net.potential(self.ducts[s.duct].node);

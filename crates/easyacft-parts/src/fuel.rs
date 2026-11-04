@@ -108,6 +108,7 @@ struct Feed {
 
 pub struct Fuel {
     net: Network,
+    ports: crate::ports::Ports,
     tanks: Vec<Tank>,
     lines: Vec<(usize, Slots)>,
     pumps: Vec<Pump>,
@@ -123,7 +124,7 @@ impl Fuel {
             return None;
         }
         let mut net = Network::new();
-        let mut f = Fuel { net: Network::new(), tanks: vec![], lines: vec![], pumps: vec![], valves: vec![], feeds: vec![], node_tank: HashMap::new() };
+        let mut f = Fuel { net: Network::new(), ports: Default::default(), tanks: vec![], lines: vec![], pumps: vec![], valves: vec![], feeds: vec![], node_tank: HashMap::new() };
         let mut of: HashMap<usize, NodeOf> = HashMap::new();
         for &(i, p) in &parts {
             match p.kind {
@@ -167,6 +168,10 @@ impl Fuel {
                 _ => {}
             }
         }
+        f.ports = crate::ports::Ports::new(c, "fuel", &mut net, |i| match of.get(&i) {
+            Some(NodeOf::Line(l)) => Some(f.lines[*l].0),
+            _ => None,
+        });
         f.net = net;
         Some(f)
     }
@@ -204,7 +209,9 @@ impl Domain for Fuel {
                 self.net.stamp(fd.node, want[k] / p, 0.0);
             }
         }
+        self.ports.stamp(&mut self.net, slots);
         self.net.step(dt);
+        self.ports.read(&self.net, slots);
         let mut out = vec![0.0; self.tanks.len()];
         for p in &mut self.pumps {
             let pout = self.net.potential(p.outlet);

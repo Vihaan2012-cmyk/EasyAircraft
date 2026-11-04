@@ -114,6 +114,7 @@ struct Ptu {
 
 pub struct Hydraulic {
     net: Network,
+    ports: crate::ports::Ports,
     circuits: Vec<Circuit>,
     pumps: Vec<Pump>,
     accumulators: Vec<(usize, f64, f64, Slots)>,
@@ -129,7 +130,7 @@ impl Hydraulic {
         }
         let mut net = Network::new();
         let mut of: HashMap<usize, usize> = HashMap::new();
-        let mut h = Hydraulic { net: Network::new(), circuits: vec![], pumps: vec![], accumulators: vec![], consumers: vec![], ptus: vec![] };
+        let mut h = Hydraulic { net: Network::new(), ports: Default::default(), circuits: vec![], pumps: vec![], accumulators: vec![], consumers: vec![], ptus: vec![] };
         for &(i, p) in parts.iter().filter(|(_, p)| p.kind == "circuit") {
             let mut cap = p.num("compliance").max(0.0);
             for &(_, a) in parts.iter().filter(|(_, a)| a.kind == "accumulator" && a.part("circuit") == Some(i)) {
@@ -173,6 +174,7 @@ impl Hydraulic {
                 _ => {}
             }
         }
+        h.ports = crate::ports::Ports::new(c, "hydraulic", &mut net, |i| of.get(&i).map(|&ci| h.circuits[ci].node));
         h.net = net;
         Some(h)
     }
@@ -218,7 +220,9 @@ impl Domain for Hydraulic {
             self.net.set_closed(t.link, t.on);
             t.s.flag(slots, "running", t.on);
         }
+        self.ports.stamp(&mut self.net, slots);
         self.net.step(dt);
+        self.ports.read(&self.net, slots);
         for c in &mut self.circuits {
             let p = self.net.potential(c.node).max(0.0);
             c.s.put(slots, "pressure", p);

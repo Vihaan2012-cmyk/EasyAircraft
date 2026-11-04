@@ -75,6 +75,7 @@ struct Converter {
 
 pub struct Electrical {
     net: Network,
+    ports: crate::ports::Ports,
     buses: Vec<Bus>,
     bus_of: HashMap<usize, usize>,
     batteries: Vec<Battery>,
@@ -91,7 +92,7 @@ impl Electrical {
             return None;
         }
         let mut net = Network::new();
-        let mut e = Electrical { net: Network::new(), buses: vec![], bus_of: HashMap::new(), batteries: vec![], sources: vec![], switches: vec![], loads: vec![], converters: vec![] };
+        let mut e = Electrical { net: Network::new(), ports: Default::default(), buses: vec![], bus_of: HashMap::new(), batteries: vec![], sources: vec![], switches: vec![], loads: vec![], converters: vec![] };
         for &(i, p) in parts.iter().filter(|(_, p)| p.kind == "bus") {
             let node = net.add_node(0.0);
             e.bus_of.insert(i, e.buses.len());
@@ -142,6 +143,7 @@ impl Electrical {
                 _ => {}
             }
         }
+        e.ports = crate::ports::Ports::new(c, "electrical", &mut net, |i| e.bus_of.get(&i).map(|&b| e.buses[b].node));
         e.net = net;
         Some(e)
     }
@@ -250,7 +252,9 @@ impl Domain for Electrical {
                 self.net.stamp(l.node, l.power / (v * v), 0.0);
             }
         }
+        self.ports.stamp(&mut self.net, slots);
         self.net.step(dt);
+        self.ports.read(&self.net, slots);
         for b in &self.buses {
             let v = self.net.potential(b.node).max(0.0);
             b.s.put(slots, "voltage", v);

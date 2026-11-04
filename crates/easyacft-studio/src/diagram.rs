@@ -100,14 +100,33 @@ fn order(row: &mut Vec<usize>, x: &[f32], adj: &[(usize, usize)], same: &[(usize
     }
 }
 
+/// As `role`, with custom parts placed by their port in `domain`.
+pub fn role_in(domain: &str, p: &CheckedPart) -> Option<(Role, &'static str)> {
+    if p.domain != "custom" {
+        return role(p);
+    }
+    let port = easyacft_parts::custom::ports_of(p.kind).into_iter().find(|x| x.domain == domain && !x.link)?;
+    Some((if port.source { Role::Source } else { Role::Sink }, port.name))
+}
+
+/// As `edge_ends`, with custom links in `domain`.
+pub fn edge_in(domain: &str, p: &CheckedPart) -> Option<(usize, usize)> {
+    if p.domain != "custom" {
+        return edge_ends(p);
+    }
+    let link = easyacft_parts::custom::ports_of(p.kind).into_iter().find(|x| x.domain == domain && x.link)?;
+    let e = p.parts(link.name);
+    Some((*e.first()?, *e.get(1)?))
+}
+
 pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) -> Diagram {
     let mut d = Diagram::default();
-    let parts: Vec<usize> = (0..c.parts.len()).filter(|&i| c.parts[i].domain == domain).collect();
-    let hubs: Vec<usize> = parts.iter().copied().filter(|&i| role(&c.parts[i]).is_some_and(|r| r.0 == Role::Hub)).collect();
-    let ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_ends(&c.parts[i]).map(|(a, b)| (i, a, b))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
+    let parts: Vec<usize> = (0..c.parts.len()).filter(|&i| c.parts[i].domain == domain || (c.parts[i].domain == "custom" && easyacft_parts::custom::ports_of(c.parts[i].kind).iter().any(|x| x.domain == domain))).collect();
+    let hubs: Vec<usize> = parts.iter().copied().filter(|&i| role_in(domain, &c.parts[i]).is_some_and(|r| r.0 == Role::Hub)).collect();
+    let ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_in(domain, &c.parts[i]).map(|(a, b)| (i, a, b))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
     let mut attached: HashMap<(usize, bool), Vec<usize>> = HashMap::new();
     for &i in &parts {
-        let Some((r, field)) = role(&c.parts[i]) else { continue };
+        let Some((r, field)) = role_in(domain, &c.parts[i]) else { continue };
         if r == Role::Hub {
             continue;
         }
@@ -170,7 +189,7 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
 
     let child_w = |i: usize| {
         let w = text_w(&c.parts[i].id);
-        match role(&c.parts[i]).map(|r| r.0) {
+        match role_in(domain, &c.parts[i]).map(|r| r.0) {
             Some(Role::Source) => (w + 12.0).max(40.0),
             _ => (w + 16.0).max(46.0),
         }
@@ -411,6 +430,12 @@ pub fn state(p: &CheckedPart, get: impl Fn(&str) -> Option<f64>) -> (bool, bool,
     let failed = g("failed").is_some_and(|v| v != 0.0);
     let on = |n: &str| g(n).is_some_and(|v| v != 0.0);
     let psi = |n: &str| g(n).unwrap_or(0.0) / 6894.757;
+    if p.domain == "custom" {
+        if let Some(pt) = easyacft_parts::custom::ports_of(p.kind).first() {
+            let on = g(&format!("{}_g", pt.name)).unwrap_or(0.0) > 0.0;
+            return (on && !failed, failed, format!("{:.3}", g(&format!("{}_q", pt.name)).unwrap_or(0.0)));
+        }
+    }
     let (live, text) = match (p.domain, p.kind) {
         ("electrical", "bus") => (on("powered"), format!("{:.1} V", g("voltage").unwrap_or(0.0))),
         ("electrical", "battery") => (true, format!("{:.1} V {:+.0} A", g("voltage").unwrap_or(0.0), g("current").unwrap_or(0.0))),
