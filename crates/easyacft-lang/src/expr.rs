@@ -308,6 +308,16 @@ pub struct Program {
     pub native: Option<NativeFn>,
 }
 
+impl Program {
+    /// The value of a program that is a single constant, such as a defaulted `false`.
+    pub fn constant(&self) -> Option<f64> {
+        match (self.ops.as_slice(), &self.native, self.states) {
+            ([Op::Push(x)], None, 0) => Some(*x),
+            _ => None,
+        }
+    }
+}
+
 impl PartialEq for Program {
     fn eq(&self, o: &Self) -> bool {
         self.ops == o.ops && self.states == o.states && self.ty == o.ty && self.tables == o.tables && self.native.is_some() == o.native.is_some()

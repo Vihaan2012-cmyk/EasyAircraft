@@ -415,6 +415,7 @@ struct Converter {
     input: usize,
     in_node: usize,
     out_node: usize,
+    out_bus: usize,
     voltage: f64,
     frequency: f64,
     rating: f64,
@@ -620,6 +621,7 @@ impl Electrical {
                         input: ib,
                         in_node: e.buses[ib].node,
                         out_node: e.buses[ob].node,
+                        out_bus: ob,
                         voltage: v,
                         frequency: if p.kind == "inverter" { p.num("frequency") } else { 0.0 },
                         rating: r,
@@ -847,7 +849,7 @@ impl Domain for Electrical {
             cv.s.flag(slots, "active", on);
             cv.s.put(slots, "temperature", cv.temp);
             cv.s.flag(slots, "overheat", cv.hot);
-            let v_out = self.buses.iter().find(|b| b.node == cv.out_node).map_or(0.0, |b| b.s.get(slots, "voltage"));
+            let v_out = self.buses[cv.out_bus].s.get(slots, "voltage");
             if on && v_out < cv.e + 0.02 * cv.voltage {
                 self.net.stamp(cv.out_node, cv.g, cv.g * cv.e);
             }

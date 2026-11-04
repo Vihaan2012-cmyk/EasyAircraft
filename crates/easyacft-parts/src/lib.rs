@@ -1,5 +1,6 @@
 //! EasyAcft part catalogue and the aircraft runtime.
 
+pub mod aircon;
 pub mod apu;
 pub mod avionics;
 pub mod cabin;
@@ -32,13 +33,17 @@ use std::path::Path;
 pub struct Expr {
     pub program: Program,
     pub state: Vec<f64>,
+    constant: Option<f64>,
 }
 
 impl Expr {
     pub fn new(p: &Program) -> Self {
-        Self { program: p.clone(), state: vec![0.0; p.states] }
+        Self { program: p.clone(), state: vec![0.0; p.states], constant: p.constant() }
     }
     pub fn eval(&mut self, slots: &[f64], dt: f64) -> f64 {
+        if let Some(c) = self.constant {
+            return c;
+        }
         self.program.eval(slots, &mut self.state, dt)
     }
     pub fn yes(&mut self, slots: &[f64], dt: f64) -> bool {
@@ -162,6 +167,9 @@ impl Aircraft {
         }
         if let Some(d) = systems::Systems::new(&checked) {
             domains.push((rate_for(rates, "systems", 0.02), Box::new(d)));
+        }
+        if let Some(d) = aircon::AirCon::new(&checked) {
+            domains.push((rate_for(rates, "aircon", 0.02), Box::new(d)));
         }
         let custom = (rate_for(rates, "custom", 0.01), custom::Custom::new(&checked));
         let watched = checked.slots.names.iter().enumerate().filter(|(_, (n, _))| [".failed", ".fault", ".aborted", ".shutdown", ".tripped", ".detected"].iter().any(|s| n.ends_with(s))).map(|(i, (n, _))| (i, n.clone(), false)).collect();
