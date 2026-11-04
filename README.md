@@ -6,6 +6,43 @@ Covered: electrical, hydraulic, pneumatic and bleed, fuel, gas turbines and pist
 
 Not covered on purpose: flight-management, autopilot and flight-control laws. Write your own and run them as EasyAcft computers through the C API.
 
+## Build from source
+
+You need Rust 1.82 or newer ([rustup.rs](https://rustup.rs)) and a C linker:
+
+- Windows: the Visual Studio Build Tools ("Desktop development with C++"), or the GNU toolchain (`rustup toolchain install stable-x86_64-pc-windows-gnu`);
+- macOS: the Xcode command line tools (`xcode-select --install`);
+- Linux: `gcc` (`sudo apt install build-essential` on Debian and Ubuntu).
+
+No X-Plane SDK is needed: the plugin finds X-Plane's functions when X-Plane loads it.
+
+```
+git clone https://github.com/Vihaan2012-cmyk/EasyAircraft.git
+cd EasyAircraft
+cargo build --release
+cargo test --workspace --release
+```
+
+Everything lands in `target/release/`:
+
+| What | Windows | macOS | Linux |
+|---|---|---|---|
+| command line | `easyacft.exe` | `easyacft` | `easyacft` |
+| Studio | `easyacft-studio.exe` | `easyacft-studio` | `easyacft-studio` |
+| X-Plane plugin | `easyacft_plugin.dll` | `libeasyacft_plugin.dylib` | `libeasyacft_plugin.so` |
+| C library | `easyacft.dll`, `easyacft.lib` | `libeasyacft.dylib`, `libeasyacft.a` | `libeasyacft.so`, `libeasyacft.a` |
+
+Build one part with `-p`, for example `cargo build --release -p easyacft-studio`. To run `easyacft` and `easyacft-studio` from anywhere, `cargo install --path crates/easyacft-cli` and `cargo install --path crates/easyacft-studio`. Studio on Linux needs OpenGL and an X11 or Wayland desktop.
+
+To install the plugin, rename it `easyacft.xpl` and put it in `<aircraft>/plugins/easyacft/win_x64/`, `mac_x64/` or `lin_x64/` for your system. For one Mac plugin that runs on both Apple and Intel chips:
+
+```
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+cargo build --release -p easyacft-plugin --target aarch64-apple-darwin
+cargo build --release -p easyacft-plugin --target x86_64-apple-darwin
+lipo -create -output easyacft.xpl target/aarch64-apple-darwin/release/libeasyacft_plugin.dylib target/x86_64-apple-darwin/release/libeasyacft_plugin.dylib
+```
+
 ## Start
 
 ```
@@ -159,7 +196,7 @@ Put these in `<aircraft>/tests/`. Studio records them for you: press Record test
 
 ## X-Plane
 
-Build `easyacft-plugin`, rename it `easyacft.xpl`, put it in the aircraft's `plugins` folder and the TOML files in `<aircraft>/easyacft/`. Every value is published as `easyacft/<id>/<value>`, and every switch gets `easyacft/<id>/toggle`, `/on` and `/off` commands. Plugins > EasyAcft > Systems window shows every part with fail and repair.
+Build `easyacft-plugin` and install it as in [Build from source](#build-from-source), and put the TOML files in `<aircraft>/easyacft/`. Every value is published as `easyacft/<id>/<value>`, and every switch gets `easyacft/<id>/toggle`, `/on` and `/off` commands. Plugins > EasyAcft > Systems window shows every part with fail and repair.
 
 ## Import
 
