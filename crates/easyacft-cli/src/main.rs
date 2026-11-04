@@ -29,6 +29,7 @@ fn usage() -> ExitCode {
     eprintln!("usage:\n  easyacft check <aircraft dir>\n  easyacft sim <aircraft dir> [--for 10s] [--every 1s] [--set name=value]... [--print name,name]\n  easyacft names <aircraft dir>\n  easyacft kinds\n  easyacft explain <code>
   easyacft fit <aircraft dir> <engine id> <points.toml> [--tune name,name]
   easyacft import <file.acf | MSFS aircraft folder> <new folder>
+  easyacft export <aircraft dir> <new folder> [--name crate-name]
   easyacft test <aircraft dir> [scenario.toml]...   (default: every file in <dir>/tests)");
     ExitCode::from(2)
 }
@@ -121,6 +122,20 @@ values: {}", s.outputs.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", "));
                         }
                         None => ExitCode::FAILURE,
                     }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Some("export") if args.len() >= 3 => {
+            let name = args.iter().position(|a| a == "--name").and_then(|i| args.get(i + 1)).map(String::as_str);
+            match easyacft_export::export(&PathBuf::from(&args[1]), &PathBuf::from(&args[2]), name) {
+                Ok(s) => {
+                    println!("wrote crate `{}` to {}: {} parts, {} values, {} expressions as Rust, {} scenario tests", s.crate_name, s.out.display(), s.parts, s.values, s.expressions, s.tests);
+                    println!("build it with `cargo test` in that folder; it does not need EasyAcft");
+                    ExitCode::SUCCESS
                 }
                 Err(e) => {
                     eprintln!("{e}");

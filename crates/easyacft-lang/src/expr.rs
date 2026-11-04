@@ -289,12 +289,22 @@ pub enum Op {
     Table(usize, u8),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+/// Compiled Rust in place of the bytecode, as `easyacft export` writes it.
+pub type NativeFn = fn(&[f64], &mut [f64], f64, &[Table]) -> f64;
+
+#[derive(Clone, Debug)]
 pub struct Program {
     pub ops: Vec<Op>,
     pub states: usize,
     pub ty: Type,
     pub tables: Vec<Table>,
+    pub native: Option<NativeFn>,
+}
+
+impl PartialEq for Program {
+    fn eq(&self, o: &Self) -> bool {
+        self.ops == o.ops && self.states == o.states && self.ty == o.ty && self.tables == o.tables && self.native.is_some() == o.native.is_some()
+    }
 }
 
 /// A 1-D (`x, y` rows) or 2-D (header row of column keys) lookup table, linear and clamped.
@@ -581,12 +591,15 @@ pub fn compile(src: &str, names: &dyn Names) -> Result<Program, ExprError> {
     let ast = parse(src)?;
     let mut c = Compiler { names, ops: Vec::new(), states: 0, tables: Vec::new() };
     let ty = c.node(&ast)?;
-    Ok(Program { ops: c.ops, states: c.states, ty, tables: c.tables })
+    Ok(Program { ops: c.ops, states: c.states, ty, tables: c.tables, native: None })
 }
 
 impl Program {
     /// One evaluation; `state` holds timers and latches.
     pub fn eval(&self, slots: &[f64], state: &mut [f64], dt: f64) -> f64 {
+        if let Some(f) = self.native {
+            return f(slots, state, dt, &self.tables);
+        }
         let mut st: Vec<f64> = Vec::with_capacity(8);
         let b = |v: f64| v != 0.0;
         for op in &self.ops {

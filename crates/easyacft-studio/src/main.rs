@@ -78,6 +78,7 @@ pub struct App {
     theme: Theme,
     template: usize,
     new_dir: String,
+    export_dir: String,
     show_changes: bool,
     zoomed: bool,
     fit_size: Vec2,
@@ -233,6 +234,7 @@ impl App {
             theme: read_theme(""),
             template: 0,
             new_dir: String::new(),
+            export_dir: String::new(),
             show_changes: false,
             zoomed: false,
             fit_size: Vec2::ZERO,
@@ -571,6 +573,15 @@ impl App {
                 ui.small(format!("{f}  +{add} -{del}"));
             }
         }
+        egui::CollapsingHeader::new("Export to code").show(ui, |ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.export_dir).hint_text("new folder"));
+            if ui.button("Export Rust crate").clicked() && !self.export_dir.trim().is_empty() {
+                self.status = match easyacft_export::export(Path::new(&self.dir), Path::new(self.export_dir.trim()), None) {
+                    Ok(s) => format!("wrote {}: {} parts, {} expressions, {} tests", s.out.display(), s.parts, s.expressions, s.tests),
+                    Err(e) => e.lines().next().unwrap_or("export failed").to_owned(),
+                };
+            }
+        });
         egui::CollapsingHeader::new("New aircraft").show(ui, |ui| {
             let t = templates();
             let name = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

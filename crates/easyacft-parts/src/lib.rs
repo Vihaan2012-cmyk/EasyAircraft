@@ -7,6 +7,7 @@ pub mod custom;
 pub mod electrical;
 pub mod engine;
 pub mod extras;
+mod files;
 pub mod fuel;
 pub mod hydraulic;
 pub mod logic;
@@ -17,7 +18,7 @@ pub mod systems;
 pub mod util;
 
 use easyacft_core::{Rate, Snapshot};
-use easyacft_lang::{check, load, Checked, CheckedPart, Diagnostic, Model, Program, Severity, Sources};
+use easyacft_lang::{check, Checked, CheckedPart, Diagnostic, Model, Program, Severity, Sources};
 use std::path::Path;
 
 /// A compiled expression with its own timer and latch state.
@@ -89,17 +90,12 @@ pub struct Aircraft {
     pub time: f64,
 }
 
-fn rate_for(model: &Model, name: &str, default: f64) -> Rate {
-    let period = model.rates.iter().find(|(n, _)| n == name).map_or(default, |(_, p)| *p);
+fn rate_for(rates: &[(String, f64)], name: &str, default: f64) -> Rate {
+    let period = rates.iter().find(|(n, _)| n == name).map_or(default, |(_, p)| *p);
     Rate::new(period, (1.0 / period).ceil() as usize)
 }
 
 impl Aircraft {
-    pub fn load(path: &Path) -> Result<(Self, Report), Report> {
-        let (model, mut diags) = load(path);
-        Self::from_model(model, &mut diags)
-    }
-
     pub fn from_model(model: Model, diags: &mut Vec<Diagnostic>) -> Result<(Self, Report), Report> {
         let own = custom::specs(&model.kinds, diags);
         catalog::register(&own);
@@ -110,46 +106,51 @@ impl Aircraft {
         if report.errors() > 0 {
             return Err(report);
         }
+        let base = model.sources.files.first().and_then(|(n, _)| Path::new(n).parent().map(|p| p.to_path_buf())).unwrap_or_default();
+        let files = model.sources.files.iter().map(|(n, _)| n.clone()).collect();
+        Ok((Self::from_checked(checked, &model.name, &model.rates, model.bindings.clone(), files, &base), report))
+    }
+
+    /// Builds a checked aircraft; `base` is the folder table files are read from.
+    pub fn from_checked(checked: Checked, name: &str, rates: &[(String, f64)], bindings: Vec<easyacft_lang::model::Binding>, files: Vec<String>, base: &Path) -> Self {
         let mut slots = vec![0.0; checked.slots.names.len()];
         logic::init(&checked, &mut slots);
         fuel::init(&checked, &mut slots);
         systems::init(&checked, &mut slots);
         avionics::init(&checked, &mut slots);
         let mut domains: Vec<(Rate, Box<dyn Domain>)> = Vec::new();
-        domains.push((rate_for(&model, "logic", 0.01), Box::new(logic::Logic::new(&checked))));
+        domains.push((rate_for(rates, "logic", 0.01), Box::new(logic::Logic::new(&checked))));
         if let Some(e) = electrical::Electrical::new(&checked) {
-            domains.push((rate_for(&model, "electrical", 0.01), Box::new(e)));
+            domains.push((rate_for(rates, "electrical", 0.01), Box::new(e)));
         }
         if let Some(d) = hydraulic::Hydraulic::new(&checked) {
-            domains.push((rate_for(&model, "hydraulic", 0.005), Box::new(d)));
+            domains.push((rate_for(rates, "hydraulic", 0.005), Box::new(d)));
         }
         if let Some(d) = pneumatic::Pneumatic::new(&checked) {
-            domains.push((rate_for(&model, "pneumatic", 0.02), Box::new(d)));
+            domains.push((rate_for(rates, "pneumatic", 0.02), Box::new(d)));
         }
         if let Some(d) = fuel::Fuel::new(&checked) {
-            domains.push((rate_for(&model, "fuel", 0.05), Box::new(d)));
+            domains.push((rate_for(rates, "fuel", 0.05), Box::new(d)));
         }
-        let base = model.sources.files.first().and_then(|(n, _)| Path::new(n).parent().map(|p| p.to_path_buf())).unwrap_or_default();
-        if let Some(d) = engine::Engines::new(&checked, &base) {
-            domains.push((rate_for(&model, "engines", 0.01), Box::new(d)));
+        if let Some(d) = engine::Engines::new(&checked, base) {
+            domains.push((rate_for(rates, "engines", 0.01), Box::new(d)));
         }
-        if let Some(d) = control::Control::new(&checked, &base) {
-            domains.push((rate_for(&model, "control", 0.02), Box::new(d)));
+        if let Some(d) = control::Control::new(&checked, base) {
+            domains.push((rate_for(rates, "control", 0.02), Box::new(d)));
         }
         if let Some(d) = avionics::Avionics::new(&checked) {
-            domains.push((rate_for(&model, "avionics", 0.02), Box::new(d)));
+            domains.push((rate_for(rates, "avionics", 0.02), Box::new(d)));
         }
         if let Some(d) = extras::Extras::new(&checked) {
-            domains.push((rate_for(&model, "extras", 0.02), Box::new(d)));
+            domains.push((rate_for(rates, "extras", 0.02), Box::new(d)));
         }
         if let Some(d) = systems::Systems::new(&checked) {
-            domains.push((rate_for(&model, "systems", 0.02), Box::new(d)));
+            domains.push((rate_for(rates, "systems", 0.02), Box::new(d)));
         }
-        let custom = (rate_for(&model, "custom", 0.01), custom::Custom::new(&checked));
-        let files = model.sources.files.iter().map(|(n, _)| n.clone()).collect();
+        let custom = (rate_for(rates, "custom", 0.01), custom::Custom::new(&checked));
         let watched = checked.slots.names.iter().enumerate().filter(|(_, (n, _))| [".failed", ".fault", ".aborted", ".shutdown", ".tripped", ".detected"].iter().any(|s| n.ends_with(s))).map(|(i, (n, _))| (i, n.clone(), false)).collect();
         let ground = checked.parts.iter().find(|p| p.domain == "environment").and_then(|p| checked.slots.index.get(&format!("{}.on_ground", p.id)).copied());
-        Ok((Self { log: Vec::new(), watched, ground, name: model.name.clone(), files, bindings: model.bindings.clone(), checked, slots, domains, custom, time: 0.0 }, report))
+        Self { log: Vec::new(), watched, ground, name: name.to_owned(), files, bindings, checked, slots, domains, custom, time: 0.0 }
     }
 
     /// Steps every `[[custom.<kind>]]` part with `f`; returns how many there are.

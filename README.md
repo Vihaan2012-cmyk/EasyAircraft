@@ -122,6 +122,15 @@ Ports take `electrical`, `hydraulic`, `pneumatic` or `fuel`, optionally followed
 
 The checker holds custom parts to their declaration like any other, and Studio shows them. From your own X-Plane plugin, ask the EasyAcft plugin for the same functions with `EASYACFT_MSG_GET_API` (see `easyacft.h`); your handlers survive hot reloads. Rust code calls `Aircraft::on_kind`. Any plugin, in any language, can also read and write every value through its dataref.
 
+## Export to code
+
+```
+easyacft export examples/twin-jet my-twin
+cd my-twin && cargo test
+```
+
+writes the aircraft as a Rust crate that needs nothing from EasyAcft: `src/lib.rs` holds every part and setting, every expression as a plain Rust function and a constant for every value (`v::DC1_VOLTAGE`); `runtime/` holds the solver and part models; the scenario tests become Rust tests. It has no outside dependencies, and LICENSE-EXPORT.md lets you use, change and ship it under any terms. Studio has the same under Export to code.
+
 ## Tests
 
 ```toml
@@ -171,4 +180,4 @@ Starts an aircraft from an X-Plane `.acf` or an MSFS aircraft, ready to check an
 
 `crates/easyacft-ffi/include/easyacft.h`: load, step, find, get, set, snapshots, computers.
 
-Licence: MPL-2.0.
+Licence: MPL-2.0, with the export exception in LICENSE-EXPORT.md for code `easyacft export` writes.

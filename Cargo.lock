@@ -390,6 +390,7 @@ name = "easyacft-cli"
 version = "0.1.0"
 dependencies = [
  "easyacft-core",
+ "easyacft-export",
  "easyacft-import",
  "easyacft-lang",
  "easyacft-parts",
@@ -399,6 +400,16 @@ dependencies = [
 [[package]]
 name = "easyacft-core"
 version = "0.1.0"
+
+[[package]]
+name = "easyacft-export"
+version = "0.1.0"
+dependencies = [
+ "easyacft-core",
+ "easyacft-lang",
+ "easyacft-parts",
+ "toml_edit 0.22.23",
+]
 
 [[package]]
 name = "easyacft-ffi"
@@ -443,6 +454,7 @@ name = "easyacft-studio"
 version = "0.1.0"
 dependencies = [
  "easyacft-core",
+ "easyacft-export",
  "easyacft-lang",
  "easyacft-parts",
  "eframe",
