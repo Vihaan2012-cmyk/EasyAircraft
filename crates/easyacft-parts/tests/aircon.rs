@@ -486,3 +486,20 @@ fn a_drifting_cabin_pressure_sensor_hands_control_to_the_other_channel() {
     assert!((7.0..8.75).contains(&diff), "channel 2 holds the schedule: {diff:.2} psi");
     assert_eq!(a.get("cpc.vs_high"), Some(0.0));
 }
+
+#[test]
+fn without_anti_ice_turbine_fog_ices_the_condenser() {
+    let src = ACS.replace("isa_deviation = \"15 K\"", "isa_deviation = \"-5 K\"").replace("fcv_failed_when = \"pack1_fail.on\"", "fcv_failed_when = \"pack1_fail.on\"\nambient_humidity = \"0.95\"\nanti_ice_failed_when = \"pack1_fail.on == false\"\noutlet_demand = \"270 K\"").replace("outlet_demand = \"acsc.pack_demand\"\nfcv_failed_when", "fcv_failed_when");
+    let (m, mut d) = load_str("aircon", &src);
+    let (mut a, _) = Aircraft::from_model(m, &mut d).unwrap_or_else(|r| panic!("{}", r.render()));
+    ground(&mut a);
+    run(&mut a, 60.0);
+    let early = get(&a, "pack1.flow");
+    run(&mut a, 600.0);
+    let ice = get(&a, "pack1.condenser_ice");
+    let out = get(&a, "pack1.turbine_outlet_temperature");
+    assert!(ice > 0.2 && get(&a, "pack1.flow") < early, "{ice:.2} of a blockage with the turbine at {out:.1} K, flow {early:.2} -> {:.2} kg/s", get(&a, "pack1.flow"));
+    assert_eq!(a.get("pack2.condenser_ice"), Some(0.0), "the healthy pack keeps its condenser clear");
+    all_finite(&a).unwrap();
+}
+

@@ -53,7 +53,7 @@ pub const SPEC: PartSpec = PartSpec {
         opt("ram_door_time", Kind::Quantity(Dim::TIME), "12 s", "ram inlet and outlet door travel time"),
         opt("foreign_object_closure", Kind::Bool, "true", "ram doors close on the runway above 30 m/s to keep debris out"),
         opt("bypass_time", Kind::Quantity(Dim::TIME), "6 s", "bypass (temperature control) valve travel time"),
-        opt("anti_ice_temperature", Kind::Quantity(Dim::TEMPERATURE), "275 K", "anti-ice valve holds the water separator above this"),
+        opt("anti_ice_temperature", Kind::Quantity(Dim::TEMPERATURE), "275 K", "anti-ice valve holds the condenser cold passages above this so turbine fog cannot freeze on them"),
         opt("water_extractor_efficiency", Kind::Number, "0.92", "share of condensed water the extractor removes"),
         opt("ozone_converter", Kind::Bool, "true", "fitted; efficiency falls off when cold"),
         opt("compressor_limit", Kind::Quantity(Dim::TEMPERATURE), "503 K", "compressor outlet overheat shutdown"),
@@ -64,6 +64,7 @@ pub const SPEC: PartSpec = PartSpec {
         opt("ram_door_jammed_when", WHEN, "false", "ram doors jammed where they are"),
         opt("bypass_jammed_when", WHEN, "false", "bypass valve jammed where it is"),
         opt("extractor_clogged_when", WHEN, "false", "water extractor clogged: free water goes downstream"),
+        opt("anti_ice_failed_when", WHEN, "false", "anti-ice valve failed shut: turbine fog freezes in the condenser"),
     ],
     outputs: &[
         ("operating", B),
@@ -94,6 +95,7 @@ pub const SPEC: PartSpec = PartSpec {
         ("exchanger_temperature", T),
         ("compressor_overheat", B),
         ("overheat", B),
+        ("condenser_ice", N),
         ("fault", N),
         ("failed", B),
     ],
@@ -128,6 +130,7 @@ const OUTPUTS: &[&str] = &[
     "exchanger_temperature",
     "compressor_overheat",
     "overheat",
+    "condenser_ice",
     "fault",
     "failed",
 ];
@@ -206,6 +209,9 @@ pub struct Pack {
     ram_jammed: Option<Expr>,
     bypass_jammed: Option<Expr>,
     clogged: Option<Expr>,
+    ai_failed: Option<Expr>,
+    /// Ice in the condenser cold passages, as a share of what blocks them.
+    ice: f64,
     minimum_dp: f64,
     pr_rated: f64,
     eta_c: f64,
@@ -293,6 +299,8 @@ impl Pack {
             ram_jammed: crate::expr_of(p, "ram_door_jammed_when"),
             bypass_jammed: crate::expr_of(p, "bypass_jammed_when"),
             clogged: crate::expr_of(p, "extractor_clogged_when"),
+            ai_failed: crate::expr_of(p, "anti_ice_failed_when"),
+            ice: 0.0,
             minimum_dp: p.num("minimum_pressure"),
             pr_rated: p.num("compressor_ratio").max(1.01),
             eta_c: p.num("compressor_efficiency").clamp(0.3, 0.95),
@@ -365,6 +373,7 @@ impl Pack {
         self.ram_door.jammed = yes(&mut self.ram_jammed, slots, dt, false);
         self.bypass.jammed = yes(&mut self.bypass_jammed, slots, dt, false);
         let clogged = yes(&mut self.clogged, slots, dt, false);
+        let ai_failed = yes(&mut self.ai_failed, slots, dt, false);
 
         // Protections latch until the pack is selected off.
         if !commanded {
@@ -400,7 +409,8 @@ impl Pack {
         let loss = (1.0 - HX_LOSS).powi(4);
         let need_inlet = if seized { self.downstream / (1.0 - HX_LOSS).powi(2) + 2.0 * PSI_F } else { need_turbine / (pr * loss) };
         let supply = p_bleed.max(0.0);
-        let mut flow = if fcv > 1e-3 && need_inlet > 0.0 { wanted * (supply / need_inlet).min(1.0).powf(0.5) * (fcv / 1.0).min(1.0) } else { 0.0 };
+        let choke = (1.0 - self.ice).clamp(0.05, 1.0);
+        let mut flow = if fcv > 1e-3 && need_inlet > 0.0 { wanted * (supply / need_inlet).min(1.0).powf(0.5) * (fcv / 1.0).min(1.0) * choke } else { 0.0 };
         if !pressure_ok && fcv <= 1e-3 {
             flow = 0.0;
         }
@@ -418,7 +428,9 @@ impl Pack {
         let (t1, ram_out, q1) = self.primary.pass(t_bleed, flow, self.last.ram_after_secondary, ram, ua_scale, dt);
         let p1 = p_inlet * (1.0 - HX_LOSS);
 
-        let m_acm = flow * m_acm_frac;
+        // Anti-ice air leaves ahead of the ACM and rejoins at the turbine outlet.
+        let m_ai_in = (AI_SHARE * flow * self.anti_ice.position).min(flow * m_acm_frac);
+        let m_acm = flow * m_acm_frac - m_ai_in;
         let (t2, p2) = if m_acm > 1e-6 { (compress(t1, pr, self.eta_c), p1 * pr) } else { (t1, p1) };
         let (t3, ram_mid, q2) = self.secondary.pass(t2, m_acm, t_ram, ram, ua_scale, dt);
         let p3 = p2 * (1.0 - HX_LOSS);
@@ -432,14 +444,25 @@ impl Pack {
         let removed = condensed * extract;
         let carried = (condensed - removed) / m_acm.max(1e-9);
         let separator_t = wet.t;
-        let iced = separator_t < T_ZERO && condensed > 0.0;
         let (_, t6, _) = self.reheater.pass(t3, 0.0, separator_t, m_acm, 1.0, 0.0);
         let p6 = p5 * (1.0 - HX_LOSS);
         let turbine_ratio = (p6 / self.downstream.max(1.0)).max(1.0);
-        let t7 = if m_acm > 1e-6 { expand(t6, turbine_ratio, self.eta_t) } else { t6 };
-        // Free water from the extractor and any fog the turbine forms flash-freezes or re-evaporates in the condenser.
-        let (_, t8, _) = self.condenser.pass(t4, 0.0, t7, m_acm, 1.0, 0.0);
-        let acm_out = Stream::new(m_acm, t8, self.downstream, wet.w + carried);
+        let t_turbine = if m_acm > 1e-6 { expand(t6, turbine_ratio, self.eta_t) } else { t6 };
+        // The anti-ice valve injects bleed air at the turbine outlet, ahead of the condenser's cold side.
+        let t7 = if m_acm + m_ai_in > 1e-9 { (m_acm * t_turbine + m_ai_in * t_bleed) / (m_acm + m_ai_in) } else { t_turbine };
+        // Fog the turbine makes freezes on the condenser's cold passages and chokes them; warm air melts it out.
+        let fog = (wet.w + carried - thermo::w_sat(t7, self.downstream)).max(0.0) * m_acm;
+        let surface = self.condenser.metal;
+        let iced = surface < T_ZERO && fog > 0.0;
+        if iced {
+            self.ice = (self.ice + fog / (0.002 * self.nominal) * dt / 300.0).min(1.0);
+        } else if surface > T_ZERO + 1.0 {
+            self.ice = (self.ice - (surface - T_ZERO) * dt / 600.0).max(0.0);
+        }
+        let m_cold = m_acm + m_ai_in;
+        let (_, t8, _) = self.condenser.pass(t4, 0.0, t7, m_cold, 1.0, 0.0);
+        let w_cold = if m_cold > 1e-9 { (m_acm * (wet.w + carried) + m_ai_in * w_in) / m_cold } else { w_in };
+        let acm_out = Stream::new(m_cold, t8, self.downstream, w_cold);
 
         // Shaft: turbine drives the compressor and ram fan against bearing loss.
         let p_turbine = m_acm * CP * (t6 - t7);
@@ -470,12 +493,9 @@ impl Pack {
         }
 
         // Bypass air leaves the primary heat exchanger and joins downstream of the turbine; anti-ice taps bleed.
-        let m_bypass = flow - m_acm;
-        let ai = self.anti_ice.position;
-        let m_ai = (0.15 * flow * ai).min(flow);
-        let bypass_stream = Stream::new((m_bypass - m_ai).max(0.0), t1, self.downstream, w_in);
-        let ai_stream = Stream::new(m_ai, t_bleed, self.downstream, w_in);
-        let mut out = thermo::mix(&[acm_out, bypass_stream, ai_stream]);
+        let m_bypass = (flow - m_acm - m_ai_in).max(0.0);
+        let bypass_stream = Stream::new(m_bypass, t1, self.downstream, w_in);
+        let mut out = thermo::mix(&[acm_out, bypass_stream]);
         if flow <= 1e-6 {
             out = Stream::none(lag(self.last.outlet, ta, 60.0, dt), self.downstream);
         }
@@ -506,8 +526,10 @@ impl Pack {
         self.ram_door.drive(ram_target, ram_speed, dt);
         let bypass_target = if !ctl_on { 0.3 } else if seized { 1.0 } else { (0.3 + 0.7 * u).clamp(0.0, 0.9) };
         self.bypass.drive(bypass_target, ram_speed, dt);
-        let ai_target = if ctl_on && (iced || separator_t < self.anti_ice_t) { ((self.anti_ice_t + 2.0 - separator_t) / 6.0).clamp(0.0, 1.0) } else { 0.0 };
-        self.anti_ice.drive(ai_target, ram_speed, dt);
+        // Opens while the turbine's fog could freeze, as far as it takes to hold the outlet just above freezing.
+        let risk = fog > 0.0 && surface < self.anti_ice_t;
+        let ai_target = if ctl_on && (risk || iced) { (self.anti_ice.position + dt * (self.anti_ice_t + 1.0 - surface) / 10.0).clamp(0.0, 1.0) } else { (self.anti_ice.position - dt / 10.0).max(0.0) };
+        self.anti_ice.drive(if ai_failed { 0.0 } else { ai_target }, ram_speed, dt);
 
         self.last = Last { ram_after_secondary: ram_mid, separator: separator_t, turbine_in: t6, turbine_out: t7, compressor_out: t2, outlet: out.t };
         self.was_on = operating;
@@ -555,6 +577,7 @@ impl Pack {
         s.put(slots, "exchanger_temperature", metal);
         s.flag(slots, "compressor_overheat", self.shut == fault::COMPRESSOR_OVERHEAT);
         s.flag(slots, "overheat", self.shut == fault::OUTLET_OVERHEAT || self.shut == fault::COMPRESSOR_OVERHEAT);
+        s.put(slots, "condenser_ice", self.ice);
         s.put(slots, "fault", code);
         let _ = (ram_out, p_bleed);
     }
@@ -567,7 +590,7 @@ impl Pack {
         v.extend([self.temp_ctl.integral, self.omega, self.outlet_sensor]);
         v.extend([self.last.ram_after_secondary, self.last.separator, self.last.turbine_in, self.last.turbine_out, self.last.compressor_out, self.last.outlet]);
         v.extend([self.comp_hot.elapsed, self.outlet_hot.elapsed, self.over.elapsed, self.shut, self.was_on as u8 as f64, self.downstream]);
-        v.extend([self.out.flow, self.out.t, self.out.p, self.out.w]);
+        v.extend([self.out.flow, self.out.t, self.out.p, self.out.w, self.ice]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
@@ -590,7 +613,10 @@ impl Pack {
         self.was_on = n() != 0.0;
         self.downstream = n();
         self.out = Stream { flow: n(), t: n(), p: n(), w: n() };
+        self.ice = n();
     }
 }
 
 const PSI_F: f64 = thermo::PSI;
+/// Most of the pack flow the anti-ice valve can bring round as hot bleed.
+const AI_SHARE: f64 = 0.3;
