@@ -50,7 +50,7 @@ pub fn rows(a: &Aircraft, tab: usize) -> Vec<Row> {
         if !shown {
             continue;
         }
-        let Some(spec) = catalog::all().iter().find(|s| s.domain == p.domain && s.kind == p.kind) else { continue };
+        let Some(spec) = catalog::find(p.domain, p.kind) else { continue };
         let mut bits = Vec::new();
         let mut failed = None;
         for (n, t) in spec.outputs {

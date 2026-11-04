@@ -32,7 +32,7 @@ pub static SPECS: &[PartSpec] = &[
             req("duct", Kind::Ref(DUCT), "the duct it feeds"),
             req("pressure", Kind::Quantity(Dim::PRESSURE), "delivery pressure at no flow"),
             req("temperature", Kind::Quantity(Dim::TEMPERATURE), "delivery temperature"),
-            req("flow", Kind::Quantity(Dim::MASS_FLOW), "flow at full output"),
+            req("flow", Kind::Expr(MF), "flow at full output, or an expression"),
             opt("available_when", WHEN, "true", "when it can supply"),
         ],
         outputs: &[("available", B), ("flow", MF), ("failed", B)],
@@ -56,7 +56,7 @@ pub static SPECS: &[PartSpec] = &[
         help: "A pack, anti-ice valve, engine starter or other user of bleed air.",
         fields: &[
             req("duct", Kind::Ref(DUCT), "the duct it draws from"),
-            req("flow", Kind::Quantity(Dim::MASS_FLOW), "flow it takes at nominal pressure"),
+            req("flow", Kind::Expr(MF), "flow it takes at nominal pressure, or an expression"),
             opt("nominal", Kind::Quantity(Dim::PRESSURE), "45 psi", "pressure its flow is given at"),
             opt("minimum", Kind::Quantity(Dim::PRESSURE), "15 psi", "below this it is not supplied"),
             opt("on_when", WHEN, "true", "when it draws"),
@@ -74,6 +74,7 @@ struct Duct {
 struct Source {
     duct: usize,
     g: f64,
+    flow_e: Option<Expr>,
     pressure: f64,
     temp: f64,
     when: Option<Expr>,
@@ -94,6 +95,7 @@ struct Valve {
 struct Consumer {
     duct: usize,
     flow: f64,
+    flow_e: Option<Expr>,
     nominal: f64,
     minimum: f64,
     when: Option<Expr>,
@@ -127,7 +129,7 @@ impl Pneumatic {
                 "source" => {
                     let Some(d) = duct(p) else { continue };
                     let pr = p.num("pressure").max(1.0);
-                    n.sources.push(Source { duct: d, g: p.num("flow") / (0.3 * pr), pressure: pr, temp: p.num("temperature"), when: expr_of(p, "available_when"), s: Slots::of(p, &["available", "flow", "failed"]) });
+                    n.sources.push(Source { duct: d, g: 0.0, flow_e: expr_of(p, "flow"), pressure: pr, temp: p.num("temperature"), when: expr_of(p, "available_when"), s: Slots::of(p, &["available", "flow", "failed"]) });
                 }
                 "valve" => {
                     let e = p.parts("between");
@@ -138,7 +140,7 @@ impl Pneumatic {
                 }
                 "consumer" => {
                     let Some(d) = duct(p) else { continue };
-                    n.consumers.push(Consumer { duct: d, flow: p.num("flow"), nominal: p.num("nominal").max(1.0), minimum: p.num("minimum"), when: expr_of(p, "on_when"), s: Slots::of(p, &["supplied", "flow", "temperature", "failed"]) });
+                    n.consumers.push(Consumer { duct: d, flow: 0.0, flow_e: expr_of(p, "flow"), nominal: p.num("nominal").max(1.0), minimum: p.num("minimum"), when: expr_of(p, "on_when"), s: Slots::of(p, &["supplied", "flow", "temperature", "failed"]) });
                 }
                 _ => {}
             }
@@ -157,6 +159,7 @@ impl Domain for Pneumatic {
         self.net.begin_step();
         let mut on = vec![false; self.sources.len()];
         for (k, s) in self.sources.iter_mut().enumerate() {
+            s.g = s.flow_e.as_mut().map_or(0.0, |e| e.eval(slots, dt).max(0.0)) / (0.3 * s.pressure);
             on[k] = !s.s.on(slots, "failed") && s.when.as_mut().is_none_or(|w| w.yes(slots, dt));
             s.s.flag(slots, "available", on[k]);
             if on[k] {
@@ -177,6 +180,7 @@ impl Domain for Pneumatic {
         }
         let mut drawing = vec![false; self.consumers.len()];
         for (k, c) in self.consumers.iter_mut().enumerate() {
+            c.flow = c.flow_e.as_mut().map_or(0.0, |e| e.eval(slots, dt).max(0.0));
             drawing[k] = !c.s.on(slots, "failed") && c.when.as_mut().is_none_or(|w| w.yes(slots, dt));
             if drawing[k] {
                 self.net.stamp(self.ducts[c.duct].node, c.flow / c.nominal, 0.0);

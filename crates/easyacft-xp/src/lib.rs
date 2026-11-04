@@ -50,7 +50,11 @@ pub struct Runner {
     forces: Vec<(usize, [f64; 3], [f64; 3], f64, bool)>,
     force_refs: Option<([Ref; 6], [Ref; 6], Ref)>,
     pub live: live::Server,
+    kinds: Vec<(String, KindHook)>,
 }
+
+/// A custom-kind handler kept across reloads.
+pub type KindHook = std::rc::Rc<std::cell::RefCell<dyn FnMut(&mut easyacft_parts::custom::Part<'_>)>>;
 
 const PLUG: [&str; 6] = ["fside_plug_acf", "fnrml_plug_acf", "faxil_plug_acf", "L_plug_acf", "M_plug_acf", "N_plug_acf"];
 const PROP: [&str; 6] = ["fside_prop", "fnrml_prop", "faxil_prop", "L_prop", "M_prop", "N_prop"];
@@ -66,7 +70,7 @@ impl Runner {
                 if !report.diagnostics.is_empty() {
                     sim.log(&report.render());
                 }
-                let mut r = Runner { aircraft, dir: dir.to_path_buf(), bound: Vec::new(), stamps: Vec::new(), reload_s: 0.0, time_ref: sim.find("sim/time/total_flight_time_sec"), last_time: None, forces: Vec::new(), force_refs: None, live: live::Server::start() };
+                let mut r = Runner { aircraft, dir: dir.to_path_buf(), bound: Vec::new(), stamps: Vec::new(), reload_s: 0.0, time_ref: sim.find("sim/time/total_flight_time_sec"), last_time: None, forces: Vec::new(), force_refs: None, live: live::Server::start(), kinds: Vec::new() };
                 r.bind(sim);
                 Some(r)
             }
@@ -147,6 +151,13 @@ impl Runner {
         }
     }
 
+    /// Steps every `[[custom.<kind>]]` part with `h`, now and after each reload.
+    pub fn on_kind(&mut self, kind: &str, h: KindHook) -> usize {
+        let h2 = h.clone();
+        self.kinds.push((kind.to_owned(), h));
+        self.aircraft.on_kind(kind, move |p| (h2.borrow_mut())(p))
+    }
+
     /// Reloads the files, keeping every value whose name still exists.
     pub fn reload(&mut self, sim: &dyn Sim) {
         match Aircraft::load(&self.dir) {
@@ -158,6 +169,10 @@ impl Runner {
                     fresh.set(name, self.aircraft.slots[i]);
                 }
                 self.aircraft = fresh;
+                for (k, h) in &self.kinds {
+                    let h = h.clone();
+                    self.aircraft.on_kind(k, move |p| (h.borrow_mut())(p));
+                }
                 self.bind(sim);
                 sim.log("EasyAcft: reloaded");
             }

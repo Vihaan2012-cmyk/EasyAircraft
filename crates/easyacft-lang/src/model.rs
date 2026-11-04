@@ -49,6 +49,27 @@ pub struct Binding {
     pub span: Range<usize>,
 }
 
+/// A setting or value of a developer's own part kind, as written: `"L/min"`, `"expr bool"`, `"part electrical.bus"`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KindField {
+    pub key: String,
+    pub ty: String,
+    pub default: Option<String>,
+    pub help: String,
+    pub span: Range<usize>,
+}
+
+/// `[kinds.<name>]`: a part kind the developer declares and steps with their own code.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KindDecl {
+    pub name: String,
+    pub help: String,
+    pub settings: Vec<KindField>,
+    pub values: Vec<KindField>,
+    pub file: usize,
+    pub span: Range<usize>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Model {
     pub name: String,
@@ -56,6 +77,7 @@ pub struct Model {
     pub parts: Vec<PartDecl>,
     pub bindings: Vec<Binding>,
     pub rates: Vec<(String, f64)>,
+    pub kinds: Vec<KindDecl>,
     pub sources: Sources,
 }
 
@@ -100,7 +122,7 @@ struct Loader {
     variant: bool,
 }
 
-const RESERVED: [&str; 5] = ["aircraft", "include", "bindings", "rates", "variant"];
+const RESERVED: [&str; 6] = ["aircraft", "include", "bindings", "rates", "variant", "kinds"];
 
 impl Loader {
     fn file(&mut self, path: &Path, from: Option<(usize, Range<usize>)>) {
@@ -169,6 +191,9 @@ impl Loader {
         if let Some(b) = root.get("bindings").and_then(Item::as_table) {
             self.bindings(b, id);
         }
+        if let Some(k) = root.get("kinds").and_then(Item::as_table) {
+            self.kinds(k, id);
+        }
         let base = path.parent().unwrap_or(Path::new("."));
         let inc = root.get("include").or_else(|| root.get("aircraft").and_then(Item::as_table).and_then(|a| a.get("include")));
         if let Some(inc) = inc {
@@ -226,6 +251,38 @@ impl Loader {
                 }
             };
             self.model.bindings.push(Binding { dataref: k.to_owned(), path, write, factor: unit.0, offset: unit.1, file: id, span: span(v) });
+        }
+    }
+
+    fn kinds(&mut self, t: &Table, id: usize) {
+        for (name, item) in t.iter() {
+            let Some(k) = item.as_table() else {
+                self.diags.push(Diagnostic::error("E0013", format!("write a part kind as a [kinds.{name}] section"), id, span(item)));
+                continue;
+            };
+            let mut decl = KindDecl { name: name.to_owned(), help: k.get("help").and_then(Item::as_str).unwrap_or("").to_owned(), settings: vec![], values: vec![], file: id, span: span(item) };
+            for (part, list) in [("settings", &mut decl.settings), ("values", &mut decl.values)] {
+                let Some(sec) = k.get(part) else { continue };
+                let Some(sec) = sec.as_table_like() else {
+                    self.diags.push(Diagnostic::error("E0013", format!("`{part}` is a table of name = type"), id, span(sec)));
+                    continue;
+                };
+                for (key, v) in sec.iter() {
+                    let f = match v.as_str() {
+                        Some(ty) => Some(KindField { key: key.to_owned(), ty: ty.to_owned(), default: None, help: String::new(), span: span(v) }),
+                        None => v.as_table_like().and_then(|t| {
+                            let s = |n: &str| t.get(n).and_then(|x| x.as_str()).map(str::to_owned);
+                            Some(KindField { key: key.to_owned(), ty: s("type")?, default: s("default"), help: s("help").unwrap_or_default(), span: span(v) })
+                        }),
+                    };
+                    match f {
+                        Some(f) => list.push(f),
+                        None => self.diags.push(Diagnostic::error("E0013", format!("`{key}` needs a type, such as \"L/min\" or {{ type = \"expr bool\", default = \"false\" }}"), id, span(v))),
+                    }
+                }
+            }
+            self.model.kinds.retain(|x| x.name != decl.name);
+            self.model.kinds.push(decl);
         }
     }
 

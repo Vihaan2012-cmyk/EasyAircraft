@@ -46,7 +46,7 @@ pub static SPECS: &[PartSpec] = &[
             req("tank", Kind::Ref(&["fuel.tank"]), "the tank it draws from"),
             req("outlet", Kind::Ref(NODES), "the line or tank it pushes into"),
             opt("pressure", Kind::Quantity(Dim::PRESSURE), "25 psi", "outlet pressure at no flow"),
-            req("flow", Kind::Quantity(Dim::MASS_FLOW), "flow at full output, for example \"1.5 kg/s\""),
+            req("flow", Kind::Expr(MF), "flow at full output, for example \"1.5 kg/s\", or an expression"),
             opt("running_when", WHEN, "true", "when it runs"),
         ],
         outputs: &[("running", B), ("flow", MF), ("low_pressure", B), ("failed", B)],
@@ -84,6 +84,7 @@ struct Pump {
     tank: usize,
     outlet: usize,
     g: f64,
+    flow_e: Option<Expr>,
     pressure: f64,
     when: Option<Expr>,
     flow: f64,
@@ -149,7 +150,7 @@ impl Fuel {
                 "pump" => {
                     let (Some(NodeOf::Tank(t)), Some(out)) = (p.part("tank").and_then(|i| of.get(&i)), node(&f, p.part("outlet"))) else { continue };
                     let pr = p.num("pressure").max(1.0);
-                    f.pumps.push(Pump { tank: *t, outlet: out, g: p.num("flow") / (DROOP * pr), pressure: pr, when: expr_of(p, "running_when"), flow: 0.0, s: Slots::of(p, &["running", "flow", "low_pressure", "failed"]) });
+                    f.pumps.push(Pump { tank: *t, outlet: out, g: 0.0, flow_e: expr_of(p, "flow"), pressure: pr, when: expr_of(p, "running_when"), flow: 0.0, s: Slots::of(p, &["running", "flow", "low_pressure", "failed"]) });
                 }
                 "valve" => {
                     let e = p.parts("between");
@@ -188,6 +189,7 @@ impl Domain for Fuel {
             v.s.flag(slots, "open", open);
         }
         for p in &mut self.pumps {
+            p.g = p.flow_e.as_mut().map_or(0.0, |e| e.eval(slots, dt).max(0.0)) / (DROOP * p.pressure);
             let on = !p.s.on(slots, "failed") && self.tanks[p.tank].quantity > 0.0 && p.when.as_mut().is_none_or(|w| w.yes(slots, dt));
             p.s.flag(slots, "running", on);
             if on {

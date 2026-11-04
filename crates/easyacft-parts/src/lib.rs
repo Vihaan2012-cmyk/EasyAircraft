@@ -3,6 +3,7 @@
 pub mod avionics;
 pub mod catalog;
 pub mod control;
+pub mod custom;
 pub mod electrical;
 pub mod engine;
 pub mod extras;
@@ -83,6 +84,7 @@ pub struct Aircraft {
     pub checked: Checked,
     pub slots: Vec<f64>,
     domains: Vec<(Rate, Box<dyn Domain>)>,
+    custom: (Rate, custom::Custom),
     pub time: f64,
 }
 
@@ -98,7 +100,9 @@ impl Aircraft {
     }
 
     pub fn from_model(model: Model, diags: &mut Vec<Diagnostic>) -> Result<(Self, Report), Report> {
-        let cat = catalog::Builtin;
+        let own = custom::specs(&model.kinds, diags);
+        catalog::register(&own);
+        let cat = catalog::With::new(&own);
         let (checked, more) = check(&model, &cat);
         diags.extend(more);
         let report = Report { diagnostics: std::mem::take(diags), sources: model.sources.clone() };
@@ -140,14 +144,24 @@ impl Aircraft {
         if let Some(d) = systems::Systems::new(&checked) {
             domains.push((rate_for(&model, "systems", 0.02), Box::new(d)));
         }
+        let custom = (rate_for(&model, "custom", 0.01), custom::Custom::new(&checked));
         let files = model.sources.files.iter().map(|(n, _)| n.clone()).collect();
         let watched = checked.slots.names.iter().enumerate().filter(|(_, (n, _))| [".failed", ".fault", ".aborted", ".shutdown", ".tripped", ".detected"].iter().any(|s| n.ends_with(s))).map(|(i, (n, _))| (i, n.clone(), false)).collect();
         let ground = checked.parts.iter().find(|p| p.domain == "environment").and_then(|p| checked.slots.index.get(&format!("{}.on_ground", p.id)).copied());
-        Ok((Self { log: Vec::new(), watched, ground, name: model.name.clone(), files, bindings: model.bindings.clone(), checked, slots, domains, time: 0.0 }, report))
+        Ok((Self { log: Vec::new(), watched, ground, name: model.name.clone(), files, bindings: model.bindings.clone(), checked, slots, domains, custom, time: 0.0 }, report))
+    }
+
+    /// Steps every `[[custom.<kind>]]` part with `f`; returns how many there are.
+    pub fn on_kind(&mut self, kind: &str, f: impl FnMut(&mut custom::Part<'_>) + 'static) -> usize {
+        self.custom.1.on_kind(kind, Box::new(f))
     }
 
     pub fn step(&mut self, dt: f64) {
         self.time += dt;
+        let (rate, c) = &mut self.custom;
+        for _ in 0..rate.due(dt) {
+            c.step(&mut self.slots, rate.period());
+        }
         for (rate, d) in &mut self.domains {
             let n = rate.due(dt);
             for _ in 0..n {

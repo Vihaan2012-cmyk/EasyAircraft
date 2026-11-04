@@ -182,7 +182,7 @@ pub fn unit(t: Type, v: f64) -> String {
 }
 
 pub const SETTABLE: &[&str] = &["on", "pressed", "guard_open", "failed", "pulled", "frozen", "bad_data", "channel_failed", "position", "value", "mass"];
-const MORE: &[&str] = &["logic", "weight", "gear", "cabin", "ice", "oxygen", "fadec", "apu", "fire", "light", "sound", "failure", "data", "sensor", "wear", "input", "output", "environment"];
+const MORE: &[&str] = &["custom", "logic", "weight", "gear", "cabin", "ice", "oxygen", "fadec", "apu", "fire", "light", "sound", "failure", "data", "sensor", "wear", "input", "output", "environment"];
 
 impl App {
     fn new(dir: String) -> Self {
@@ -603,7 +603,7 @@ impl App {
         ui.separator();
         ui.label("Add part");
         egui::ComboBox::from_label("kind").selected_text(self.add_kind.clone()).show_ui(ui, |ui| {
-            for s in catalog::all() {
+            for s in catalog::list() {
                 let k = format!("{}.{}", s.domain, s.kind);
                 ui.selectable_value(&mut self.add_kind, k.clone(), k);
             }
@@ -687,7 +687,7 @@ impl App {
                     });
                 });
             }
-            let spec = catalog::all().iter().find(|s| s.domain == p.domain && s.kind == p.kind).unwrap();
+            let Some(spec) = catalog::find(p.domain, p.kind) else { continue };
             egui::CollapsingHeader::new(format!("{} values", p.id)).default_open(p.kind != "gas_turbine").show(ui, |ui| {
                 egui::Grid::new(format!("eng_{}", p.id)).show(ui, |ui| {
                     for (n, t) in spec.outputs {

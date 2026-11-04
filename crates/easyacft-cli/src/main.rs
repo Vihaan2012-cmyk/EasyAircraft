@@ -15,6 +15,7 @@ const CODES: &[(&str, &str)] = &[
     ("E0010", "A [variant] file must name the aircraft it changes with `of`."),
     ("E0011", "A variant removes a part the base aircraft does not have."),
     ("E0012", "A variant changes a part into a different kind; remove it and add a new one instead."),
+    ("E0013", "A [kinds.<name>] declaration is wrong: settings and values are name = type, where a type is bool, number, text, a unit such as \"L/min\", \"expr <type>\" or \"part <domain.kind>\"."),
     ("E0101", "The part kind does not exist. `easyacft kinds` lists them."),
     ("E0102", "The part has no setting with this name."),
     ("E0103", "A setting has the wrong type or unit."),

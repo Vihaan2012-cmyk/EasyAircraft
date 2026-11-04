@@ -53,6 +53,7 @@ struct Load {
     bus: usize,
     node: usize,
     power: f64,
+    power_e: Option<Expr>,
     when: Option<Expr>,
     priority: f64,
     shed: bool,
@@ -120,7 +121,7 @@ impl Electrical {
                 }
                 "load" => {
                     let Some(&b) = p.part("bus").and_then(|x| e.bus_of.get(&x)) else { continue };
-                    e.loads.push(Load { bus: b, node: e.buses[b].node, power: p.num("power"), when: expr_of(p, "on_when"), priority: p.num("shed_priority"), shed: false, s: Slots::of(p, &["powered", "current", "power", "shed", "failed"]) });
+                    e.loads.push(Load { bus: b, node: e.buses[b].node, power: 0.0, power_e: expr_of(p, "power"), when: expr_of(p, "on_when"), priority: p.num("shed_priority"), shed: false, s: Slots::of(p, &["powered", "current", "power", "shed", "failed"]) });
                 }
                 "tru" | "inverter" => {
                     let (Some(&ib), Some(&ob)) = (p.part("input").and_then(|x| e.bus_of.get(&x)), p.part("output").and_then(|x| e.bus_of.get(&x))) else { continue };
@@ -212,6 +213,7 @@ impl Domain for Electrical {
         let mut demand: HashMap<usize, f64> = HashMap::new();
         let mut wanted = vec![false; self.loads.len()];
         for (k, l) in self.loads.iter_mut().enumerate() {
+            l.power = l.power_e.as_mut().map_or(0.0, |e| e.eval(slots, dt).max(0.0));
             wanted[k] = !l.s.on(slots, "failed") && l.when.as_mut().is_none_or(|w| w.yes(slots, dt)) && powered[l.bus];
             if wanted[k] && !l.shed {
                 *demand.entry(islands[l.node]).or_default() += l.power;

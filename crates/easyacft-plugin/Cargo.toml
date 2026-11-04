@@ -12,3 +12,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 easyacft-xp = { path = "../easyacft-xp" }
+easyacft-ffi = { path = "../easyacft-ffi" }
+easyacft-parts = { path = "../easyacft-parts" }

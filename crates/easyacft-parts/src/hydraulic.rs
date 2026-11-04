@@ -37,7 +37,7 @@ pub static SPECS: &[PartSpec] = &[
         fields: &[
             req("circuit", Kind::Ref(CIRCUIT), "the circuit it feeds"),
             req("pressure", Kind::Quantity(Dim::PRESSURE), "outlet pressure at no flow"),
-            req("flow", Kind::Quantity(Dim::VOLUME_FLOW), "flow it delivers at full output, for example \"140 L/min\""),
+            req("flow", Kind::Expr(Q), "flow it delivers at full output, for example \"140 L/min\", or an expression"),
             opt("running_when", WHEN, "true", "when it turns"),
         ],
         outputs: &[("running", B), ("flow", Q), ("pressure", P), ("failed", B)],
@@ -55,7 +55,7 @@ pub static SPECS: &[PartSpec] = &[
         help: "Actuators or a motor that use flow while they move.",
         fields: &[
             req("circuit", Kind::Ref(CIRCUIT), "the circuit it uses"),
-            req("flow", Kind::Quantity(Dim::VOLUME_FLOW), "flow while moving at full rate"),
+            req("flow", Kind::Expr(Q), "flow while moving at full rate, or an expression"),
             opt("moving_when", WHEN, "false", "when it is moving"),
             opt("minimum", Kind::Quantity(Dim::PRESSURE), "1000 psi", "lowest pressure it works on"),
         ],
@@ -87,6 +87,7 @@ struct Circuit {
 struct Pump {
     circuit: usize,
     g: f64,
+    flow_e: Option<Expr>,
     pressure: f64,
     when: Option<Expr>,
     s: Slots,
@@ -95,6 +96,7 @@ struct Pump {
 struct Consumer {
     circuit: usize,
     flow: f64,
+    flow_e: Option<Expr>,
     minimum: f64,
     when: Option<Expr>,
     s: Slots,
@@ -149,7 +151,7 @@ impl Hydraulic {
                 "pump" => {
                     let Some(ci) = circ(p) else { continue };
                     let pr = p.num("pressure").max(1.0);
-                    h.pumps.push(Pump { circuit: ci, g: p.num("flow") / (DROOP * pr), pressure: pr, when: expr_of(p, "running_when"), s: Slots::of(p, &["running", "flow", "pressure", "failed"]) });
+                    h.pumps.push(Pump { circuit: ci, g: 0.0, flow_e: expr_of(p, "flow"), pressure: pr, when: expr_of(p, "running_when"), s: Slots::of(p, &["running", "flow", "pressure", "failed"]) });
                 }
                 "accumulator" => {
                     if let Some(ci) = circ(p) {
@@ -158,7 +160,7 @@ impl Hydraulic {
                 }
                 "consumer" => {
                     let Some(ci) = circ(p) else { continue };
-                    h.consumers.push(Consumer { circuit: ci, flow: p.num("flow"), minimum: p.num("minimum"), when: expr_of(p, "moving_when"), s: Slots::of(p, &["powered", "flow", "failed"]) });
+                    h.consumers.push(Consumer { circuit: ci, flow: 0.0, flow_e: expr_of(p, "flow"), minimum: p.num("minimum"), when: expr_of(p, "moving_when"), s: Slots::of(p, &["powered", "flow", "failed"]) });
                 }
                 "ptu" => {
                     let ends = p.parts("between");
@@ -189,6 +191,7 @@ impl Domain for Hydraulic {
         }
         let mut running = vec![false; self.pumps.len()];
         for (k, p) in self.pumps.iter_mut().enumerate() {
+            p.g = p.flow_e.as_mut().map_or(0.0, |e| e.eval(slots, dt).max(0.0)) / (DROOP * p.pressure);
             let fluid = self.circuits[p.circuit].fluid > 0.0;
             running[k] = !p.s.on(slots, "failed") && fluid && p.when.as_mut().is_none_or(|w| w.yes(slots, dt));
             p.s.flag(slots, "running", running[k]);
@@ -198,6 +201,7 @@ impl Domain for Hydraulic {
         }
         let mut demand = vec![0.0; self.consumers.len()];
         for (k, u) in self.consumers.iter_mut().enumerate() {
+            u.flow = u.flow_e.as_mut().map_or(0.0, |e| e.eval(slots, dt).max(0.0));
             let c = &self.circuits[u.circuit];
             let p = c.s.get(slots, "pressure");
             let moving = !u.s.on(slots, "failed") && u.when.as_mut().is_some_and(|w| w.yes(slots, dt));

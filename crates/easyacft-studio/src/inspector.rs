@@ -38,7 +38,7 @@ impl App {
         };
         let Some(a) = &self.aircraft else { return };
         let Some(part) = a.checked.parts.get(sel).cloned() else { return };
-        let spec = catalog::all().iter().find(|s| s.domain == part.domain && s.kind == part.kind).copied();
+        let spec = catalog::find(part.domain, part.kind);
         ui.heading(&part.id);
         ui.label(format!("{}.{}", part.domain, part.kind));
         if let Some(s) = spec {

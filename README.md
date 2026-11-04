@@ -62,6 +62,41 @@ count = 2
 design_thrust = "130 kN"
 ```
 
+## Your own code
+
+Most settings that drive a network can be expressions, so your code steers the built-in parts: a load's `power`, a pump's or consumer's `flow`. For a part kind EasyAcft lacks, declare it and step it yourself:
+
+```toml
+[kinds.turbo_pump]
+help = "A turbine-driven pump"
+settings.rated_flow = "L/min"
+settings.drive = { type = "expr bool", default = "false" }
+settings.circuit = "part hydraulic.circuit"
+values.flow = "L/min"
+
+[[custom.turbo_pump]]
+id = "tp1"
+rated_flow = "40 L/min"
+drive = "eng1.running"
+circuit = "green"
+
+[[hydraulic.pump]]
+id = "tp1_out"
+circuit = "green"
+pressure = "3000 psi"
+flow = "tp1.flow"
+```
+
+```c
+void turbo_pump(easyacft_part *p, double dt, void *user) {
+    double on = easyacft_part_get(p, "drive");
+    easyacft_part_set(p, "flow", on ? easyacft_part_setting(p, "rated_flow") : 0.0);
+}
+easyacft_on_kind(aircraft, "turbo_pump", turbo_pump, NULL);
+```
+
+The checker holds custom parts to their declaration like any other, and Studio shows them. From your own X-Plane plugin, ask the EasyAcft plugin for the same functions with `EASYACFT_MSG_GET_API` (see `easyacft.h`); your handlers survive hot reloads. Rust code calls `Aircraft::on_kind`. Any plugin, in any language, can also read and write every value through its dataref.
+
 ## Tests
 
 ```toml

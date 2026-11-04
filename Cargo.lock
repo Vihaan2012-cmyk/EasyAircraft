@@ -433,6 +433,8 @@ dependencies = [
 name = "easyacft-plugin"
 version = "0.1.0"
 dependencies = [
+ "easyacft-ffi",
+ "easyacft-parts",
  "easyacft-xp",
 ]
 

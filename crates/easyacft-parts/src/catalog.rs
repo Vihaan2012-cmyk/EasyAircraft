@@ -156,7 +156,7 @@ pub static CORE: &[PartSpec] = &[
         help: "A consumer drawing constant power.",
         fields: &[
             req("bus", Kind::Ref(BUS), "the bus it draws from"),
-            req("power", Kind::Quantity(Dim::POWER), "for example \"250 W\""),
+            req("power", Kind::Expr(W), "for example \"250 W\", or an expression such as \"heater.value * 1 kW\""),
             opt("on_when", WHEN, "true", "when it is switched on"),
             opt("shed_priority", Kind::Number, "0", "0 never shed; higher numbers are shed first"),
         ],
@@ -203,6 +203,49 @@ impl Catalog for Builtin {
     fn specs(&self) -> &[PartSpec] {
         all()
     }
+}
+
+/// The built-in kinds plus an aircraft's own.
+pub struct With(pub Vec<PartSpec>);
+
+impl With {
+    pub fn new(extra: &[PartSpec]) -> Self {
+        With(all().iter().chain(extra).copied().collect())
+    }
+}
+
+impl Catalog for With {
+    fn specs(&self) -> &[PartSpec] {
+        &self.0
+    }
+}
+
+fn registry() -> &'static std::sync::RwLock<Vec<PartSpec>> {
+    static R: std::sync::OnceLock<std::sync::RwLock<Vec<PartSpec>>> = std::sync::OnceLock::new();
+    R.get_or_init(Default::default)
+}
+
+/// Remembers custom kinds so tools can look them up; the newest declaration of a name wins.
+pub fn register(specs: &[PartSpec]) {
+    let mut r = registry().write().unwrap_or_else(|e| e.into_inner());
+    for s in specs {
+        r.retain(|x| !(x.domain == s.domain && x.kind == s.kind));
+        r.push(*s);
+    }
+}
+
+/// A built-in or registered kind.
+pub fn find(domain: &str, kind: &str) -> Option<PartSpec> {
+    all().iter().find(|s| s.domain == domain && s.kind == kind).copied().or_else(|| registry().read().ok()?.iter().find(|s| s.domain == domain && s.kind == kind).copied())
+}
+
+/// Every built-in and registered kind.
+pub fn list() -> Vec<PartSpec> {
+    let mut v = all().to_vec();
+    if let Ok(r) = registry().read() {
+        v.extend(r.iter().copied());
+    }
+    v
 }
 
 /// Slot of output `name` of part `p`.
