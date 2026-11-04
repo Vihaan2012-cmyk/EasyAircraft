@@ -195,7 +195,7 @@ nominal = "115 V"
 [[electrical.contactor]]
 id = "ac_ess_shed_c"
 between = ["ac_ess", "ac_ess_shed"]
-close_when = "!emer_config.on"
+close_when = "!emer_config.on && !stat_inv.active"
 
 [[logic.flag]]
 id = "ac_main_lost"
@@ -251,7 +251,7 @@ close_when = "ac3.powered"
 [[electrical.contactor]]
 id = "ac_eha_ess"
 between = ["ac_ess", "ac_eha"]
-close_when = "!ac3.powered"
+close_when = "!ac3.powered && !stat_inv.active"
 
 # --- DC: BCRU 1 from AC 2, BCRU 2 from AC 3, BCRU ESS from AC ESS, APU TR from AC 4 --
 [[electrical.bus]]
@@ -464,4 +464,4 @@ powered_at = 0.643
 [[electrical.contactor]]
 id = "dc_ess_shed_c"
 between = ["dc_ess", "dc_ess_shed"]
-close_when = "!emer_config.on"
+close_when = "!emer_config.on && !stat_inv.active"
