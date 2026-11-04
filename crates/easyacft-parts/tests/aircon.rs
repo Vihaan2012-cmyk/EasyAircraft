@@ -468,3 +468,20 @@ fn a_duct_humidifier_lifts_cruise_humidity_and_cools_its_duct() {
     assert!(humid > dry + 0.04, "humidified to {:.0} % from {:.0} %", humid * 100.0, dry * 100.0);
     assert!(used > 0.1, "{used:.2} kg of water");
 }
+
+#[test]
+fn a_drifting_cabin_pressure_sensor_hands_control_to_the_other_channel() {
+    let src = ACS.replace("valves = [\"ofv\"]", "valves = [\"ofv\"]\nsensor_1_bias = \"bias.value * 1 Pa\"").replace("[[input.number]]\nid = \"breach\"", "[[input.number]]\nid = \"breach\"\n\n[[input.number]]\nid = \"bias\"");
+    let (m, mut d) = load_str("aircon", &src);
+    let (mut a, _) = Aircraft::from_model(m, &mut d).unwrap_or_else(|r| panic!("{}", r.render()));
+    cruise(&mut a, 900.0);
+    assert_eq!((a.get("cpc.channel"), a.get("cpc.sensor_fault")), (Some(1.0), Some(0.0)));
+    a.set("bias.value", 6000.0);
+    for _ in 0..3000 {
+        a.step(0.1);
+    }
+    assert_eq!((a.get("cpc.sensor_fault"), a.get("cpc.channel"), a.get("cpc.fault")), (Some(1.0), Some(2.0), Some(1.0)));
+    let diff = get(&a, "fus.differential") / PSI;
+    assert!((7.0..8.75).contains(&diff), "channel 2 holds the schedule: {diff:.2} psi");
+    assert_eq!(a.get("cpc.vs_high"), Some(0.0));
+}

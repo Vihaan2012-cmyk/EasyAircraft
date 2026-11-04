@@ -121,6 +121,10 @@ pub const CONTROLLER_SPEC: PartSpec = PartSpec {
         opt("landing_differential", Kind::Quantity(Dim::PRESSURE), "0.1 psi", "differential it arrives at the field with"),
         opt("altitude_limit", Kind::Quantity(Dim::LENGTH), "14000 ft", "cabin altitude above which it shuts the valves"),
         opt("ground_depressurisation", Kind::Quantity(Dim::TIME), "55 s", "after landing, time to drive the valves fully open"),
+        opt("sensor_1_bias", Kind::Expr(P), "0 Pa", "channel 1 cabin pressure sensor error"),
+        opt("sensor_2_bias", Kind::Expr(P), "0 Pa", "channel 2 cabin pressure sensor error"),
+        opt("sensor_disagree", Kind::Quantity(Dim::PRESSURE), "0.3 psi", "difference between its two sensors that it treats as a sensor fault"),
+        opt("vs_alert", Kind::Quantity(Dim::SPEED), "1800 ft/min", "cabin climb or descent rate that raises the alert"),
     ],
     outputs: &[
         ("target_altitude", LEN),
@@ -130,6 +134,9 @@ pub const CONTROLLER_SPEC: PartSpec = PartSpec {
         ("channel", N),
         ("command", N),
         ("manual", B),
+        ("vs_high", B),
+        ("elevation_fault", B),
+        ("sensor_fault", B),
         ("fault", B),
         ("failed", B),
     ],
@@ -487,6 +494,11 @@ pub struct Controller {
     pub channel: u8,
     pub manual_now: bool,
     pub manual_switch: f64,
+    bias: [Option<Expr>; 2],
+    disagree: f64,
+    vs_alert: f64,
+    vs_high: Confirm,
+    sensors: [f64; 2],
     s: Slots,
 }
 
@@ -526,7 +538,12 @@ impl Controller {
             channel: 1,
             manual_now: false,
             manual_switch: 0.0,
-            s: Slots::of(p, &["target_altitude", "target_rate", "landing_elevation", "mode", "channel", "command", "manual", "fault", "failed"]),
+            bias: [crate::expr_of(p, "sensor_1_bias"), crate::expr_of(p, "sensor_2_bias")],
+            disagree: p.num("sensor_disagree").max(1.0),
+            vs_alert: p.num("vs_alert").max(0.1),
+            vs_high: Confirm::default(),
+            sensors: [P_SL, P_SL],
+            s: Slots::of(p, &["target_altitude", "target_rate", "landing_elevation", "mode", "channel", "command", "manual", "vs_high", "elevation_fault", "sensor_fault", "fault", "failed"]),
         })
     }
 
@@ -534,15 +551,27 @@ impl Controller {
     pub fn step(&mut self, slots: &mut [f64], dt: f64, cabin: (f64, f64, f64)) {
         let failed = self.s.on(slots, "failed");
         let (pa, ground, ac_vs, ac_alt) = (slots[self.air[0]].max(100.0), slots[self.air[1]] != 0.0, slots[self.air[2]], slots[self.air[3]]);
-        let (pc, cabin_alt, _cabin_vs) = cabin;
+        let (pc_true, _, cabin_vs) = cabin;
+        // Each channel reads its own cabin pressure sensor; a large disagreement takes the suspect channel out.
+        for (k, b) in self.bias.iter_mut().enumerate() {
+            let reading = pc_true + eval(b, slots, dt, 0.0);
+            self.sensors[k] = lag(self.sensors[k], reading, 0.3, dt);
+        }
+        let disagree = (self.sensors[0] - self.sensors[1]).abs() > self.disagree;
+        let pc = if self.channel == 2 { self.sensors[1] } else { self.sensors[0] };
+        let cabin_alt = isa_altitude(pc);
         let h_out = isa_altitude(pa);
         if self.departure.is_nan() || (ground && self.was_ground) {
             self.departure = h_out;
         }
         let fms = eval(&mut self.landing, slots, dt, 0.0);
-        let landing = if yes(&mut self.man_elev_when, slots, dt, false) { eval(&mut self.man_elev, slots, dt, 0.0) } else { fms };
-        let ch1 = !failed && !yes(&mut self.ch1, slots, dt, false);
-        let ch2 = !failed && !yes(&mut self.ch2, slots, dt, false);
+        let manual_elev = yes(&mut self.man_elev_when, slots, dt, false);
+        let elevation_fault = !manual_elev && !(-600.0..=5000.0).contains(&fms);
+        let landing = if manual_elev { eval(&mut self.man_elev, slots, dt, 0.0) } else if elevation_fault { 0.0 } else { fms };
+        // With the sensors disagreeing, trust the one nearer what the outflow valve and air data imply.
+        let suspect = if disagree { if (self.sensors[0] - pc_true).abs() > (self.sensors[1] - pc_true).abs() { 1 } else { 2 } } else { 0 };
+        let ch1 = !failed && !yes(&mut self.ch1, slots, dt, false) && suspect != 1;
+        let ch2 = !failed && !yes(&mut self.ch2, slots, dt, false) && suspect != 2;
         self.channel = if ch1 { 1 } else if ch2 { 2 } else { 0 };
         let manual = yes(&mut self.manual, slots, dt, false) || self.channel == 0;
         let ditching = yes(&mut self.ditch, slots, dt, false);
@@ -628,15 +657,21 @@ impl Controller {
         s.put(slots, "channel", self.channel as f64);
         s.put(slots, "command", self.command);
         s.flag(slots, "manual", manual);
+        s.flag(slots, "vs_high", self.vs_high.hold(cabin_vs.abs() > self.vs_alert, 5.0, dt));
+        s.flag(slots, "elevation_fault", elevation_fault);
+        s.flag(slots, "sensor_fault", disagree);
         s.flag(slots, "fault", !ch1 || !ch2);
     }
 
     pub fn state(&self, v: &mut Vec<f64>) {
+        v.extend([self.sensors[0], self.sensors[1], self.vs_high.elapsed]);
         v.extend([self.target, self.mode, if self.departure.is_nan() { -1e9 } else { self.departure }, self.max_alt, self.since_landing.min(1e9), self.pi.integral, self.was_ground as u8 as f64, self.command, self.channel as f64]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
         let mut n = || it.next().unwrap_or(0.0);
+        self.sensors = [n(), n()];
+        self.vs_high.elapsed = n();
         self.target = n();
         self.mode = n();
         let d = n();
