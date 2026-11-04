@@ -6,7 +6,7 @@ use std::path::Path;
 const CRATES: [(&str, &str, &[&str]); 3] = [("core", "easyacft-core", &[]), ("lang", "easyacft-lang", &["loader.rs"]), ("parts", "easyacft-parts", &["files.rs", "scenario.rs"])];
 
 fn main() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let root = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("..");
     let mut out = String::from("pub static FILES: &[(&str, &str)] = &[\n");
     for (short, dir, skip) in CRATES {
         let src = root.join(dir).join("src");

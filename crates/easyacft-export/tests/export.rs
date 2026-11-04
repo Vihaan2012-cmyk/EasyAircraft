@@ -33,5 +33,9 @@ fn bytecode_and_generated_rust_agree() {
     }
     let p = compile("if(a > 2 && !(b < 1), min(a, b) * -3, abs(a - b) / 0)", &N).unwrap();
     let body = easyacft_export::rust_body(&p, &["A".into(), "B".into()]);
-    assert_eq!(body.trim(), "if b(f(b(f(s[v::A] > 2.0)) && b(f(!b(f(s[v::B] < 1.0)))))) { ((s[v::A]).min(s[v::B]) * -(3.0)) } else { div(((s[v::A] - s[v::B])).abs(), 0.0) }");
+    assert_eq!(body.trim(), "if b(f(b(f(b(f(s[v::A] > 2.0)))) && b(f(b(f(!b(f(s[v::B] < 1.0)))))))) { (f64::min(s[v::A], s[v::B]) * -(3.0)) } else { div(f64::abs((s[v::A] - s[v::B])), 0.0) }");
+    let guarded = compile("if(a > 2, latch(b > 1, false), false)", &N).unwrap();
+    let body = easyacft_export::rust_body(&guarded, &["A".into(), "B".into()]);
+    assert!(body.contains("latch(&mut st[0]") && body.contains("st[0..1].fill(0.0)"), "a skipped arm resets its latch:
+{body}");
 }

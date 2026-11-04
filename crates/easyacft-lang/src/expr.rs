@@ -276,12 +276,19 @@ pub enum Op {
     Ge,
     Eq,
     Ne,
-    And,
-    Or,
     Min,
     Max,
     Abs,
-    If,
+    /// Short-circuit `&&`: false on top jumps to the target keeping it, else pops it; skipping resets states `k0..k1`.
+    AndThen(usize, usize, usize),
+    /// Short-circuit `||`: true on top jumps to the target keeping it, else pops it; skipping resets states `k0..k1`.
+    OrElse(usize, usize, usize),
+    /// Pops a condition; false jumps to the target (an `if`'s else arm), resetting the then arm's states `k0..k1`.
+    IfNot(usize, usize, usize),
+    /// End of an `if`'s then arm: jumps over the else arm, resetting its states `k0..k1`.
+    Jump(usize, usize, usize),
+    /// Top of the stack as 0 or 1.
+    Truth,
     Delay(usize),
     OffDelay(usize),
     Latch(usize),
@@ -442,8 +449,14 @@ impl Compiler<'_> {
             },
             Ast::Binary(op @ ("&&" | "||"), l, r, _) => {
                 self.bool(l)?;
+                self.ops.push(Op::Truth);
+                let at = self.ops.len();
+                self.ops.push(Op::Jump(0, 0, 0));
+                let k0 = self.states;
                 self.bool(r)?;
-                self.ops.push(if *op == "&&" { Op::And } else { Op::Or });
+                self.ops.push(Op::Truth);
+                let (end, k1) = (self.ops.len(), self.states);
+                self.ops[at] = if *op == "&&" { Op::AndThen(end, k0, k1) } else { Op::OrElse(end, k0, k1) };
                 Type::Bool
             }
             Ast::Binary(op, l, r, s) => {
@@ -567,11 +580,19 @@ impl Compiler<'_> {
                     "if" => {
                         want(3)?;
                         self.bool(&args[0])?;
-                        let (a, b) = (self.node(&args[1])?, self.node(&args[2])?);
+                        let test = self.ops.len();
+                        self.ops.push(Op::Jump(0, 0, 0));
+                        let k0 = self.states;
+                        let a = self.node(&args[1])?;
+                        let jump = self.ops.len();
+                        self.ops.push(Op::Jump(0, 0, 0));
+                        let (else_at, k1) = (self.ops.len(), self.states);
+                        let b = self.node(&args[2])?;
                         if a != b {
                             return err(s.clone(), format!("both branches of `if` must be the same kind, found {} and {}", a.name(), b.name()));
                         }
-                        self.ops.push(Op::If);
+                        self.ops[test] = Op::IfNot(else_at, k0, k1);
+                        self.ops[jump] = Op::Jump(self.ops.len(), k1, self.states);
                         a
                     }
                     _ => {
@@ -595,82 +616,120 @@ pub fn compile(src: &str, names: &dyn Names) -> Result<Program, ExprError> {
 }
 
 impl Program {
-    /// One evaluation; `state` holds timers and latches.
+    /// One evaluation; `state` holds timers and latches. `&&`, `||` and `if` evaluate only the arm they
+    /// take, and a timer, latch or edge in an arm not taken resets.
     pub fn eval(&self, slots: &[f64], state: &mut [f64], dt: f64) -> f64 {
         if let Some(f) = self.native {
             return f(slots, state, dt, &self.tables);
         }
-        let mut st: Vec<f64> = Vec::with_capacity(8);
+        let mut stack = [0.0f64; 32];
+        let mut heap: Vec<f64> = Vec::new();
+        if self.ops.len() > stack.len() {
+            heap.resize(self.ops.len(), 0.0);
+        }
+        let st: &mut [f64] = if heap.is_empty() { &mut stack } else { &mut heap };
+        let mut top = 0usize;
         let b = |v: f64| v != 0.0;
-        for op in &self.ops {
-            match *op {
-                Op::Push(v) => st.push(v),
-                Op::Load(i) => st.push(slots.get(i).copied().unwrap_or(0.0)),
+        let f = |x: bool| x as u8 as f64;
+        let mut pc = 0;
+        macro_rules! pop {
+            () => {{
+                top = top.saturating_sub(1);
+                st[top]
+            }};
+        }
+        macro_rules! push {
+            ($v:expr) => {{
+                let v = $v;
+                st[top] = v;
+                top += 1;
+            }};
+        }
+        while pc < self.ops.len() {
+            let op = self.ops[pc];
+            pc += 1;
+            match op {
+                Op::Push(v) => push!(v),
+                Op::Load(i) => push!(slots.get(i).copied().unwrap_or(0.0)),
                 Op::Not => {
-                    let v = st.pop().unwrap_or(0.0);
-                    st.push(!b(v) as u8 as f64)
+                    let v = pop!();
+                    push!(f(!b(v)))
+                }
+                Op::Truth => {
+                    let v = pop!();
+                    push!(f(b(v)))
                 }
                 Op::Neg => {
-                    let v = st.pop().unwrap_or(0.0);
-                    st.push(-v)
+                    let v = pop!();
+                    push!(-v)
                 }
                 Op::Abs => {
-                    let v = st.pop().unwrap_or(0.0);
-                    st.push(v.abs())
+                    let v = pop!();
+                    push!(v.abs())
+                }
+                Op::AndThen(to, k0, k1) | Op::OrElse(to, k0, k1) => {
+                    let v = st[top.saturating_sub(1)];
+                    if b(v) == matches!(op, Op::OrElse(..)) {
+                        state[k0..k1].fill(0.0);
+                        pc = to;
+                    } else {
+                        top = top.saturating_sub(1);
+                    }
+                }
+                Op::IfNot(to, k0, k1) => {
+                    if !b(pop!()) {
+                        state[k0..k1].fill(0.0);
+                        pc = to;
+                    }
+                }
+                Op::Jump(to, k0, k1) => {
+                    state[k0..k1].fill(0.0);
+                    pc = to;
                 }
                 Op::Delay(k) | Op::OffDelay(k) => {
-                    let t = st.pop().unwrap_or(0.0);
-                    let c = b(st.pop().unwrap_or(0.0));
+                    let t = pop!();
+                    let c = b(pop!());
                     let timer = &mut state[k];
                     let out = if matches!(op, Op::Delay(_)) {
                         *timer = if c { *timer + dt } else { 0.0 };
                         c && *timer >= t - 1e-9
                     } else {
-                        *timer = if c { 0.0 } else { *timer + dt };
-                        c || *timer < t - 1e-9
+                        *timer = if c { t } else { (*timer - dt).max(0.0) };
+                        c || *timer > 1e-9
                     };
-                    st.push(out as u8 as f64)
+                    push!(f(out))
                 }
                 Op::Latch(k) => {
-                    let reset = b(st.pop().unwrap_or(0.0));
-                    let set = b(st.pop().unwrap_or(0.0));
-                    let held = if reset { false } else { set || b(state[k]) };
-                    state[k] = held as u8 as f64;
-                    st.push(state[k])
+                    let reset = b(pop!());
+                    let set = b(pop!());
+                    state[k] = f(!reset && (set || b(state[k])));
+                    push!(state[k])
                 }
                 Op::Rising(k) => {
-                    let c = b(st.pop().unwrap_or(0.0));
+                    let c = b(pop!());
                     let out = c && !b(state[k]);
-                    state[k] = c as u8 as f64;
-                    st.push(out as u8 as f64)
+                    state[k] = f(c);
+                    push!(f(out))
                 }
                 Op::Table(t, _) => {
-                    let y = st.pop().unwrap_or(0.0);
-                    let x = st.pop().unwrap_or(0.0);
-                    st.push(self.tables.get(t).map_or(0.0, |tb| tb.lookup(x, y)))
-                }
-                Op::If => {
-                    let e = st.pop().unwrap_or(0.0);
-                    let t = st.pop().unwrap_or(0.0);
-                    let c = st.pop().unwrap_or(0.0);
-                    st.push(if b(c) { t } else { e })
+                    let y = pop!();
+                    let x = pop!();
+                    push!(self.tables.get(t).map_or(0.0, |tb| tb.lookup(x, y)))
                 }
                 _ => {
-                    let r = st.pop().unwrap_or(0.0);
-                    let l = st.pop().unwrap_or(0.0);
-                    st.push(match op {
+                    let r = pop!();
+                    let l = pop!();
+                    push!(match op {
                         Op::Add => l + r,
                         Op::Sub => l - r,
                         Op::Mul => l * r,
                         Op::Div => if r == 0.0 { 0.0 } else { l / r },
-                        Op::Lt => (l < r) as u8 as f64,
-                        Op::Le => (l <= r) as u8 as f64,
-                        Op::Gt => (l > r) as u8 as f64,
-                        Op::Ge => (l >= r) as u8 as f64,
-                        Op::Eq => (l == r) as u8 as f64,
-                        Op::Ne => (l != r) as u8 as f64,
-                        Op::And => (b(l) && b(r)) as u8 as f64,
-                        Op::Or => (b(l) || b(r)) as u8 as f64,
+                        Op::Lt => f(l < r),
+                        Op::Le => f(l <= r),
+                        Op::Gt => f(l > r),
+                        Op::Ge => f(l >= r),
+                        Op::Eq => f(l == r),
+                        Op::Ne => f(l != r),
                         Op::Min => l.min(r),
                         Op::Max => l.max(r),
                         _ => 0.0,
@@ -678,7 +737,7 @@ impl Program {
                 }
             }
         }
-        st.pop().unwrap_or(0.0)
+        if top == 0 { 0.0 } else { st[top - 1] }
     }
 }
 
@@ -757,6 +816,54 @@ mod tests {
         let mut rs = vec![0.0];
         assert_eq!(r.eval(&[1.0, 0.0, 0.0, 0.0], &mut rs, 0.1), 1.0);
         assert_eq!(r.eval(&[1.0, 0.0, 0.0, 0.0], &mut rs, 0.1), 0.0);
+    }
+
+    #[test]
+    fn a_guarded_latch_only_runs_while_its_arm_is_taken() {
+        let p = compile("if(gen1.ready, latch(bus_tie.off, false), false)", &names()).unwrap();
+        let mut st = vec![0.0; p.states];
+        let (disarmed_fault, armed_clear) = ([0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]);
+        assert_eq!(p.eval(&disarmed_fault, &mut st, 0.1), 0.0);
+        assert_eq!(p.eval(&armed_clear, &mut st, 0.1), 0.0, "a fault while disarmed is not remembered");
+        assert_eq!(p.eval(&[1.0, 1.0, 0.0, 0.0], &mut st, 0.1), 1.0);
+        assert_eq!(p.eval(&armed_clear, &mut st, 0.1), 1.0, "latched while armed");
+        p.eval(&[0.0, 0.0, 0.0, 0.0], &mut st, 0.1);
+        assert_eq!(p.eval(&armed_clear, &mut st, 0.1), 0.0, "disarming resets it");
+    }
+
+    #[test]
+    fn and_skips_its_right_side_and_restarts_its_timer() {
+        let p = compile("gen1.ready && delay(bus_tie.off, 0.3 s)", &names()).unwrap();
+        let mut st = vec![0.0; p.states];
+        for _ in 0..5 {
+            assert_eq!(p.eval(&[0.0, 1.0, 0.0, 0.0], &mut st, 0.1), 0.0);
+        }
+        let on = [1.0, 1.0, 0.0, 0.0];
+        assert_eq!(p.eval(&on, &mut st, 0.1), 0.0, "the delay counts from when the guard went true");
+        assert_eq!(p.eval(&on, &mut st, 0.1), 0.0);
+        assert_eq!(p.eval(&on, &mut st, 0.1), 1.0);
+        let q = compile("gen1.ready || rising(bus_tie.off)", &names()).unwrap();
+        let mut qs = vec![0.0; q.states];
+        assert_eq!(q.eval(&[1.0, 1.0, 0.0, 0.0], &mut qs, 0.1), 1.0);
+        assert_eq!(q.eval(&[0.0, 1.0, 0.0, 0.0], &mut qs, 0.1), 1.0, "skipped, so its edge is fresh");
+    }
+
+    #[test]
+    fn off_delay_starts_expired() {
+        let p = compile("off_delay(gen1.ready, 0.3 s)", &names()).unwrap();
+        let mut st = vec![0.0; p.states];
+        assert_eq!(p.eval(&[0.0; 4], &mut st, 0.1), 0.0);
+        assert_eq!(p.eval(&[1.0, 0.0, 0.0, 0.0], &mut st, 0.1), 1.0);
+        assert_eq!(p.eval(&[0.0; 4], &mut st, 0.1), 1.0);
+        assert_eq!(p.eval(&[0.0; 4], &mut st, 0.1), 1.0);
+        assert_eq!(p.eval(&[0.0; 4], &mut st, 0.1), 0.0);
+    }
+
+    #[test]
+    fn deep_expressions_use_a_heap_stack() {
+        let src = (0..40).map(|_| "1").collect::<Vec<_>>().join(" + ");
+        let p = compile(&src, &names()).unwrap();
+        assert_eq!(p.eval(&[0.0; 4], &mut [], 0.1), 40.0);
     }
 
     #[test]

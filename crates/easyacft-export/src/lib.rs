@@ -63,55 +63,99 @@ fn const_names(names: &[(String, Type)]) -> Vec<String> {
         .collect()
 }
 
-/// The bytecode as a Rust function body; side effects keep their order, both `if` arms are evaluated as in the interpreter.
+/// The bytecode as a Rust function body; side effects keep their order, and `&&`, `||` and `if` arms become
+/// Rust blocks that run only when taken, resetting their timers when skipped, as in the interpreter.
 pub fn rust_body(p: &Program, consts: &[String]) -> String {
+    let mut tmp = 0;
+    let (body, mut st) = region(&p.ops, 0, p.ops.len(), consts, &mut tmp, "    ");
+    let ret = st.pop().unwrap_or_else(|| "0.0".into());
+    format!("{body}    {ret}\n")
+}
+
+fn reset(k0: usize, k1: usize) -> String {
+    if k0 < k1 { format!("st[{k0}..{k1}].fill(0.0); ") } else { String::new() }
+}
+
+fn region(ops: &[Op], lo: usize, hi: usize, consts: &[String], tmp: &mut usize, ind: &str) -> (String, Vec<String>) {
     let mut body = String::new();
     let mut st: Vec<String> = Vec::new();
-    let mut tmp = 0;
     fn pop(st: &mut Vec<String>) -> String {
         st.pop().unwrap_or_else(|| "0.0".into())
     }
-    for op in &p.ops {
-        let e = match *op {
+    let name = |tmp: &mut usize| {
+        let n = format!("t{tmp}");
+        *tmp += 1;
+        n
+    };
+    let inner = format!("{ind}    ");
+    let mut pc = lo;
+    while pc < hi {
+        let op = ops[pc];
+        pc += 1;
+        let e = match op {
             Op::Push(v) => lit(v),
             Op::Load(i) => format!("s[{}]", consts.get(i).map_or(i.to_string(), |c| format!("v::{c}"))),
             Op::Not => format!("f(!b({}))", pop(&mut st)),
+            Op::Truth => format!("f(b({}))", pop(&mut st)),
             Op::Neg => format!("-({})", pop(&mut st)),
-            Op::Abs => format!("({}).abs()", pop(&mut st)),
+            Op::Abs => format!("f64::abs({})", pop(&mut st)),
+            Op::AndThen(to, k0, k1) | Op::OrElse(to, k0, k1) => {
+                let l = pop(&mut st);
+                let (rb, mut rs) = region(ops, pc, to, consts, tmp, &inner);
+                let r = pop(&mut rs);
+                let and = matches!(op, Op::AndThen(..));
+                pc = to;
+                if rb.is_empty() && k0 == k1 {
+                    format!("f(b({l}) {} b({r}))", if and { "&&" } else { "||" })
+                } else {
+                    let n = name(tmp);
+                    let (taken, skipped) = if and { ("b", "0.0") } else { ("!b", "1.0") };
+                    writeln!(body, "{ind}let {n}: f64 = if {taken}({l}) {{\n{rb}{inner}{r}\n{ind}}} else {{ {}{skipped} }};", reset(k0, k1)).unwrap();
+                    n
+                }
+            }
+            Op::IfNot(to, k0, k1) => {
+                let c = pop(&mut st);
+                let Op::Jump(end, e0, e1) = ops[to - 1] else { unreachable!("an if's then arm ends in a jump") };
+                let (tb, mut ts) = region(ops, pc, to - 1, consts, tmp, &inner);
+                let (eb, mut es) = region(ops, to, end, consts, tmp, &inner);
+                let (t, e) = (pop(&mut ts), pop(&mut es));
+                pc = end;
+                if tb.is_empty() && eb.is_empty() && k0 == k1 && e0 == e1 {
+                    format!("if b({c}) {{ {t} }} else {{ {e} }}")
+                } else {
+                    let n = name(tmp);
+                    let line = |r: String| if r.is_empty() { r } else { format!("{inner}{r}\n") };
+                    writeln!(body, "{ind}let {n}: f64 = if b({c}) {{\n{}{tb}{inner}{t}\n{ind}}} else {{\n{}{eb}{inner}{e}\n{ind}}};", line(reset(e0, e1)), line(reset(k0, k1))).unwrap();
+                    n
+                }
+            }
+            Op::Jump(..) => unreachable!("jumps are taken with their if"),
             Op::Delay(k) | Op::OffDelay(k) => {
                 let t = pop(&mut st);
                 let c = pop(&mut st);
-                let name = format!("t{tmp}");
-                tmp += 1;
+                let n = name(tmp);
                 let f = if matches!(op, Op::Delay(_)) { "delay" } else { "off_delay" };
-                writeln!(body, "    let {name} = {f}(&mut st[{k}], b({c}), {t}, dt);").unwrap();
-                name
+                writeln!(body, "{ind}let {n} = {f}(&mut st[{k}], b({c}), {t}, dt);").unwrap();
+                n
             }
             Op::Latch(k) => {
                 let reset = pop(&mut st);
                 let set = pop(&mut st);
-                let name = format!("t{tmp}");
-                tmp += 1;
-                writeln!(body, "    let {name} = latch(&mut st[{k}], b({set}), b({reset}));").unwrap();
-                name
+                let n = name(tmp);
+                writeln!(body, "{ind}let {n} = latch(&mut st[{k}], b({set}), b({reset}));").unwrap();
+                n
             }
             Op::Rising(k) => {
                 let c = pop(&mut st);
-                let name = format!("t{tmp}");
-                tmp += 1;
-                writeln!(body, "    let {name} = rising(&mut st[{k}], b({c}));").unwrap();
-                name
+                let n = name(tmp);
+                writeln!(body, "{ind}let {n} = rising(&mut st[{k}], b({c}));").unwrap();
+                n
             }
             Op::Table(i, _) => {
                 let y = pop(&mut st);
                 let x = pop(&mut st);
                 format!("tables[{i}].lookup({x}, {y})")
-            }
-            Op::If => {
-                let e = pop(&mut st);
-                let t = pop(&mut st);
-                let c = pop(&mut st);
-                format!("if b({c}) {{ {t} }} else {{ {e} }}")
             }
             _ => {
                 let r = pop(&mut st);
@@ -127,18 +171,15 @@ pub fn rust_body(p: &Program, consts: &[String]) -> String {
                     Op::Ge => format!("f({l} >= {r})"),
                     Op::Eq => format!("f({l} == {r})"),
                     Op::Ne => format!("f({l} != {r})"),
-                    Op::And => format!("f(b({l}) && b({r}))"),
-                    Op::Or => format!("f(b({l}) || b({r}))"),
-                    Op::Min => format!("({l}).min({r})"),
-                    Op::Max => format!("({l}).max({r})"),
+                    Op::Min => format!("f64::min({l}, {r})"),
+                    Op::Max => format!("f64::max({l}, {r})"),
                     _ => "0.0".into(),
                 }
             }
         };
         st.push(e);
     }
-    let ret = st.pop().unwrap_or_else(|| "0.0".into());
-    format!("{body}    {ret}\n")
+    (body, st)
 }
 
 struct Exprs {
@@ -222,7 +263,7 @@ fn aircraft_rs(model: &Model, c: &Checked, ex: &mut Exprs) -> String {
     for (i, (n, _)) in c.slots.names.iter().enumerate() {
         writeln!(o, "    /// `{n}`\n    pub const {}: usize = {i};", consts[i]).unwrap();
     }
-    o += "}\n\n/// Helpers the expression functions use.\npub mod ops {\n    pub fn b(x: f64) -> bool {\n        x != 0.0\n    }\n    pub fn f(x: bool) -> f64 {\n        x as u8 as f64\n    }\n    pub fn div(l: f64, r: f64) -> f64 {\n        if r == 0.0 { 0.0 } else { l / r }\n    }\n    pub fn delay(timer: &mut f64, c: bool, t: f64, dt: f64) -> f64 {\n        *timer = if c { *timer + dt } else { 0.0 };\n        f(c && *timer >= t - 1e-9)\n    }\n    pub fn off_delay(timer: &mut f64, c: bool, t: f64, dt: f64) -> f64 {\n        *timer = if c { 0.0 } else { *timer + dt };\n        f(c || *timer < t - 1e-9)\n    }\n    pub fn latch(state: &mut f64, set: bool, reset: bool) -> f64 {\n        *state = f(!reset && (set || b(*state)));\n        *state\n    }\n    pub fn rising(state: &mut f64, c: bool) -> f64 {\n        let out = c && !b(*state);\n        *state = f(c);\n        f(out)\n    }\n}\n\n";
+    o += "}\n\n/// Helpers the expression functions use.\npub mod ops {\n    pub fn b(x: f64) -> bool {\n        x != 0.0\n    }\n    pub fn f(x: bool) -> f64 {\n        x as u8 as f64\n    }\n    pub fn div(l: f64, r: f64) -> f64 {\n        if r == 0.0 { 0.0 } else { l / r }\n    }\n    pub fn delay(timer: &mut f64, c: bool, t: f64, dt: f64) -> f64 {\n        *timer = if c { *timer + dt } else { 0.0 };\n        f(c && *timer >= t - 1e-9)\n    }\n    pub fn off_delay(left: &mut f64, c: bool, t: f64, dt: f64) -> f64 {\n        *left = if c { t } else { (*left - dt).max(0.0) };\n        f(c || *left > 1e-9)\n    }\n    pub fn latch(state: &mut f64, set: bool, reset: bool) -> f64 {\n        *state = f(!reset && (set || b(*state)));\n        *state\n    }\n    pub fn rising(state: &mut f64, c: bool) -> f64 {\n        let out = c && !b(*state);\n        *state = f(c);\n        f(out)\n    }\n}\n\n";
     o += "/// Builds the aircraft, reading engine map files from this crate's `data` folder.\npub fn build() -> Aircraft {\n    build_with_data(Path::new(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/data\")))\n}\n\n";
     o += "/// Builds the aircraft with its data files in `data`; use this in a shipped plugin.\npub fn build_with_data(data: &Path) -> Aircraft {\n    easyacft_parts::catalog::register(&easyacft_parts::custom::specs(&kinds(), &mut Vec::new()));\n";
     let rates: Vec<String> = model.rates.iter().map(|(n, p)| format!("({n:?}.into(), {})", lit(*p))).collect();
