@@ -87,12 +87,15 @@ fn failures_trigger_and_fires_go_out_with_agent() {
     let mut a = aircraft();
     a.set("overheat.on", 1.0);
     run(&mut a, 1.0);
-    assert_eq!(a.get("eng_fire.detected"), Some(1.0));
+    assert_eq!(a.get("eng_fire.detected"), Some(0.0), "the loops take their time to heat");
     assert_eq!(a.get("bat.failed"), Some(0.0));
     run(&mut a, 1.5);
     assert_eq!(a.get("bat.failed"), Some(1.0), "the trigger failed the battery after its delay");
     run(&mut a, 0.5);
     assert!(a.get("dc.voltage").unwrap() < 1.0);
+    run(&mut a, 2.0);
+    assert_eq!(a.get("eng_fire.detected"), Some(1.0), "both loops in alarm within 5 s");
+    assert!(a.get("eng_fire.temperature").unwrap() > 673.15);
     a.set("agent_pb.pressed", 1.0);
     run(&mut a, 4.0);
     assert_eq!(a.get("eng_fire.burning"), Some(0.0));
