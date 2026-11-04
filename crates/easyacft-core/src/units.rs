@@ -23,6 +23,7 @@ impl Dim {
     pub const CHARGE: Dim = Dim([0, 0, 1, 1, 0]);
     pub const MASS_FLOW: Dim = Dim([1, 0, -1, 0, 0]);
     pub const VOLUME: Dim = Dim([0, 3, 0, 0, 0]);
+    pub const DENSITY: Dim = Dim([1, -3, 0, 0, 0]);
     pub const VOLUME_FLOW: Dim = Dim([0, 3, -1, 0, 0]);
     pub const SPEED: Dim = Dim([0, 1, -1, 0, 0]);
     pub const TORQUE: Dim = Dim([1, 2, -2, 0, 0]);

@@ -8,6 +8,7 @@ pub mod control;
 pub mod custom;
 pub mod electrical;
 pub mod engine;
+pub mod environment;
 pub mod extras;
 mod files;
 pub mod fuel;

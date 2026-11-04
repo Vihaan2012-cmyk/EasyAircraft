@@ -2,43 +2,8 @@
 //! oxygen. Each lives in its own module; this steps them together.
 
 use crate::catalog::out;
-use crate::{cabin, gear, ice, oxygen, Domain};
-use easyacft_core::Dim;
-use easyacft_lang::schema::PartSpec;
-use easyacft_lang::{Checked, Type};
-
-const B: Type = Type::Bool;
-const N: Type = Type::Num(Dim::NONE);
-const P: Type = Type::Num(Dim::PRESSURE);
-const T: Type = Type::Num(Dim::TEMPERATURE);
-const LEN: Type = Type::Num(Dim::LENGTH);
-const SPD: Type = Type::Num(Dim::SPEED);
-
-pub static AIR: &[PartSpec] = &[PartSpec {
-    domain: "environment",
-    kind: "air",
-    help: "Outside air and flight state; bind these from X-Plane.",
-    fields: &[],
-    outputs: &[
-        ("pressure", P),
-        ("temperature", T),
-        ("altitude", LEN),
-        ("airspeed", SPD),
-        ("groundspeed", SPD),
-        ("vertical_speed", SPD),
-        ("mach", N),
-        ("on_ground", B),
-        ("icing", N),
-        ("rain", N),
-        ("aoa", N),
-        ("sideslip", N),
-        ("heading", N),
-        ("pitch", N),
-        ("roll", N),
-        ("latitude", N),
-        ("longitude", N),
-    ],
-}];
+use crate::{cabin, environment, gear, ice, oxygen, Domain};
+use easyacft_lang::Checked;
 
 pub fn init(c: &Checked, slots: &mut [f64]) {
     for p in &c.parts {
@@ -66,6 +31,7 @@ pub fn init(c: &Checked, slots: &mut [f64]) {
 
 #[derive(Default)]
 pub struct Systems {
+    airs: Vec<environment::Air>,
     legs: Vec<gear::Leg>,
     brakes: Vec<gear::Brake>,
     tyres: Vec<gear::Tyre>,
@@ -81,6 +47,7 @@ impl Systems {
         let mut s = Systems::default();
         for p in &c.parts {
             match (p.domain, p.kind) {
+                ("environment", "air") => s.airs.push(environment::Air::new(p)),
                 ("gear", "leg") => s.legs.push(gear::Leg::new(c, p)),
                 ("gear", "brake") => s.brakes.push(gear::Brake::new(c, p)),
                 ("gear", "tyre") => s.tyres.push(gear::Tyre::new(c, p)),
@@ -92,7 +59,7 @@ impl Systems {
                 _ => {}
             }
         }
-        let empty = s.legs.is_empty() && s.brakes.is_empty() && s.tyres.is_empty() && s.steering.is_empty() && s.cabins.is_empty() && s.ice.is_empty() && s.crew.is_empty() && s.pax.is_empty();
+        let empty = s.airs.is_empty() && s.legs.is_empty() && s.brakes.is_empty() && s.tyres.is_empty() && s.steering.is_empty() && s.cabins.is_empty() && s.ice.is_empty() && s.crew.is_empty() && s.pax.is_empty();
         (!empty).then_some(s)
     }
 }
@@ -103,6 +70,7 @@ impl Domain for Systems {
     }
 
     fn step(&mut self, slots: &mut [f64], dt: f64) {
+        self.airs.iter_mut().for_each(|x| x.step(slots, dt));
         self.legs.iter_mut().for_each(|x| x.step(slots, dt));
         self.brakes.iter_mut().for_each(|x| x.step(slots, dt));
         self.tyres.iter_mut().for_each(|x| x.step(slots, dt));
