@@ -1,6 +1,7 @@
 //! EasyAcft part catalogue and the aircraft runtime.
 
 pub mod avionics;
+pub mod cabin;
 pub mod catalog;
 pub mod control;
 pub mod custom;
@@ -9,8 +10,11 @@ pub mod engine;
 pub mod extras;
 mod files;
 pub mod fuel;
+pub mod gear;
 pub mod hydraulic;
+pub mod ice;
 pub mod logic;
+pub mod oxygen;
 pub mod pneumatic;
 pub mod ports;
 pub mod scenario;

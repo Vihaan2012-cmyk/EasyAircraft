@@ -241,14 +241,29 @@ fn bleed_regulates_and_cools_and_the_cabin_pressurises() {
 }
 
 #[test]
-fn ice_builds_unheated_and_sheds_heated() {
+fn ice_follows_its_heat_balance() {
     let mut a = aircraft();
     a.set("air.icing", 1.0);
+    a.set("air.airspeed", 51.44);
     a.set("air.temperature", 263.15);
-    run(&mut a, 50.0);
-    let ice = a.get("wing.ice").unwrap();
-    assert!((ice - 0.5).abs() < 0.05, "{ice}");
+    run(&mut a, 20.0);
+    let glaze = a.get("wing.freezing_fraction").unwrap();
+    let t1 = a.get("wing.thickness").unwrap();
+    assert!(t1 > 0.0 && glaze > 0.0 && glaze < 1.0, "at -10 C and heavy icing part of the water runs back: n = {glaze:.2}");
+    assert!((a.get("wing.surface_temperature").unwrap() - 273.15).abs() < 0.01, "a glazing surface sits at 0 C");
+    a.set("air.temperature", 238.15);
+    a.set("air.icing", 0.2);
+    run(&mut a, 20.0);
+    assert!(a.get("wing.freezing_fraction").unwrap() > glaze, "colder and drier freezes more of what it catches");
+    a.set("air.temperature", 258.15);
+    a.set("air.airspeed", 240.0);
+    let before = a.get("wing.thickness").unwrap();
+    run(&mut a, 20.0);
+    assert!(a.get("wing.surface_temperature").unwrap() > 273.15, "kinetic heating at 470 kt keeps the surface above freezing");
+    assert!(a.get("wing.thickness").unwrap() < before, "and the ice melts back");
+    a.set("air.airspeed", 51.44);
     a.set("eng1.on", 1.0);
-    run(&mut a, 30.0);
-    assert_eq!(a.get("wing.ice"), Some(0.0));
+    run(&mut a, 60.0);
+    assert_eq!(a.get("wing.thickness"), Some(0.0), "the heated wing sheds its ice");
+    assert_eq!(a.get("wing.heated"), Some(1.0));
 }
