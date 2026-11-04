@@ -138,7 +138,19 @@ impl Network {
             let r = find(&mut parent, i);
             groups.entry(r).or_default().push(i);
         }
-        self.islands = groups.into_values().collect();
+        let mut degree = vec![0usize; n];
+        for l in self.links.iter().filter(|l| l.closed) {
+            degree[l.a] += 1;
+            degree[l.b] += 1;
+        }
+        // Leaves first keeps elimination from filling in: a bus with n breakers solves in O(n^2), not O(n^3).
+        self.islands = groups
+            .into_values()
+            .map(|mut g| {
+                g.sort_by_key(|&x| degree[x]);
+                g
+            })
+            .collect();
         self.last = vec![None; self.islands.len()];
         self.islands_dirty = false;
     }

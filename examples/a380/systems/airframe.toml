@@ -1,75 +1,213 @@
+# Gear: nose, two wing and two body gears on green, gravity extension as the backup.
 [[gear.leg]]
 id = "nose_gear"
 circuit = "green"
-down_when = "gear_lever.on"
+down_when = "gear_lever.on && lgciu_1.running || gear_lever.on && lgciu_2.running || !(lgciu_1.running || lgciu_2.running)"
+free_fall_when = "gravity_gear_ext.on"
 time = "10 s"
 
 [[gear.leg]]
-id = "wing_gear_{n}"
-count = 2
+id = "wing_gear_l"
 circuit = "green"
-down_when = "gear_lever.on"
+down_when = "gear_lever.on || !(lgciu_1.running || lgciu_2.running)"
+free_fall_when = "gravity_gear_ext.on"
 time = "14 s"
 
 [[gear.leg]]
-id = "body_gear_{n}"
-count = 2
+id = "wing_gear_r"
 circuit = "green"
-down_when = "gear_lever.on"
+down_when = "gear_lever.on || !(lgciu_1.running || lgciu_2.running)"
+free_fall_when = "gravity_gear_ext.on"
 time = "14 s"
 
-[[gear.brake]]
-id = "brakes_l"
+[[gear.leg]]
+id = "body_gear_l"
 circuit = "green"
-pedal = "brake_l.value"
+down_when = "gear_lever.on || !(lgciu_1.running || lgciu_2.running)"
+free_fall_when = "gravity_gear_ext.on"
+time = "14 s"
+
+[[gear.leg]]
+id = "body_gear_r"
+circuit = "green"
+down_when = "gear_lever.on || !(lgciu_1.running || lgciu_2.running)"
+free_fall_when = "gravity_gear_ext.on"
+time = "14 s"
+
+# Brakes: 16 braked wheels, four per wing gear and four per body gear (the body gears' rear axles are unbraked).
+# Normal braking on green, alternate on yellow when green is lost; the parking brake holds from the accumulators.
+[[logic.value]]
+id = "pedal_l"
+value = "max(brake_l.value, if(parking_brake.on, 1, 0))"
+
+[[logic.value]]
+id = "pedal_r"
+value = "max(brake_r.value, if(parking_brake.on, 1, 0))"
+
+[[gear.brake]]
+id = "brake_wl{n}"
+count = 4
+circuit = "green"
+pedal = "pedal_l.value * if(green.available, 1, 0)"
 max_pressure = "3000 psi"
 air = "air"
 
 [[gear.brake]]
-id = "brakes_r"
+id = "brake_wr{n}"
+count = 4
 circuit = "green"
-pedal = "brake_r.value"
+pedal = "pedal_r.value * if(green.available, 1, 0)"
 max_pressure = "3000 psi"
 air = "air"
 
+[[gear.brake]]
+id = "brake_bl{n}"
+count = 4
+circuit = "green"
+pedal = "pedal_l.value * if(green.available, 1, 0)"
+max_pressure = "3000 psi"
+air = "air"
+
+[[gear.brake]]
+id = "brake_br{n}"
+count = 4
+circuit = "green"
+pedal = "pedal_r.value * if(green.available, 1, 0)"
+max_pressure = "3000 psi"
+air = "air"
+
+[[gear.brake]]
+id = "alt_brake_l"
+circuit = "yellow"
+pedal = "pedal_l.value * if(green.available, 0, 1)"
+max_pressure = "3000 psi"
+air = "air"
+
+[[gear.brake]]
+id = "alt_brake_r"
+circuit = "yellow"
+pedal = "pedal_r.value * if(green.available, 0, 1)"
+max_pressure = "3000 psi"
+air = "air"
+
+[[wear.counter]]
+id = "brake_wear_wl{n}"
+count = 4
+rate = "if(brake_wl{n}.pressure > 100 psi, 0.00002 * air.groundspeed / 1 m/s, 0)"
+
+[[wear.counter]]
+id = "brake_wear_wr{n}"
+count = 4
+rate = "if(brake_wr{n}.pressure > 100 psi, 0.00002 * air.groundspeed / 1 m/s, 0)"
+
+[[wear.counter]]
+id = "brake_wear_bl{n}"
+count = 4
+rate = "if(brake_bl{n}.pressure > 100 psi, 0.00002 * air.groundspeed / 1 m/s, 0)"
+
+[[wear.counter]]
+id = "brake_wear_br{n}"
+count = 4
+rate = "if(brake_br{n}.pressure > 100 psi, 0.00002 * air.groundspeed / 1 m/s, 0)"
+
+[[wear.counter]]
+id = "tyre_wear_{n}"
+count = 22
+rate = "if(air.on_ground && air.groundspeed > 1 kt, 0.0000005 * air.groundspeed / 1 m/s, 0)"
+
+# Pressurisation: four outflow valves under the cabin pressure controller apps of CPIOM B
 [[cabin.pressurization]]
 id = "cabin"
 air = "air"
 volume = "1600 m3"
 inflow = "pack1.flow + pack2.flow"
+max_differential = "8.9 psi"
 cabin_ceiling = "6000 ft"
+manual_when = "!(cpiom_b1.running || cpiom_b2.running || cpiom_b3.running || cpiom_b4.running)"
+manual_open = "0.2"
+
+# Ice and rain
+[[ice.surface]]
+id = "wing_ice_l"
+air = "air"
+heated_when = "wing_ai_l.supplied"
 
 [[ice.surface]]
-id = "wing_ice"
+id = "wing_ice_r"
 air = "air"
-heated_when = "wing_ai_l.supplied && wing_ai_r.supplied"
+heated_when = "wing_ai_r.supplied"
 
-[[oxygen.crew]]
-id = "crew_oxygen"
-pressure = "1850 psi"
+[[ice.surface]]
+id = "nacelle_ice{n}"
+count = 4
+air = "air"
+heated_when = "nacelle{n}_ai.supplied"
 
-[[oxygen.passenger]]
-id = "pax_oxygen"
-deploy_when = "cabin.altitude > 14000 ft"
+[[ice.surface]]
+id = "pitot_ice{n}"
+count = 3
+air = "air"
+heated_when = "pitot_heat_{n}.powered"
+build_time = "60 s"
 
-# Mass and balance near the published maximum take-off weight
+[[ice.surface]]
+id = "aoa_ice{n}"
+count = 2
+air = "air"
+heated_when = "aoa_heat_{n}.powered"
+build_time = "60 s"
+
+[[ice.surface]]
+id = "tat_ice"
+air = "air"
+heated_when = "tat_heat.powered"
+build_time = "90 s"
+
+[[ice.surface]]
+id = "windshield_ice{n}"
+count = 2
+air = "air"
+heated_when = "windshield_heat_{n}.powered"
+build_time = "120 s"
+
+# Weight and balance near the published maximum take-off weight
 [[weight.station]]
 id = "empty"
 mass = "277000 kg"
 arm = "36 m"
 
 [[weight.station]]
-id = "passengers"
-mass = "48000 kg"
+id = "crew"
+mass = "1500 kg"
+arm = "30 m"
+
+[[weight.station]]
+id = "main_deck_pax"
+mass = "36000 kg"
 arm = "35 m"
 
 [[weight.station]]
-id = "cargo"
-mass = "20000 kg"
-arm = "34 m"
+id = "upper_deck_pax"
+mass = "12000 kg"
+arm = "36 m"
+
+[[weight.station]]
+id = "fwd_hold"
+mass = "9000 kg"
+arm = "22 m"
+
+[[weight.station]]
+id = "aft_hold"
+mass = "9000 kg"
+arm = "48 m"
+
+[[weight.station]]
+id = "bulk_hold"
+mass = "2000 kg"
+arm = "55 m"
 
 [[weight.balance]]
 id = "wb"
-stations = ["empty", "passengers", "cargo", "feed1", "feed2", "feed3", "feed4", "inner_l", "inner_r", "mid_l", "mid_r", "outer_l", "outer_r", "trim"]
+stations = ["empty", "crew", "main_deck_pax", "upper_deck_pax", "fwd_hold", "aft_hold", "bulk_hold", "feed1", "feed2", "feed3", "feed4", "inner_l", "inner_r", "mid_l", "mid_r", "outer_l", "outer_r", "trim"]
 mac_leading_edge = "30.5 m"
 mac = "12.3 m"

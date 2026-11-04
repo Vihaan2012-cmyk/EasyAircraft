@@ -1,106 +1,141 @@
-# Electrical panel
-[[cockpit.switch]]
-id = "bat{n}_sw"
+# Overhead and pedestal controls. Push-buttons that sit in AUTO or ON when pressed in start pressed in.
+
+# Electrical
+[[cockpit.pushbutton]]
+id = "bat{n}_pb"
 count = 2
 
-[[cockpit.switch]]
-id = "ess_bat_sw"
+[[cockpit.pushbutton]]
+id = "ess_bat_pb"
 
-[[cockpit.switch]]
-id = "apu_bat_sw"
+[[cockpit.pushbutton]]
+id = "apu_bat_pb"
 
-[[cockpit.switch]]
-id = "gen{n}_sw"
+[[cockpit.pushbutton]]
+id = "gen{n}_pb"
 count = 4
 initial = true
 
-[[cockpit.switch]]
-id = "apu_gen_a_sw"
+[[cockpit.pushbutton]]
+id = "apu_gen_a_pb"
 initial = true
 
-[[cockpit.switch]]
-id = "apu_gen_b_sw"
+[[cockpit.pushbutton]]
+id = "apu_gen_b_pb"
 initial = true
 
-[[cockpit.switch]]
-id = "ext{n}_sw"
+[[cockpit.pushbutton]]
+id = "ext{n}_pb"
 count = 4
 
-[[cockpit.switch]]
-id = "ext{n}_connected"
+[[cockpit.pushbutton]]
+id = "bus_tie_pb"
+initial = true
+
+[[cockpit.pushbutton]]
+id = "ac_ess_feed_alt_pb"
+
+[[cockpit.pushbutton]]
+id = "galley_pb"
+initial = true
+
+[[cockpit.pushbutton]]
+id = "commercial_pb"
+initial = true
+
+[[cockpit.guarded_switch]]
+id = "rat_man_on"
+
+[[cockpit.guarded_switch]]
+id = "gen{n}_drive_disc"
 count = 4
 
-[[cockpit.switch]]
-id = "galley_sw"
+# APU
+[[cockpit.pushbutton]]
+id = "apu_master_pb"
+
+[[cockpit.pushbutton]]
+id = "apu_start_pb"
+
+[[cockpit.pushbutton]]
+id = "apu_bleed_pb"
 initial = true
 
-[[cockpit.switch]]
-id = "rat_manual"
-
-# APU, bleed, packs
-[[cockpit.switch]]
-id = "apu_master"
-
-[[cockpit.switch]]
-id = "apu_start"
-
-[[cockpit.switch]]
-id = "apu_bleed_sw"
-initial = true
-
-[[cockpit.switch]]
-id = "bleed{n}_sw"
+# Bleed, packs, anti-ice
+[[cockpit.pushbutton]]
+id = "bleed{n}_pb"
 count = 4
 initial = true
 
-[[cockpit.switch]]
-id = "xbleed_l_sw"
+[[cockpit.pushbutton]]
+id = "xbleed_l_pb"
 
-[[cockpit.switch]]
-id = "xbleed_r_sw"
-
-[[cockpit.switch]]
-id = "xbleed_c_sw"
+[[cockpit.pushbutton]]
+id = "xbleed_c_pb"
 initial = true
 
-[[cockpit.switch]]
-id = "pack{n}_sw"
+[[cockpit.pushbutton]]
+id = "xbleed_r_pb"
+
+[[cockpit.pushbutton]]
+id = "pack{n}_pb"
 count = 2
 initial = true
 
-[[cockpit.switch]]
-id = "wing_ai_sw"
+[[cockpit.pushbutton]]
+id = "wing_ai_pb"
+
+[[cockpit.pushbutton]]
+id = "eng{n}_ai_pb"
+count = 4
+
+[[cockpit.pushbutton]]
+id = "probe_heat_pb"
+
+[[cockpit.pushbutton]]
+id = "window_heat_pb"
+initial = true
 
 # Fuel
-[[cockpit.switch]]
-id = "feed{n}_main_sw"
+[[cockpit.pushbutton]]
+id = "feed{n}_main_pb"
 count = 4
 initial = true
 
-[[cockpit.switch]]
-id = "feed{n}_stby_sw"
+[[cockpit.pushbutton]]
+id = "feed{n}_stby_pb"
 count = 4
 initial = true
 
-[[cockpit.switch]]
-id = "xfeed{n}_sw"
+[[cockpit.pushbutton]]
+id = "xfeed{n}_pb"
 count = 4
 
-[[cockpit.switch]]
-id = "transfer_auto"
+[[cockpit.pushbutton]]
+id = "transfer_auto_pb"
 initial = true
 
-# Hydraulics
-[[cockpit.switch]]
-id = "edp{n}_sw"
+[[cockpit.pushbutton]]
+id = "trim_transfer_pb"
+initial = true
+
+[[cockpit.guarded_switch]]
+id = "jettison_arm"
+
+[[cockpit.pushbutton]]
+id = "jettison_pb"
+
+# Hydraulics: four engine pump selectors (both pumps of an engine), two electric pumps per system
+[[cockpit.pushbutton]]
+id = "edp{n}_pb"
 count = 4
 initial = true
 
-[[cockpit.switch]]
-id = "green_elec_sw"
+[[cockpit.pushbutton]]
+id = "green_elec_pb"
 
-[[cockpit.switch]]
-id = "yellow_elec_sw"
+[[cockpit.pushbutton]]
+id = "yellow_elec_pb"
 
 # Engines
 [[cockpit.switch]]
@@ -113,6 +148,7 @@ id = "eng_mode"
 positions = 3
 initial = 1
 
+# Thrust levers, 0 idle to 1 full, negative for reverse (engines 2 and 3 only)
 [[input.number]]
 id = "tla{n}"
 count = 4
@@ -125,15 +161,35 @@ count = 4
 id = "apu_fire_handle"
 
 [[cockpit.pushbutton]]
-id = "agent{n}_pb"
+id = "agent{n}_1_pb"
+count = 4
+
+[[cockpit.pushbutton]]
+id = "agent{n}_2_pb"
 count = 4
 
 [[cockpit.pushbutton]]
 id = "apu_agent_pb"
 
+[[cockpit.pushbutton]]
+id = "cargo_fwd_agent_pb"
+
+[[cockpit.pushbutton]]
+id = "cargo_aft_agent_pb"
+
+# Navigation and air data: 0 off, 1 nav, 2 att
+[[cockpit.selector]]
+id = "adirs{n}_mode"
+count = 3
+positions = 3
+
+# Gear and brakes
 [[cockpit.switch]]
 id = "gear_lever"
 initial = true
+
+[[cockpit.guarded_switch]]
+id = "gravity_gear_ext"
 
 [[input.number]]
 id = "brake_l"
@@ -142,4 +198,63 @@ id = "brake_l"
 id = "brake_r"
 
 [[cockpit.switch]]
+id = "parking_brake"
+initial = true
+
+[[cockpit.pushbutton]]
+id = "body_steering_pb"
+initial = true
+
+# Lights
+[[cockpit.switch]]
+id = "beacon_sw"
+
+[[cockpit.switch]]
+id = "strobe_sw"
+
+[[cockpit.switch]]
+id = "nav_sw"
+
+[[cockpit.switch]]
+id = "logo_sw"
+
+[[cockpit.switch]]
+id = "land_sw"
+
+[[cockpit.switch]]
+id = "taxi_sw"
+
+[[cockpit.switch]]
+id = "turnoff_sw"
+
+[[cockpit.switch]]
+id = "wing_light_sw"
+
+[[cockpit.switch]]
 id = "ann_test"
+
+# Cabin
+[[cockpit.guarded_switch]]
+id = "mask_man_on"
+
+[[cockpit.switch]]
+id = "seat_belts_sw"
+
+# Instructor inputs: start a fire or a smoke event
+[[cockpit.switch]]
+id = "sim_eng{n}_fire"
+count = 4
+
+[[cockpit.switch]]
+id = "sim_apu_fire"
+
+[[cockpit.switch]]
+id = "sim_cargo_fwd_smoke"
+
+[[cockpit.switch]]
+id = "sim_cargo_aft_smoke"
+
+# Ground crew
+[[cockpit.switch]]
+id = "ext{n}_connected"
+count = 4

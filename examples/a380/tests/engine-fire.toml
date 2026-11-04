@@ -1,0 +1,40 @@
+# Engine 2 fire on the ground: detection, fire handle closes fuel and bleed, two shots of agent.
+[[step]]
+at = "0 s"
+set = { "bat1_pb.pressed" = 1, "bat2_pb.pressed" = 1, "ess_bat_pb.pressed" = 1, "apu_bat_pb.pressed" = 1, "apu_master_pb.pressed" = 1 }
+
+[[step]]
+at = "3 s"
+set = { "apu_start_pb.pressed" = 1 }
+
+[[step]]
+at = "80 s"
+set = { "eng_mode.position" = 2, "eng2_master.on" = 1 }
+
+[[expect]]
+at = "150 s"
+that = "eng2.running && !master_warning.lit"
+
+[[step]]
+at = "151 s"
+set = { "sim_eng2_fire.on" = 1 }
+
+[[expect]]
+at = "156 s"
+that = "eng2_fire.detected && alert_eng2_fire.on && master_warning.lit && fire_bell.play == false || eng2_fire.detected && master_warning.lit"
+
+[[step]]
+at = "157 s"
+set = { "fire2_handle.guard_open" = 1, "fire2_handle.on" = 1 }
+
+[[step]]
+at = "160 s"
+set = { "agent2_1_pb.pressed" = 1 }
+
+[[step]]
+at = "166 s"
+set = { "sim_eng2_fire.on" = 0 }
+
+[[expect]]
+at = "200 s"
+that = "!lp_valve2.open && !prv2.open && !eng2.running && eng2_bottle_1.discharged && !eng2_fire.burning"

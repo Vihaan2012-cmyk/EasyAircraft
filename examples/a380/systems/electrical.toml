@@ -1,6 +1,9 @@
-# Four 150 kVA variable-frequency engine generators, two 120 kVA APU generators,
-# four ground power receptacles, a ram air turbine, four batteries.
+# A380 electrical network from public data.
+# AC: four 150 kVA variable-frequency generators (360-800 Hz), two 120 kVA APU generators,
+# four 90 kVA ground power receptacles, a 70 kVA ram air turbine on AC ESS.
+# DC: three battery charge regulator units and an APU TR, four 24 V batteries.
 
+# --- AC main buses -----------------------------------------------------------
 [[electrical.bus]]
 id = "ac{n}"
 count = 4
@@ -11,55 +14,48 @@ id = "gen{n}_out"
 count = 4
 nominal = "115 V"
 
+[[logic.value]]
+id = "vfg{n}_hz"
+count = 4
+value = "if(eng{n}.n3 > 35, min(800, 360 + 7 * (eng{n}.n3 - 35)), 0)"
+
 [[electrical.generator]]
 id = "gen{n}"
 count = 4
 bus = "gen{n}_out"
 voltage = "115 V"
-frequency = "400 Hz"
+frequency = "580 Hz"
 rating = "150 kVA"
-driven_when = "eng{n}.running && eng{n}.n3 > 30"
+driven_when = "eng{n}.running && vfg{n}_hz.value >= 360 && !gen{n}_drive_disc.on"
 
 [[electrical.contactor]]
 id = "glc{n}"
 count = 4
 between = ["gen{n}_out", "ac{n}"]
-close_when = "gen{n}_sw.on && gen{n}.ready && delay(gen{n}.ready, 1 s)"
+close_when = "gen{n}_pb.pressed && gen{n}.ready && delay(gen{n}.ready, 1 s)"
 
-# Left side ties AC 1 and 2, right side AC 3 and 4
+# --- Ground power: EXT n feeds AC n when its own generator is off line ----------
 [[electrical.bus]]
-id = "tie_l"
+id = "ext{n}_out"
+count = 4
 nominal = "115 V"
 
-[[electrical.bus]]
-id = "tie_r"
-nominal = "115 V"
+[[electrical.ext_power]]
+id = "ext{n}"
+count = 4
+bus = "ext{n}_out"
+voltage = "115 V"
+frequency = "400 Hz"
+rating = "90 kVA"
+connected_when = "ext{n}_connected.on"
 
 [[electrical.contactor]]
-id = "btc1"
-between = ["ac1", "tie_l"]
-close_when = "!glc1.closed || !glc2.closed"
+id = "epc{n}"
+count = 4
+between = ["ext{n}_out", "ac{n}"]
+close_when = "ext{n}_pb.pressed && ext{n}.available && !glc{n}.closed && ext_pwr_contactor.powered"
 
-[[electrical.contactor]]
-id = "btc2"
-between = ["ac2", "tie_l"]
-close_when = "!glc1.closed || !glc2.closed"
-
-[[electrical.contactor]]
-id = "btc3"
-between = ["ac3", "tie_r"]
-close_when = "!glc3.closed || !glc4.closed"
-
-[[electrical.contactor]]
-id = "btc4"
-between = ["ac4", "tie_r"]
-close_when = "!glc3.closed || !glc4.closed"
-
-[[electrical.contactor]]
-id = "split_tie"
-between = ["tie_l", "tie_r"]
-close_when = "!(apu_gen_a.ready && apu_gen_b.ready) && !(glc1.closed && glc2.closed && glc3.closed && glc4.closed)"
-
+# --- APU generators: A on the AC 1-2 side, B on the AC 3-4 side ------------------
 [[electrical.bus]]
 id = "apu_gen_a_out"
 nominal = "115 V"
@@ -84,37 +80,99 @@ frequency = "400 Hz"
 rating = "120 kVA"
 driven_when = "apu.available"
 
+# --- Transfer circuit: bus tie contactors 1-4 to the left and right bars, the APU generators' line
+# contactors on them, and the system isolation contactor between the bars. Sources never run in parallel:
+# a bus without its own source takes the bar, the bar takes the side's APU generator, else one of the
+# side's own generators, else the other side through the SIC.
+[[electrical.bus]]
+id = "tie_l"
+nominal = "115 V"
+
+[[electrical.bus]]
+id = "tie_r"
+nominal = "115 V"
+
+[[logic.flag]]
+id = "own_src{n}"
+count = 4
+when = "glc{n}.closed || epc{n}.closed"
+
+[[logic.flag]]
+id = "apu_l"
+when = "bus_tie_pb.pressed && apu_gen_a_pb.pressed && apu_gen_a.ready"
+
+[[logic.flag]]
+id = "apu_r"
+when = "bus_tie_pb.pressed && apu_gen_b_pb.pressed && apu_gen_b.ready"
+
+[[logic.flag]]
+id = "need_l"
+when = "!own_src1.on || !own_src2.on"
+
+[[logic.flag]]
+id = "need_r"
+when = "!own_src3.on || !own_src4.on"
+
+[[logic.flag]]
+id = "starved_l"
+when = "need_l.on && !apu_l.on && !own_src1.on && !own_src2.on"
+
+[[logic.flag]]
+id = "starved_r"
+when = "need_r.on && !apu_r.on && !own_src3.on && !own_src4.on"
+
+[[logic.flag]]
+id = "has_l"
+when = "own_src1.on || own_src2.on || apu_l.on"
+
+[[logic.flag]]
+id = "has_r"
+when = "own_src3.on || own_src4.on || apu_r.on"
+
+[[logic.flag]]
+id = "bar_needs_l"
+when = "need_l.on && (own_src1.on || own_src2.on) || starved_r.on && has_l.on"
+
+[[logic.flag]]
+id = "bar_needs_r"
+when = "need_r.on && (own_src3.on || own_src4.on) || starved_l.on && has_r.on"
+
 [[electrical.contactor]]
 id = "agc_a"
 between = ["apu_gen_a_out", "tie_l"]
-close_when = "apu_gen_a_sw.on && apu_gen_a.ready && !(glc1.closed && glc2.closed)"
+close_when = "apu_l.on && (need_l.on || starved_r.on)"
 
 [[electrical.contactor]]
 id = "agc_b"
 between = ["apu_gen_b_out", "tie_r"]
-close_when = "apu_gen_b_sw.on && apu_gen_b.ready && !(glc3.closed && glc4.closed)"
-
-[[electrical.bus]]
-id = "ext{n}_out"
-count = 4
-nominal = "115 V"
-
-[[electrical.ext_power]]
-id = "ext{n}"
-count = 4
-bus = "ext{n}_out"
-voltage = "115 V"
-frequency = "400 Hz"
-rating = "90 kVA"
-connected_when = "ext{n}_connected.on"
+close_when = "apu_r.on && (need_r.on || starved_l.on)"
 
 [[electrical.contactor]]
-id = "epc{n}"
-count = 4
-between = ["ext{n}_out", "ac{n}"]
-close_when = "ext{n}_sw.on && ext{n}.available && !glc{n}.closed"
+id = "btc1"
+between = ["ac1", "tie_l"]
+close_when = "bus_tie_pb.pressed && (!own_src1.on || !apu_l.on && bar_needs_l.on)"
 
-# Essential and emergency
+[[electrical.contactor]]
+id = "btc2"
+between = ["ac2", "tie_l"]
+close_when = "bus_tie_pb.pressed && (!own_src2.on || !own_src1.on && !apu_l.on && bar_needs_l.on)"
+
+[[electrical.contactor]]
+id = "btc3"
+between = ["ac3", "tie_r"]
+close_when = "bus_tie_pb.pressed && (!own_src3.on || !apu_r.on && bar_needs_r.on)"
+
+[[electrical.contactor]]
+id = "btc4"
+between = ["ac4", "tie_r"]
+close_when = "bus_tie_pb.pressed && (!own_src4.on || !own_src3.on && !apu_r.on && bar_needs_r.on)"
+
+[[electrical.contactor]]
+id = "sic"
+between = ["tie_l", "tie_r"]
+close_when = "bus_tie_pb.pressed && (starved_l.on && has_r.on || starved_r.on && has_l.on)"
+
+# --- Essential AC: normal from AC 1, alternate from AC 4, emergency from the RAT or the static inverter
 [[electrical.bus]]
 id = "ac_ess"
 nominal = "115 V"
@@ -122,12 +180,37 @@ nominal = "115 V"
 [[electrical.contactor]]
 id = "ac_ess_norm"
 between = ["ac1", "ac_ess"]
-close_when = "ac1.powered"
+close_when = "!ac_ess_feed_alt_pb.pressed && ac1.powered"
 
 [[electrical.contactor]]
 id = "ac_ess_alt"
 between = ["ac4", "ac_ess"]
-close_when = "!ac1.powered && ac4.powered"
+close_when = "ac4.powered && (ac_ess_feed_alt_pb.pressed || !ac1.powered)"
+
+[[electrical.bus]]
+id = "ac_ess_shed"
+nominal = "115 V"
+
+[[electrical.contactor]]
+id = "ac_ess_shed_c"
+between = ["ac_ess", "ac_ess_shed"]
+close_when = "!emer_config.on"
+
+[[logic.flag]]
+id = "ac_main_lost"
+when = "delay(!ac1.powered && !ac2.powered && !ac3.powered && !ac4.powered, 0.5 s)"
+
+[[logic.flag]]
+id = "emer_config"
+when = "ac_main_lost.on && !air.on_ground"
+
+[[logic.flag]]
+id = "rat_deployed"
+when = "latch(rat_deploy_solenoid.powered && (rat_man_on.on || emer_config.on), false)"
+
+[[logic.value]]
+id = "rat_kva"
+value = "if(air.airspeed > 175 kt, 70, if(air.airspeed > 140 kt, 58, 0))"
 
 [[electrical.bus]]
 id = "rat_out"
@@ -137,53 +220,103 @@ nominal = "115 V"
 id = "rat_gen"
 bus = "rat_out"
 voltage = "115 V"
-frequency = "400 Hz"
+frequency = "570 Hz"
 rating = "70 kVA"
-driven_when = "rat_deployed.on && air.airspeed > 70 kt"
-
-[[logic.flag]]
-id = "rat_deployed"
-when = "latch(rat_manual.on || (!air.on_ground && !ac1.powered && !ac2.powered && !ac3.powered && !ac4.powered), false)"
+driven_when = "rat_deployed.on && rat_kva.value > 0"
 
 [[electrical.contactor]]
-id = "rat_line"
+id = "rat_lc"
 between = ["rat_out", "ac_ess"]
-close_when = "rat_gen.ready && !ac1.powered && !ac4.powered"
+close_when = "rat_gen.ready && !ac_ess_norm.closed && !ac_ess_alt.closed"
 
-# DC
+[[electrical.inverter]]
+id = "stat_inv"
+input = "hot_ess"
+output = "ac_ess"
+voltage = "115 V"
+rating = "2.5 kVA"
+on_when = "ac_main_lost.on && !rat_lc.closed && (ess_bat_pb.pressed || !air.on_ground)"
+
+# --- Electro-hydrostatic actuator buses -------------------------------------
 [[electrical.bus]]
-id = "dc{n}"
-count = 2
+id = "ac_eha"
+nominal = "115 V"
+
+[[electrical.contactor]]
+id = "ac_eha_norm"
+between = ["ac3", "ac_eha"]
+close_when = "ac3.powered"
+
+[[electrical.contactor]]
+id = "ac_eha_ess"
+between = ["ac_ess", "ac_eha"]
+close_when = "!ac3.powered"
+
+# --- DC: BCRU 1 from AC 2, BCRU 2 from AC 3, BCRU ESS from AC ESS, APU TR from AC 4 --
+[[electrical.bus]]
+id = "dc1"
 nominal = "28 V"
+powered_at = 0.79
+
+[[electrical.bus]]
+id = "dc2"
+nominal = "28 V"
+powered_at = 0.79
 
 [[electrical.bus]]
 id = "dc_ess"
 nominal = "28 V"
+powered_at = 0.79
 
 [[electrical.bus]]
 id = "dc_apu"
 nominal = "28 V"
+powered_at = 0.79
+
+[[electrical.bus]]
+id = "dc_eha"
+nominal = "28 V"
+powered_at = 0.79
+
+[[electrical.bus]]
+id = "bcru1_out"
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "bcru2_out"
+nominal = "28 V"
+
+[[electrical.bus]]
+id = "bcru_ess_out"
+nominal = "28 V"
 
 [[electrical.tru]]
-id = "tr1"
+id = "bcru1"
 input = "ac2"
-output = "dc1"
-voltage = "28 V"
-rating = "8.4 kW"
+output = "bcru1_out"
+voltage = "28.5 V"
+rating = "8.6 kW"
+
+[[electrical.tru]]
+id = "bcru2"
+input = "ac3"
+output = "bcru2_out"
+voltage = "28.5 V"
+rating = "8.6 kW"
+
+[[electrical.tru]]
+id = "bcru_ess"
+input = "ac_ess"
+output = "bcru_ess_out"
+voltage = "28.5 V"
+rating = "8.6 kW"
 
 [[electrical.tru]]
 id = "tr2"
 input = "ac3"
 output = "dc2"
-voltage = "28 V"
-rating = "8.4 kW"
-
-[[electrical.tru]]
-id = "ess_tr"
-input = "ac_ess"
-output = "dc_ess"
-voltage = "28 V"
-rating = "8.4 kW"
+voltage = "27.5 V"
+rating = "5 kW"
 
 [[electrical.tru]]
 id = "apu_tr"
@@ -192,11 +325,38 @@ output = "dc_apu"
 voltage = "28 V"
 rating = "8.4 kW"
 
+# A BCRU opens its line contactor 3 s after it loses AC
+[[electrical.contactor]]
+id = "blc1"
+between = ["bcru1_out", "dc1"]
+close_when = "!delay(!ac2.powered, 3 s)"
+
+[[electrical.contactor]]
+id = "blc2"
+between = ["bcru2_out", "dc2"]
+close_when = "!delay(!ac3.powered, 3 s)"
+
+[[electrical.contactor]]
+id = "blc_ess"
+between = ["bcru_ess_out", "dc_ess"]
+close_when = "!delay(!ac_ess.powered || stat_inv.active, 3 s)"
+
 [[electrical.contactor]]
 id = "dc_tie"
 between = ["dc1", "dc2"]
-close_when = "!(tr1.active && tr2.active)"
+close_when = "!blc1.closed || !blc2.closed"
 
+[[electrical.contactor]]
+id = "dc_eha_feed"
+between = ["dc2", "dc_eha"]
+close_when = "dc2.powered"
+
+[[electrical.contactor]]
+id = "dc_eha_ess"
+between = ["dc_ess", "dc_eha"]
+close_when = "!dc2.powered"
+
+# --- Batteries --------------------------------------------------------------
 [[electrical.bus]]
 id = "hot_bat{n}"
 count = 2
@@ -216,101 +376,81 @@ count = 2
 bus = "hot_bat{n}"
 voltage = "24 V"
 capacity = "50 Ah"
+charge_limit = "60 A"
 
 [[electrical.battery]]
 id = "ess_bat"
 bus = "hot_ess"
 voltage = "24 V"
 capacity = "50 Ah"
+charge_limit = "60 A"
 
 [[electrical.battery]]
 id = "apu_bat"
 bus = "hot_apu"
 voltage = "24 V"
 capacity = "50 Ah"
+charge_limit = "60 A"
 
+# Battery line contactors close when their pb is in, after the BCRU has dropped out
 [[electrical.contactor]]
 id = "bat{n}_lc"
 count = 2
 between = ["hot_bat{n}", "dc{n}"]
-close_when = "bat{n}_sw.on"
+close_when = "bat{n}_pb.pressed"
 
 [[electrical.contactor]]
 id = "ess_bat_lc"
 between = ["hot_ess", "dc_ess"]
-close_when = "ess_bat_sw.on"
+close_when = "ess_bat_pb.pressed"
 
 [[electrical.contactor]]
 id = "apu_bat_lc"
 between = ["hot_apu", "dc_apu"]
-close_when = "apu_bat_sw.on"
+close_when = "apu_bat_pb.pressed"
 
-# Loads
+# Emergency line contactor: BAT 1 joins DC ESS in emergency, or on the ground with BAT 1 and ESS BAT in
+[[electrical.contactor]]
+id = "elc"
+between = ["hot_bat1", "dc_ess"]
+close_when = "(emer_config.on && !blc_ess.closed) || (air.on_ground && bat1_pb.pressed && ess_bat_pb.pressed && !ac_ess.powered)"
+
+# --- Service and shed buses -------------------------------------------------
+[[cockpit.switch]]
+id = "gnd_svc_sw"
+
 [[electrical.bus]]
-id = "galley{n}"
-count = 4
+id = "ac_gnd_flt_svc"
 nominal = "115 V"
 
-[[electrical.breaker]]
-id = "cb_galley{n}"
-count = 4
-between = ["ac{n}", "galley{n}"]
-rating = "400 A"
+[[electrical.contactor]]
+id = "gnd_svc_norm"
+between = ["ac2", "ac_gnd_flt_svc"]
+close_when = "ac2.powered"
 
-[[electrical.load]]
-id = "galley{n}_load"
-count = 4
-bus = "galley{n}"
-power = "60 kW"
-on_when = "galley_sw.on"
-shed_priority = 5
+[[electrical.contactor]]
+id = "gnd_svc_ext"
+between = ["ext1_out", "ac_gnd_flt_svc"]
+close_when = "air.on_ground && gnd_svc_sw.on && ext1.available && !ac2.powered"
 
-[[electrical.load]]
-id = "cabin{n}"
-count = 4
-bus = "ac{n}"
-power = "25 kW"
-shed_priority = 3
+[[electrical.bus]]
+id = "dc_gnd_flt_svc"
+nominal = "28 V"
+powered_at = 0.79
 
-[[electrical.load]]
-id = "ess_avionics"
-bus = "dc_ess"
-power = "2 kW"
+[[electrical.tru]]
+id = "gnd_svc_tr"
+input = "ac_gnd_flt_svc"
+output = "dc_gnd_flt_svc"
+voltage = "28 V"
+rating = "3 kW"
 
-[[electrical.load]]
-id = "ac_ess_avionics"
-bus = "ac_ess"
-power = "3 kW"
+[[electrical.bus]]
+id = "dc_ess_shed"
+nominal = "28 V"
+powered_at = 0.79
 
-[[electrical.load]]
-id = "dc{n}_avionics"
-count = 2
-bus = "dc{n}"
-power = "2.5 kW"
-
-[[electrical.load]]
-id = "apu_starter_motor"
-bus = "dc_apu"
-power = "6 kW"
-on_when = "apu.starting"
-
-[[electrical.load]]
-id = "fuel_pumps_{n}"
-count = 4
-bus = "ac{n}"
-power = "4 kW"
-on_when = "feed{n}_main_sw.on || feed{n}_stby_sw.on"
-
-[[electrical.load]]
-id = "green_elec_motor"
-bus = "ac2"
-power = "15 kW"
-on_when = "green_elec_sw.on"
-shed_priority = 4
-
-[[electrical.load]]
-id = "yellow_elec_motor"
-bus = "ac3"
-power = "15 kW"
-on_when = "yellow_elec_sw.on"
-shed_priority = 4
+[[electrical.contactor]]
+id = "dc_ess_shed_c"
+between = ["dc_ess", "dc_ess_shed"]
+close_when = "!emer_config.on"

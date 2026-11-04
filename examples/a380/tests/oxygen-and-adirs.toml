@@ -1,0 +1,28 @@
+# ADIRS alignment, then a cabin altitude excursion drops the passenger masks.
+[[step]]
+at = "0 s"
+set = { "bat1_pb.pressed" = 1, "bat2_pb.pressed" = 1, "ess_bat_pb.pressed" = 1, "apu_bat_pb.pressed" = 1, "ext1_connected.on" = 1, "ext2_connected.on" = 1, "ext3_connected.on" = 1, "ext4_connected.on" = 1, "ext1_pb.pressed" = 1, "ext2_pb.pressed" = 1, "ext3_pb.pressed" = 1, "ext4_pb.pressed" = 1 }
+
+[[step]]
+at = "5 s"
+set = { "adirs1_mode.position" = 1, "adirs2_mode.position" = 1, "adirs3_mode.position" = 2 }
+
+[[expect]]
+at = "60 s"
+that = "ir1.aligning && ir2.aligning && adirs_1.running && adr1.valid && adr1_cas.valid"
+
+[[expect]]
+at = "600 s"
+that = "ir1.aligned && ir2.aligned && ir1.nav_valid && irs_valid.value >= 2"
+
+[[step]]
+at = "601 s"
+set = { "crew_mask1_on.on" = 1, "crew_mask2_on.on" = 1, "mask_man_on.on" = 1, "mask_man_on.guard_open" = 1 }
+
+[[expect]]
+at = "610 s"
+that = "pax_o2_main_1.deployed && pax_o2_upper_4.deployed && pax_o2_lav_16.deployed && crew_o2_open.on && alert_pax_o2_deployed.on"
+
+[[expect]]
+at = "900 s"
+that = "crew_o2_psi.value < 1850 && pax_o2_main_1.remaining < 20 min"

@@ -1,89 +1,226 @@
-# Two 5000 psi systems, green from engines 1 and 2, yellow from engines 3 and 4,
-# two engine-driven pumps per engine and electric pumps for ground use.
+# Two 5000 psi systems: green from engines 1 and 2, yellow from engines 3 and 4, two engine pumps per engine,
+# two AC motor pumps per system. No PTU; flight controls also have electro-hydrostatic backups (see loads.toml).
+
 [[hydraulic.circuit]]
 id = "green"
 nominal = "5000 psi"
-fluid = "60 L"
-low_pressure = "2500 psi"
+fluid = "125 L"
+low_pressure = "3000 psi"
+compliance = 4e-11
 
 [[hydraulic.circuit]]
 id = "yellow"
 nominal = "5000 psi"
-fluid = "60 L"
-low_pressure = "2500 psi"
+fluid = "125 L"
+low_pressure = "3000 psi"
+compliance = 4e-11
 
 [[hydraulic.pump]]
 id = "edp{n}a"
 count = 2
 circuit = "green"
 pressure = "5000 psi"
-flow = "150 L/min"
-running_when = "edp{n}_sw.on && eng{n}.n3 > 30"
+flow = "if(eng{n}.n3 > 30, min(1, eng{n}.n3 / 60) * 150 L/min, 0 L/min)"
+running_when = "edp{n}_pb.pressed && eng{n}.n3 > 30"
 
 [[hydraulic.pump]]
 id = "edp{n}b"
 count = 2
 circuit = "green"
 pressure = "5000 psi"
-flow = "150 L/min"
-running_when = "edp{n}_sw.on && eng{n}.n3 > 30"
+flow = "if(eng{n}.n3 > 30, min(1, eng{n}.n3 / 60) * 150 L/min, 0 L/min)"
+running_when = "edp{n}_pb.pressed && eng{n}.n3 > 30"
 
 [[hydraulic.pump]]
 id = "edp3a"
 circuit = "yellow"
 pressure = "5000 psi"
-flow = "150 L/min"
-running_when = "edp3_sw.on && eng3.n3 > 30"
+flow = "if(eng3.n3 > 30, min(1, eng3.n3 / 60) * 150 L/min, 0 L/min)"
+running_when = "edp3_pb.pressed && eng3.n3 > 30"
 
 [[hydraulic.pump]]
 id = "edp3b"
 circuit = "yellow"
 pressure = "5000 psi"
-flow = "150 L/min"
-running_when = "edp3_sw.on && eng3.n3 > 30"
+flow = "if(eng3.n3 > 30, min(1, eng3.n3 / 60) * 150 L/min, 0 L/min)"
+running_when = "edp3_pb.pressed && eng3.n3 > 30"
 
 [[hydraulic.pump]]
 id = "edp4a"
 circuit = "yellow"
 pressure = "5000 psi"
-flow = "150 L/min"
-running_when = "edp4_sw.on && eng4.n3 > 30"
+flow = "if(eng4.n3 > 30, min(1, eng4.n3 / 60) * 150 L/min, 0 L/min)"
+running_when = "edp4_pb.pressed && eng4.n3 > 30"
 
 [[hydraulic.pump]]
 id = "edp4b"
 circuit = "yellow"
 pressure = "5000 psi"
-flow = "150 L/min"
-running_when = "edp4_sw.on && eng4.n3 > 30"
+flow = "if(eng4.n3 > 30, min(1, eng4.n3 / 60) * 150 L/min, 0 L/min)"
+running_when = "edp4_pb.pressed && eng4.n3 > 30"
 
 [[hydraulic.pump]]
-id = "green_elec"
+id = "green_elec_a"
 circuit = "green"
 pressure = "5000 psi"
-flow = "30 L/min"
-running_when = "green_elec_motor.powered"
+flow = "16 L/min"
+running_when = "hyd_epump_ga.powered"
 
 [[hydraulic.pump]]
-id = "yellow_elec"
+id = "green_elec_b"
+circuit = "green"
+pressure = "5000 psi"
+flow = "16 L/min"
+running_when = "hyd_epump_gb.powered"
+
+[[hydraulic.pump]]
+id = "yellow_elec_a"
 circuit = "yellow"
 pressure = "5000 psi"
-flow = "30 L/min"
-running_when = "yellow_elec_motor.powered"
+flow = "16 L/min"
+running_when = "hyd_epump_ya.powered"
+
+[[hydraulic.pump]]
+id = "yellow_elec_b"
+circuit = "yellow"
+pressure = "5000 psi"
+flow = "16 L/min"
+running_when = "hyd_epump_yb.powered"
 
 [[hydraulic.accumulator]]
-id = "brake_acc"
+id = "brake_acc_g"
+circuit = "green"
+volume = "12 L"
+precharge = "2000 psi"
+
+[[hydraulic.accumulator]]
+id = "brake_acc_y"
 circuit = "yellow"
-volume = "10 L"
-precharge = "1500 psi"
+volume = "12 L"
+precharge = "2000 psi"
+
+[[hydraulic.accumulator]]
+id = "cargo_door_acc"
+circuit = "yellow"
+volume = "2 L"
+precharge = "2000 psi"
+
+# Users. Surfaces move constantly in flight; slats and flaps, gear, steering when commanded.
+[[logic.flag]]
+id = "flying"
+when = "!air.on_ground"
 
 [[hydraulic.consumer]]
-id = "flight_controls_g"
+id = "ailerons_g"
+circuit = "green"
+flow = "40 L/min"
+moving_when = "flying.on"
+
+[[hydraulic.consumer]]
+id = "ailerons_y"
+circuit = "yellow"
+flow = "40 L/min"
+moving_when = "flying.on"
+
+[[hydraulic.consumer]]
+id = "elevators_g"
+circuit = "green"
+flow = "30 L/min"
+moving_when = "flying.on"
+
+[[hydraulic.consumer]]
+id = "elevators_y"
+circuit = "yellow"
+flow = "30 L/min"
+moving_when = "flying.on"
+
+[[hydraulic.consumer]]
+id = "rudder_g"
+circuit = "green"
+flow = "15 L/min"
+moving_when = "flying.on"
+
+[[hydraulic.consumer]]
+id = "rudder_y"
+circuit = "yellow"
+flow = "15 L/min"
+moving_when = "flying.on"
+
+[[hydraulic.consumer]]
+id = "spoilers_g"
+circuit = "green"
+flow = "50 L/min"
+moving_when = "spoilers_out.on"
+
+[[hydraulic.consumer]]
+id = "spoilers_y"
+circuit = "yellow"
+flow = "50 L/min"
+moving_when = "spoilers_out.on"
+
+[[logic.flag]]
+id = "spoilers_out"
+when = "air.on_ground && air.groundspeed > 70 kt && tla1.value < 0.05 && tla4.value < 0.05"
+
+[[hydraulic.consumer]]
+id = "ths_g"
+circuit = "green"
+flow = "20 L/min"
+moving_when = "flying.on"
+
+[[hydraulic.consumer]]
+id = "ths_y"
+circuit = "yellow"
+flow = "20 L/min"
+moving_when = "flying.on"
+
+[[input.number]]
+id = "flap_lever"
+
+[[logic.flag]]
+id = "flaps_moving"
+when = "off_delay(rising(flap_lever.value > 0.5) || rising(flap_lever.value < 0.5), 40 s)"
+
+[[hydraulic.consumer]]
+id = "flaps_motor_g"
 circuit = "green"
 flow = "60 L/min"
-moving_when = "!air.on_ground"
+moving_when = "flaps_moving.on"
 
 [[hydraulic.consumer]]
-id = "flight_controls_y"
+id = "slats_motor_g"
+circuit = "green"
+flow = "40 L/min"
+moving_when = "flaps_moving.on"
+
+[[hydraulic.consumer]]
+id = "nose_steering"
+circuit = "green"
+flow = "20 L/min"
+minimum = "2500 psi"
+moving_when = "air.on_ground && air.groundspeed > 1 kt"
+
+[[hydraulic.consumer]]
+id = "body_steering"
+circuit = "green"
+flow = "15 L/min"
+minimum = "2500 psi"
+moving_when = "body_steering_pb.pressed && air.on_ground && air.groundspeed > 1 kt && air.groundspeed < 20 kt"
+
+[[hydraulic.consumer]]
+id = "cargo_doors"
 circuit = "yellow"
-flow = "60 L/min"
-moving_when = "!air.on_ground"
+flow = "25 L/min"
+moving_when = "false"
+
+[[hydraulic.consumer]]
+id = "reverser_2"
+circuit = "green"
+flow = "40 L/min"
+moving_when = "fadec2.reverser > 0 && fadec2.reverser < 1"
+
+[[hydraulic.consumer]]
+id = "reverser_3"
+circuit = "yellow"
+flow = "40 L/min"
+moving_when = "fadec3.reverser > 0 && fadec3.reverser < 1"

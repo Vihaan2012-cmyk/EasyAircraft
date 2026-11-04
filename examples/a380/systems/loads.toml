@@ -1,0 +1,37 @@
+# Large consumers not behind an individual breaker in distribution.toml.
+
+# Flight control backup actuators draw only while they move a surface the hydraulics cannot
+[[electrical.load]]
+id = "eha_flight_controls"
+bus = "ac_eha"
+power = "if(green.low || yellow.low, 9 kW, 0.3 kW)"
+
+[[electrical.load]]
+id = "ebha_flight_controls"
+bus = "ac_eha"
+power = "if(green.low && yellow.low, 14 kW, 0.2 kW)"
+
+[[electrical.load]]
+id = "dc_eha_load"
+bus = "dc_eha"
+power = "0.3 kW"
+
+[[electrical.load]]
+id = "apu_starter_motor"
+bus = "dc_apu"
+power = "if(apu.starting && apu.n < 55, 7 kW, 0 W)"
+
+[[electrical.load]]
+id = "ac_ess_shed_loads"
+bus = "ac_ess_shed"
+power = "1.2 kW"
+
+[[electrical.load]]
+id = "dc_ess_shed_loads"
+bus = "dc_ess_shed"
+power = "0.6 kW"
+
+[[electrical.load]]
+id = "dc_gnd_svc_loads"
+bus = "dc_gnd_flt_svc"
+power = "0.4 kW"

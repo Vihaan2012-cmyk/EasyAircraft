@@ -1,0 +1,209 @@
+# Warnings and cautions the flight warning system raises, one flag each, and the master lights.
+# Alerts need a flight warning computer; most are held off for a few seconds so transients do not raise them.
+
+[[logic.flag]]
+id = "fws_up"
+when = "fws_1.running || fws_2.running"
+
+[[logic.flag]]
+id = "any_eng_running"
+when = "eng1.running || eng2.running || eng3.running || eng4.running"
+
+# Electrical
+[[logic.flag]]
+id = "alert_ac_bus{n}_fault"
+count = 4
+when = "fws_up.on && delay(!ac{n}.powered && (any_eng_running.on || apu.available), 3 s)"
+
+[[logic.flag]]
+id = "alert_ac_ess_fault"
+when = "fws_up.on && delay(!ac_ess.powered && ac_main_lost.on == false, 3 s)"
+
+[[logic.flag]]
+id = "alert_dc_ess_fault"
+when = "fws_up.on && delay(!dc_ess.powered, 2 s)"
+
+[[logic.flag]]
+id = "alert_gen{n}_off"
+count = 4
+when = "fws_up.on && eng{n}.running && delay(!glc{n}.closed, 5 s)"
+
+[[logic.flag]]
+id = "alert_emer_config"
+when = "fws_up.on && emer_config.on"
+
+[[logic.flag]]
+id = "alert_bat_fault"
+when = "fws_up.on && delay(bat1.voltage < 23 V || bat2.voltage < 23 V || ess_bat.voltage < 23 V, 30 s) && any_eng_running.on"
+
+[[logic.flag]]
+id = "alert_galley_shed"
+when = "fws_up.on && (galley_fwd_upper.shed || galley_aft_upper.shed || galley_fwd_main.shed || galley_mid_main.shed || galley_aft_main.shed || galley_lower.shed)"
+
+# Hydraulics
+[[logic.flag]]
+id = "alert_green_lo_pr"
+when = "fws_up.on && delay(green.low && any_eng_running.on, 3 s)"
+
+[[logic.flag]]
+id = "alert_yellow_lo_pr"
+when = "fws_up.on && delay(yellow.low && any_eng_running.on, 3 s)"
+
+[[logic.flag]]
+id = "alert_green_yellow_lo_pr"
+when = "alert_green_lo_pr.on && alert_yellow_lo_pr.on"
+
+[[logic.flag]]
+id = "alert_green_rsvr_lo"
+when = "fws_up.on && green.fluid < 40 L"
+
+[[logic.flag]]
+id = "alert_yellow_rsvr_lo"
+when = "fws_up.on && yellow.fluid < 40 L"
+
+# Fuel
+[[logic.flag]]
+id = "alert_feed{n}_lo_lvl"
+count = 4
+when = "fws_up.on && feed{n}.quantity < 1400 kg"
+
+[[logic.flag]]
+id = "alert_feed{n}_pumps_fault"
+count = 4
+when = "fws_up.on && delay(eng{n}.running && !feed{n}_main.running && !feed{n}_stby.running, 10 s)"
+
+[[logic.flag]]
+id = "alert_fuel_imbalance"
+when = "fws_up.on && abs((feed1.quantity + inner_l.quantity + mid_l.quantity + outer_l.quantity) - (feed4.quantity + inner_r.quantity + mid_r.quantity + outer_r.quantity)) > 3000 kg"
+
+[[logic.flag]]
+id = "alert_jettison_active"
+when = "jettisoning.on"
+
+# Bleed and air
+[[logic.flag]]
+id = "alert_bleed{n}_fault"
+count = 4
+when = "fws_up.on && eng{n}.running && bleed{n}_pb.pressed && delay(!prv{n}.open && !fadec{n}.starter, 10 s)"
+
+[[logic.flag]]
+id = "alert_pack{n}_fault"
+count = 2
+when = "fws_up.on && pack{n}_pb.pressed && delay(!pack{n}.supplied && (any_eng_running.on || apu.available), 30 s)"
+
+[[logic.flag]]
+id = "alert_excess_cab_alt"
+when = "fws_up.on && cabin.excess_altitude"
+
+[[logic.flag]]
+id = "alert_cab_alt_high"
+when = "fws_up.on && cabin.altitude > 9550 ft"
+
+# Engines and APU
+[[logic.flag]]
+id = "alert_eng{n}_fire"
+count = 4
+when = "eng{n}_fire.detected"
+
+[[logic.flag]]
+id = "alert_apu_fire"
+when = "apu_fire.detected"
+
+[[logic.flag]]
+id = "alert_mlg_bay_fire"
+when = "mlg_bay_fire.detected"
+
+[[logic.flag]]
+id = "alert_cargo_smoke"
+when = "cargo_fwd.detected || cargo_aft.detected"
+
+[[logic.flag]]
+id = "alert_eng{n}_egt_over"
+count = 4
+when = "fws_up.on && fadec{n}.limiting && eng{n}.egt > 1173 K"
+
+[[logic.flag]]
+id = "alert_eng{n}_start_fault"
+count = 4
+when = "fws_up.on && fadec{n}.aborted"
+
+[[logic.flag]]
+id = "alert_eng{n}_fire_loop"
+count = 4
+when = "fws_up.on && eng{n}_fire.loop_fault"
+
+[[logic.flag]]
+id = "alert_apu_fault"
+when = "fws_up.on && apu.shutdown"
+
+# Flight controls and navigation
+[[logic.flag]]
+id = "alert_fctl_alt_law"
+when = "fws_up.on && fctl_law.value == 1 && !air.on_ground"
+
+[[logic.flag]]
+id = "alert_fctl_direct_law"
+when = "fws_up.on && fctl_law.value >= 2 && !air.on_ground"
+
+[[logic.flag]]
+id = "alert_prim{n}_fault"
+count = 3
+when = "fws_up.on && delay(!prim_{n}.running, 5 s)"
+
+[[logic.flag]]
+id = "alert_sec{n}_fault"
+count = 3
+when = "fws_up.on && delay(!sec_{n}.running, 5 s)"
+
+[[logic.flag]]
+id = "alert_adr_disagree"
+when = "fws_up.on && adr_disagree.on"
+
+[[logic.flag]]
+id = "alert_ir{n}_fault"
+count = 3
+when = "fws_up.on && adirs{n}_mode.position > 0 && delay(!ir{n}.aligned && !ir{n}.aligning, 5 s)"
+
+[[logic.flag]]
+id = "alert_probe_heat"
+when = "fws_up.on && !air.on_ground && (pitot_ice1.iced || pitot_ice2.iced || pitot_ice3.iced)"
+
+# Gear, brakes, oxygen, config
+[[logic.flag]]
+id = "alert_gear_not_down"
+when = "fws_up.on && !air.on_ground && air.altitude < 2000 ft && tla1.value < 0.1 && tla4.value < 0.1 && !(nose_gear.down_locked && wing_gear_l.down_locked && wing_gear_r.down_locked && body_gear_l.down_locked && body_gear_r.down_locked)"
+
+[[logic.flag]]
+id = "alert_brakes_hot"
+when = "fws_up.on && (brake_wl1.hot || brake_wr1.hot || brake_bl1.hot || brake_br1.hot)"
+
+[[logic.flag]]
+id = "alert_park_brk_on"
+when = "fws_up.on && parking_brake.on && tla2.value > 0.5 && tla3.value > 0.5"
+
+[[logic.flag]]
+id = "alert_crew_o2_lo_pr"
+when = "fws_up.on && crew_o2_psi.value < 600"
+
+[[logic.flag]]
+id = "alert_pax_o2_deployed"
+when = "pax_o2_main_1.deployed"
+
+[[logic.flag]]
+id = "alert_brake_wear"
+when = "fws_up.on && air.on_ground && (brake_wear_wl1.worn || brake_wear_bl1.worn)"
+
+# Master lights
+[[cockpit.annunciator]]
+id = "master_warning"
+when = "alert_eng1_fire.on || alert_eng2_fire.on || alert_eng3_fire.on || alert_eng4_fire.on || alert_apu_fire.on || alert_mlg_bay_fire.on || alert_cargo_smoke.on || alert_excess_cab_alt.on || alert_green_yellow_lo_pr.on || alert_emer_config.on || alert_gear_not_down.on || alert_fctl_direct_law.on || alert_park_brk_on.on"
+test = "ann_test"
+
+[[cockpit.annunciator]]
+id = "master_caution"
+when = "alert_ac_bus1_fault.on || alert_ac_bus2_fault.on || alert_ac_bus3_fault.on || alert_ac_bus4_fault.on || alert_ac_ess_fault.on || alert_dc_ess_fault.on || alert_gen1_off.on || alert_gen2_off.on || alert_gen3_off.on || alert_gen4_off.on || alert_bat_fault.on || alert_green_lo_pr.on || alert_yellow_lo_pr.on || alert_green_rsvr_lo.on || alert_yellow_rsvr_lo.on || alert_feed1_lo_lvl.on || alert_feed2_lo_lvl.on || alert_feed3_lo_lvl.on || alert_feed4_lo_lvl.on || alert_feed1_pumps_fault.on || alert_feed2_pumps_fault.on || alert_feed3_pumps_fault.on || alert_feed4_pumps_fault.on || alert_fuel_imbalance.on || alert_bleed1_fault.on || alert_bleed2_fault.on || alert_bleed3_fault.on || alert_bleed4_fault.on || alert_pack1_fault.on || alert_pack2_fault.on || alert_cab_alt_high.on || alert_eng1_egt_over.on || alert_eng2_egt_over.on || alert_eng3_egt_over.on || alert_eng4_egt_over.on || alert_eng1_start_fault.on || alert_eng2_start_fault.on || alert_eng3_start_fault.on || alert_eng4_start_fault.on || alert_eng1_fire_loop.on || alert_eng2_fire_loop.on || alert_eng3_fire_loop.on || alert_eng4_fire_loop.on || alert_apu_fault.on || alert_fctl_alt_law.on || alert_prim1_fault.on || alert_prim2_fault.on || alert_prim3_fault.on || alert_sec1_fault.on || alert_sec2_fault.on || alert_sec3_fault.on || alert_adr_disagree.on || alert_ir1_fault.on || alert_ir2_fault.on || alert_ir3_fault.on || alert_probe_heat.on || alert_brakes_hot.on || alert_crew_o2_lo_pr.on || alert_pax_o2_deployed.on"
+test = "ann_test"
+
+[[logic.value]]
+id = "warnings_count"
+value = "if(master_warning.lit, 1, 0)"

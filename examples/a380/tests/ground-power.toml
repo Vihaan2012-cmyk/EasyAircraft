@@ -1,0 +1,36 @@
+# Four ground power units, then losing one: its bus moves to a neighbour through the transfer bar.
+[[step]]
+at = "0 s"
+set = { "bat1_pb.pressed" = 1, "bat2_pb.pressed" = 1, "ess_bat_pb.pressed" = 1, "apu_bat_pb.pressed" = 1, "ext1_connected.on" = 1, "ext2_connected.on" = 1, "ext3_connected.on" = 1, "ext4_connected.on" = 1 }
+
+[[step]]
+at = "2 s"
+set = { "ext1_pb.pressed" = 1, "ext2_pb.pressed" = 1, "ext3_pb.pressed" = 1, "ext4_pb.pressed" = 1 }
+
+[[expect]]
+at = "6 s"
+that = "epc1.closed && epc2.closed && epc3.closed && epc4.closed && ac1.powered && ac4.powered && ac_ess.powered && dc1.powered && dc2.powered && !btc1.closed && !sic.closed && galley_fwd_upper.powered"
+
+[[step]]
+at = "7 s"
+set = { "ext2_connected.on" = 0 }
+
+[[expect]]
+at = "10 s"
+that = "!epc2.closed && btc1.closed && btc2.closed && ac2.powered && ext1.load > ext3.load"
+
+[[step]]
+at = "11 s"
+set = { "ext1_connected.on" = 0 }
+
+[[expect]]
+at = "14 s"
+that = "sic.closed && ac1.powered && ac2.powered && starved_l.on"
+
+[[step]]
+at = "15 s"
+set = { "bus_tie_pb.pressed" = 0 }
+
+[[expect]]
+at = "18 s"
+that = "!sic.closed && !ac1.powered && !ac2.powered && ac3.powered && ac4.powered"

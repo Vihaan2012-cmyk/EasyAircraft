@@ -1,0 +1,24 @@
+# Take-off power on the ground draws the feed tanks down until the inner tanks refill them.
+[[step]]
+at = "0 s"
+set = { "bat1_pb.pressed" = 1, "bat2_pb.pressed" = 1, "ess_bat_pb.pressed" = 1, "apu_bat_pb.pressed" = 1, "apu_master_pb.pressed" = 1 }
+
+[[step]]
+at = "3 s"
+set = { "apu_start_pb.pressed" = 1 }
+
+[[step]]
+at = "80 s"
+set = { "eng_mode.position" = 2, "eng1_master.on" = 1 }
+
+[[step]]
+at = "180 s"
+set = { "eng_mode.position" = 1, "tla1.value" = 1 }
+
+[[expect]]
+at = "900 s"
+that = "feed_wants1.on && inner_l_xfr.running && feed1_fwd_inlet.open && inner_l.quantity < 30000 kg"
+
+[[expect]]
+at = "1000 s"
+that = "!alert_feed1_lo_lvl.on && eng1.running"

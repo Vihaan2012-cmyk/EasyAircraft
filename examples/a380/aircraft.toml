@@ -7,12 +7,18 @@ include = [
     "systems/environment.toml",
     "systems/cockpit.toml",
     "systems/electrical.toml",
+    "systems/distribution.toml",
+    "systems/loads.toml",
+    "systems/computers.toml",
     "systems/fuel.toml",
     "systems/engines.toml",
     "systems/pneumatic.toml",
     "systems/hydraulic.toml",
     "systems/airframe.toml",
+    "systems/oxygen.toml",
+    "systems/avionics.toml",
     "systems/protection.toml",
+    "systems/alerts.toml",
 ]
 
 [rates]

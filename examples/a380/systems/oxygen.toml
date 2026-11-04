@@ -1,0 +1,64 @@
+# Crew oxygen: three high-pressure cylinders behind one shutoff valve, five cockpit masks.
+[[cockpit.switch]]
+id = "crew_o2_supply_pb"
+initial = true
+
+[[cockpit.switch]]
+id = "crew_mask{n}_on"
+count = 5
+
+[[logic.value]]
+id = "crew_masks_on"
+value = "if(crew_mask1_on.on, 1, 0) + if(crew_mask2_on.on, 1, 0) + if(crew_mask3_on.on, 1, 0) + if(crew_mask4_on.on, 1, 0) + if(crew_mask5_on.on, 1, 0)"
+
+[[logic.flag]]
+id = "crew_o2_open"
+when = "crew_o2_supply_pb.on && crew_o2_shutoff.powered"
+
+[[oxygen.crew]]
+id = "crew_o2_{n}"
+count = 3
+pressure = "1850 psi"
+duration = "6 h"
+masks_on = "if(crew_o2_open.on, crew_masks_on.value / 3, 0)"
+
+[[logic.value]]
+id = "crew_o2_psi"
+value = "(crew_o2_1.pressure + crew_o2_2.pressure + crew_o2_3.pressure) / 3 / 1 psi"
+
+# Passenger oxygen: chemical generators per zone, dropped automatically above 14,000 ft cabin altitude
+# or by the crew; the generator control circuit needs power.
+[[logic.flag]]
+id = "pax_o2_deploy"
+when = "pax_o2_gen_ctl.powered && (cabin.altitude > 14000 ft || mask_man_on.on)"
+
+[[oxygen.passenger]]
+id = "pax_o2_main_{n}"
+count = 6
+deploy_when = "pax_o2_deploy.on"
+duration = "22 min"
+
+[[oxygen.passenger]]
+id = "pax_o2_upper_{n}"
+count = 4
+deploy_when = "pax_o2_deploy.on"
+duration = "22 min"
+
+[[oxygen.passenger]]
+id = "pax_o2_crew_rest_{n}"
+count = 2
+deploy_when = "pax_o2_deploy.on"
+duration = "22 min"
+
+[[oxygen.passenger]]
+id = "pax_o2_lav_{n}"
+count = 16
+deploy_when = "pax_o2_deploy.on"
+duration = "15 min"
+
+[[oxygen.crew]]
+id = "portable_o2_{n}"
+count = 8
+pressure = "1800 psi"
+duration = "40 min"
+masks_on = "0"

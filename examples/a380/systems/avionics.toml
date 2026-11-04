@@ -1,0 +1,117 @@
+# ADIRS: three air data and inertial reference units, three pitot probes and a standby pitot,
+# three static port pairs and a standby pair; the ISIS standby instrument has its own air data.
+
+[[sensor.pitot]]
+id = "pitot{n}"
+count = 3
+air = "air"
+heat_when = "pitot_heat_{n}.powered"
+blocked_when = "pitot_ice{n}.iced"
+
+[[sensor.pitot]]
+id = "pitot_stby"
+air = "air"
+heat_when = "pitot_heat_3.powered"
+
+[[sensor.static_port]]
+id = "static{n}"
+count = 3
+air = "air"
+
+[[sensor.static_port]]
+id = "static_stby"
+air = "air"
+
+[[computer.air_data]]
+id = "adr{n}"
+count = 3
+pitot = "pitot{n}"
+static = "static{n}"
+air = "air"
+computer = "adirs_{n}"
+
+[[computer.air_data]]
+id = "isis_adr"
+pitot = "pitot_stby"
+static = "static_stby"
+air = "air"
+computer = "isis_unit"
+
+[[computer.inertial]]
+id = "ir{n}"
+count = 3
+air = "air"
+computer = "adirs_{n}"
+mode = "adirs{n}_mode.position"
+align_time = "540 s"
+drift = 0.6
+
+# What the ADIRUs send, as the flight controls, flight warning and display computers see it
+[[data.link]]
+id = "adr{n}_cas"
+count = 3
+from = "adirs_{n}"
+value = "adr{n}.ias / 1 kt"
+rate = "16 Hz"
+stale_after = "0.5 s"
+
+[[data.link]]
+id = "adr{n}_alt"
+count = 3
+from = "adirs_{n}"
+value = "adr{n}.altitude / 1 ft"
+rate = "16 Hz"
+
+[[data.link]]
+id = "adr{n}_mach"
+count = 3
+from = "adirs_{n}"
+value = "adr{n}.mach"
+rate = "16 Hz"
+
+[[data.link]]
+id = "ir{n}_attitude"
+count = 3
+from = "adirs_{n}"
+value = "ir{n}.pitch"
+rate = "50 Hz"
+stale_after = "0.2 s"
+
+[[data.link]]
+id = "ir{n}_heading"
+count = 3
+from = "adirs_{n}"
+value = "ir{n}.heading"
+rate = "50 Hz"
+stale_after = "0.2 s"
+
+# Voted air data, as the flight controls use it: the middle of the valid values
+[[logic.value]]
+id = "cas_voted"
+value = "max(min(adr1_cas.value, adr2_cas.value), min(max(adr1_cas.value, adr2_cas.value), adr3_cas.value))"
+
+[[logic.flag]]
+id = "adr_disagree"
+when = "delay(abs(adr1_cas.value - adr2_cas.value) > 16 || abs(adr2_cas.value - adr3_cas.value) > 16, 10 s) && adr1_cas.valid && adr2_cas.valid && adr3_cas.valid"
+
+# Flight control computers: PRIMs are the flight control laws' hosts, SECs the backup
+[[logic.value]]
+id = "prims_running"
+value = "if(prim_1.running, 1, 0) + if(prim_2.running, 1, 0) + if(prim_3.running, 1, 0)"
+
+[[logic.value]]
+id = "secs_running"
+value = "if(sec_1.running, 1, 0) + if(sec_2.running, 1, 0) + if(sec_3.running, 1, 0)"
+
+[[logic.value]]
+id = "adrs_valid"
+value = "if(adr1.valid, 1, 0) + if(adr2.valid, 1, 0) + if(adr3.valid, 1, 0)"
+
+[[logic.value]]
+id = "irs_valid"
+value = "if(ir1.attitude_valid, 1, 0) + if(ir2.attitude_valid, 1, 0) + if(ir3.attitude_valid, 1, 0)"
+
+# 0 normal, 1 alternate, 2 direct, 3 backup
+[[logic.value]]
+id = "fctl_law"
+value = "if(prims_running.value >= 1 && adrs_valid.value >= 2 && irs_valid.value >= 2, 0, if(prims_running.value >= 1 && irs_valid.value >= 1, 1, if(prims_running.value + secs_running.value >= 1, 2, 3)))"

@@ -1,22 +1,27 @@
+# Batteries, APU, ADIRS, then the four engines, then generators on line and the APU shut down.
 [[step]]
 at = "0 s"
-set = { "bat1_sw.on" = 1, "bat2_sw.on" = 1, "ess_bat_sw.on" = 1, "apu_bat_sw.on" = 1 }
+set = { "bat1_pb.pressed" = 1, "bat2_pb.pressed" = 1, "ess_bat_pb.pressed" = 1, "apu_bat_pb.pressed" = 1 }
 
 [[expect]]
 at = "2 s"
-that = "dc_ess.powered && dc_apu.powered && !ac1.powered"
+that = "dc_ess.powered && dc_apu.powered && dc1.powered && !ac1.powered && fws_up.on == false"
 
 [[step]]
 at = "3 s"
-set = { "apu_master.on" = 1 }
+set = { "apu_master_pb.pressed" = 1 }
 
 [[step]]
-at = "5 s"
-set = { "apu_start.on" = 1 }
+at = "6 s"
+set = { "apu_start_pb.pressed" = 1 }
 
 [[expect]]
 at = "100 s"
-that = "apu.available && ac1.powered && ac2.powered && ac3.powered && ac4.powered && ac_ess.powered && manifold_l.pressure > 20 psi"
+that = "apu.available && ac1.powered && ac2.powered && ac3.powered && ac4.powered && ac_ess.powered && centre_l.pressure > 20 psi && fws_up.on && prim_1.running && cds_du_1_unit.running"
+
+[[step]]
+at = "100 s"
+set = { "adirs1_mode.position" = 1, "adirs2_mode.position" = 1, "adirs3_mode.position" = 1 }
 
 [[step]]
 at = "105 s"
@@ -24,7 +29,7 @@ set = { "eng_mode.position" = 2, "eng4_master.on" = 1 }
 
 [[expect]]
 at = "200 s"
-that = "eng4.running && glc4.closed"
+that = "eng4.running && glc4.closed && yellow.available"
 
 [[step]]
 at = "205 s"
@@ -40,12 +45,20 @@ set = { "eng1_master.on" = 1 }
 
 [[expect]]
 at = "520 s"
-that = "eng1.running && eng2.running && eng3.running && glc1.closed && glc2.closed && glc3.closed && green.available && yellow.available"
+that = "eng1.running && eng2.running && eng3.running && glc1.closed && glc2.closed && glc3.closed && green.available && !agc_a.closed && !agc_b.closed"
 
 [[step]]
 at = "525 s"
-set = { "eng_mode.position" = 1, "apu_master.on" = 0, "tla1.value" = 0.9, "tla2.value" = 0.9, "tla3.value" = 0.9, "tla4.value" = 0.9 }
+set = { "eng_mode.position" = 1, "apu_master_pb.pressed" = 0 }
 
 [[expect]]
-at = "600 s"
-that = "eng1.n1 > 80 && eng4.thrust > 200 kN && !master_caution.lit && !master_warning.lit"
+at = "660 s"
+that = "ir1.aligned && ir2.aligned && ir3.aligned && fctl_law.value == 0 && !master_caution.lit && !master_warning.lit"
+
+[[step]]
+at = "661 s"
+set = { "parking_brake.on" = 0, "tla1.value" = 0.9, "tla2.value" = 0.9, "tla3.value" = 0.9, "tla4.value" = 0.9 }
+
+[[expect]]
+at = "720 s"
+that = "eng1.n1 > 80 && eng4.thrust > 200 kN"

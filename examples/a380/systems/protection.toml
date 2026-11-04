@@ -1,22 +1,56 @@
+# Fire: two loops per engine and the APU, main gear bay loops, two bottles per engine, one for the APU,
+# cargo smoke detection with two bottles shared between the holds.
+
 [[fire.zone]]
 id = "eng{n}_fire"
 count = 4
-fire_when = "eng{n}_overheat.active"
+fire_when = "sim_eng{n}_fire.on || eng{n}_overheat.active"
+loop_a_failed = "!fire_loop_eng{n}_a.powered"
+loop_b_failed = "!fire_loop_eng{n}_b.powered"
 
 [[fire.zone]]
 id = "apu_fire"
-fire_when = "false"
+fire_when = "sim_apu_fire.on"
+loop_a_failed = "!fire_loop_apu_a.powered"
+loop_b_failed = "!fire_loop_apu_b.powered"
+
+[[fire.zone]]
+id = "mlg_bay_fire"
+fire_when = "delay(brake_wl1.temperature > 1100 K || brake_bl1.temperature > 1100 K, 60 s)"
+loop_a_failed = "!fire_loop_mlgbay_a.powered"
+loop_b_failed = "!fire_loop_mlgbay_b.powered"
+
+[[fire.zone]]
+id = "cargo_fwd"
+fire_when = "sim_cargo_fwd_smoke.on"
+
+[[fire.zone]]
+id = "cargo_aft"
+fire_when = "sim_cargo_aft_smoke.on"
 
 [[fire.bottle]]
-id = "eng{n}_bottle_a"
+id = "eng{n}_bottle_1"
 count = 4
 zones = ["eng{n}_fire"]
-discharge_when = "fire{n}_handle.on && agent{n}_pb.pressed"
+discharge_when = "fire{n}_handle.on && agent{n}_1_pb.pressed && (eng_fire_bottle_1_squib_1.powered || eng_fire_bottle_1_squib_2.powered)"
+
+[[fire.bottle]]
+id = "eng{n}_bottle_2"
+count = 4
+zones = ["eng{n}_fire"]
+discharge_when = "fire{n}_handle.on && agent{n}_2_pb.pressed && (eng_fire_bottle_2_squib_1.powered || eng_fire_bottle_2_squib_2.powered)"
 
 [[fire.bottle]]
 id = "apu_bottle"
 zones = ["apu_fire"]
-discharge_when = "apu_fire_handle.on && apu_agent_pb.pressed"
+discharge_when = "(apu_fire_handle.on && apu_agent_pb.pressed || air.on_ground && delay(apu_fire.detected, 3 s)) && (apu_fire_bottle_squib_1.powered || apu_fire_bottle_squib_2.powered)"
+
+[[fire.bottle]]
+id = "cargo_bottle_{n}"
+count = 2
+zones = ["cargo_fwd", "cargo_aft"]
+discharge_when = "cargo_fwd_agent_pb.pressed || cargo_aft_agent_pb.pressed"
+duration = "240 min"
 
 [[failure.trigger]]
 id = "eng{n}_overheat"
@@ -24,12 +58,83 @@ count = 4
 part = "eng{n}"
 when = "delay(eng{n}.egt > 1350 K, 20 s)"
 
-[[cockpit.annunciator]]
-id = "master_caution"
-when = "!ac1.powered || !ac2.powered || !ac3.powered || !ac4.powered || green.low || yellow.low"
-test = "ann_test"
+[[failure.trigger]]
+id = "apu_overheat"
+part = "apu"
+when = "delay(apu.egt > 1000 K, 10 s)"
 
-[[cockpit.annunciator]]
-id = "master_warning"
-when = "eng1_fire.detected || eng2_fire.detected || eng3_fire.detected || eng4_fire.detected || apu_fire.detected || cabin.excess_altitude"
-test = "ann_test"
+# Lights, powered through their own breakers
+[[light.unit]]
+id = "beacon_{n}"
+count = 2
+bus = "light_beacon_bus"
+on_when = "beacon_sw.on"
+pattern = "beacon"
+
+[[light.unit]]
+id = "strobe_{n}"
+count = 3
+bus = "light_strobe_bus"
+on_when = "strobe_sw.on"
+pattern = "double"
+
+[[light.unit]]
+id = "nav_{n}"
+count = 3
+bus = "light_nav_bus"
+on_when = "nav_sw.on"
+
+[[light.unit]]
+id = "logo_{n}"
+count = 2
+bus = "light_logo_bus"
+on_when = "logo_sw.on"
+
+[[light.unit]]
+id = "landing_{n}"
+count = 2
+bus = "light_landing_bus"
+on_when = "land_sw.on"
+
+[[light.unit]]
+id = "taxi_{n}"
+count = 2
+bus = "light_taxi_bus"
+on_when = "taxi_sw.on"
+
+[[light.unit]]
+id = "turnoff_{n}"
+count = 2
+bus = "light_taxi_bus"
+on_when = "turnoff_sw.on"
+
+[[light.unit]]
+id = "wing_{n}"
+count = 2
+bus = "light_wing_bus"
+on_when = "wing_light_sw.on"
+
+[[light.unit]]
+id = "cabin_light"
+bus = "light_cabin_bus"
+on_when = "commercial_pb.pressed"
+
+[[light.unit]]
+id = "emergency_light_{n}"
+count = 2
+bus = "emer_lighting_charger_{n}_bus"
+on_when = "!ac1.powered && !ac4.powered"
+
+# Sounds
+[[sound.event]]
+id = "apu_sound"
+trigger = "apu.starting"
+value = "apu.n / 100"
+
+[[sound.event]]
+id = "fire_bell"
+trigger = "master_warning.lit"
+
+[[sound.event]]
+id = "single_chime"
+trigger = "master_caution.lit"

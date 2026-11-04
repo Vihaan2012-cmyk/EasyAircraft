@@ -1,17 +1,17 @@
-# A 310 kN class three-spool turbofan: ICAO emissions databank class figures,
-# overall pressure ratio about 39, bypass ratio about 8.5.
+# Four 311 kN (70,000 lbf) class three-spool turbofans, calibrated to the ICAO engine emissions databank:
+# bypass ratio 8.4, overall pressure ratio 38.7, 1298 kg/s airflow.
 [[engine.gas_turbine]]
 id = "eng{n}"
 count = 4
 air = "air"
 fuel_flow = "eng{n}_feed.flow"
-design_thrust = "310 kN"
-airflow = "1200 kg/s"
-bypass_ratio = 8.5
+design_thrust = "311 kN"
+airflow = "1298 kg/s"
+bypass_ratio = 8.41
 spools = 3
 fan_pr = 1.5
-ipc_pr = 5.4
-hpc_pr = 4.8
+ipc_pr = 3.63
+hpc_pr = 7.11
 fan_efficiency = 0.92
 ipc_efficiency = 0.89
 hpc_efficiency = 0.87
@@ -26,33 +26,79 @@ lp_inertia = 900
 ip_inertia = 40
 hp_inertia = 20
 starter_torque = "if(fadec{n}.starter && start_valve{n}.supplied, 1800 N*m, 0 N*m)"
-offtake = "gen{n}.load / 0.9"
-bleed = "bleed{n}_port.flow"
+offtake = "gen{n}.load / 0.9 + edp{n}a.flow * 5000 psi + edp{n}b.flow * 5000 psi"
+bleed = "bleed{n}_hp.flow + bleed{n}_ip.flow"
 reverser = "fadec{n}.reverser"
 
 [[fadec.controller]]
-id = "fadec{n}"
-count = 4
-engine = "eng{n}"
-lever = "tla{n}.value"
-master = "eng{n}_master.on && dc_ess.powered && !fire{n}_handle.on"
+id = "fadec1"
+engine = "eng1"
+lever = "max(0, tla1.value)"
+master = "eng1_master.on && (fadec_eng1.running || eng1.n3 > 15) && !fire1_handle.on"
 start = "eng_mode.position == 2"
 idle = "20"
 max = "100"
+max_reverse = "0"
+egt_limit = "1173 K"
+start_egt_limit = "1023 K"
+fuel_on_at = 10
+starter_cutout = 40
+
+[[fadec.controller]]
+id = "fadec2"
+engine = "eng2"
+lever = "tla2.value"
+master = "eng2_master.on && (fadec_eng2.running || eng2.n3 > 15) && !fire2_handle.on"
+start = "eng_mode.position == 2"
+idle = "20"
+max = "100"
+max_reverse = "70"
+egt_limit = "1173 K"
+start_egt_limit = "1023 K"
+fuel_on_at = 10
+starter_cutout = 40
+
+[[fadec.controller]]
+id = "fadec3"
+engine = "eng3"
+lever = "tla3.value"
+master = "eng3_master.on && (fadec_eng3.running || eng3.n3 > 15) && !fire3_handle.on"
+start = "eng_mode.position == 2"
+idle = "20"
+max = "100"
+max_reverse = "70"
+egt_limit = "1173 K"
+start_egt_limit = "1023 K"
+fuel_on_at = 10
+starter_cutout = 40
+
+[[fadec.controller]]
+id = "fadec4"
+engine = "eng4"
+lever = "max(0, tla4.value)"
+master = "eng4_master.on && (fadec_eng4.running || eng4.n3 > 15) && !fire4_handle.on"
+start = "eng_mode.position == 2"
+idle = "20"
+max = "100"
+max_reverse = "0"
+egt_limit = "1173 K"
+start_egt_limit = "1023 K"
 fuel_on_at = 10
 starter_cutout = 40
 
 [[apu.unit]]
 id = "apu"
-master = "apu_master.on && dc_apu.voltage > 18 V && !apu_fire_handle.on"
-start = "apu_start.on"
+master = "apu_master_pb.pressed && dc_apu.voltage > 18 V && apu_ecu.powered && !apu_fire_handle.on"
+start = "apu_start_pb.pressed"
 start_time = "60 s"
 bleed_load = "apu_bleed.flow"
 bleed_rating = "2.4 kg/s"
 generator_load = "apu_gen_a.load + apu_gen_b.load"
 generator_rating = "240 kW"
 fuel_flow = "0.07 kg/s"
+shutdown_when = "apu_fire.detected"
 
+# Forces about the centre of gravity; engines 1 and 4 outboard
 [[output.force]]
 id = "eng1_force"
 force = "eng1.thrust"
@@ -80,3 +126,28 @@ force = "eng4.thrust"
 x = "25.7 m"
 y = "-2.5 m"
 z = "-3 m"
+
+# Engine health counters kept between flights
+[[wear.counter]]
+id = "eng{n}_hours"
+count = 4
+rate = "if(eng{n}.running, 1 / 3600, 0)"
+limit = 25000
+
+[[wear.counter]]
+id = "eng{n}_cycles"
+count = 4
+rate = "if(rising(eng{n}.running), 1 / 0.02, 0)"
+limit = 20000
+
+[[wear.counter]]
+id = "eng{n}_oil"
+count = 4
+rate = "if(eng{n}.running, 0.25 / 3600, 0)"
+limit = 8
+service_when = "air.on_ground && !eng{n}.running && eng{n}_master.on == false && ann_test.on"
+
+[[wear.counter]]
+id = "apu_hours"
+rate = "if(apu.running, 1 / 3600, 0)"
+limit = 30000

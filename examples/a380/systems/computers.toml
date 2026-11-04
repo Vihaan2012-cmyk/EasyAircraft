@@ -1,0 +1,366 @@
+# Computers and radios, powered through their breakers; dual-fed units take either feed.
+
+[[computer.unit]]
+id = "rollout"
+power = ["rollout_normal_bus", "rollout_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "fcu_1"
+power = ["fcu_1_normal_bus", "fcu_1_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "fcu_2"
+power = ["fcu_2_normal_bus", "fcu_2_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "prim_1"
+power = ["prim_1_normal_bus", "prim_1_2nd_bus"]
+boot_time = "15 s"
+channels = 2
+
+[[computer.unit]]
+id = "prim_2"
+power = ["prim_2_normal_bus", "prim_2_2nd_bus"]
+boot_time = "15 s"
+channels = 2
+
+[[computer.unit]]
+id = "prim_3"
+power = ["prim_3_normal_bus", "prim_3_2nd_bus"]
+boot_time = "15 s"
+channels = 2
+
+[[computer.unit]]
+id = "sec_1"
+power = ["sec_1_normal_bus", "sec_1_2nd_bus"]
+boot_time = "8 s"
+
+[[computer.unit]]
+id = "sec_2"
+power = ["sec_2_normal_bus", "sec_2_2nd_bus"]
+boot_time = "8 s"
+
+[[computer.unit]]
+id = "sec_3"
+power = ["sec_3_normal_bus", "sec_3_2nd_bus"]
+boot_time = "8 s"
+
+[[computer.unit]]
+id = "fcdc_1"
+power = ["fcdc_1_normal_bus", "fcdc_1_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "fcdc_2"
+power = ["fcdc_2_normal_bus", "fcdc_2_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "lgciu_1"
+power = ["lgciu_1_normal_bus", "lgciu_1_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "lgciu_2"
+power = ["lgciu_2_normal_bus", "lgciu_2_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "fms_1"
+power = ["fms_1_normal_bus", "fms_1_2nd_bus"]
+boot_time = "40 s"
+channels = 2
+
+[[computer.unit]]
+id = "fms_2"
+power = ["fms_2_normal_bus", "fms_2_2nd_bus"]
+boot_time = "40 s"
+channels = 2
+
+[[computer.unit]]
+id = "fms_3"
+power = ["fms_3_normal_bus", "fms_3_2nd_bus"]
+boot_time = "40 s"
+channels = 2
+
+[[computer.unit]]
+id = "adirs_1"
+power = ["adirs_1_normal_bus", "adirs_1_2nd_bus"]
+boot_time = "10 s"
+
+[[computer.unit]]
+id = "adirs_2"
+power = ["adirs_2_normal_bus", "adirs_2_2nd_bus"]
+boot_time = "10 s"
+
+[[computer.unit]]
+id = "adirs_3"
+power = ["adirs_3_normal_bus", "adirs_3_2nd_bus"]
+boot_time = "10 s"
+
+[[computer.unit]]
+id = "tcas"
+power = ["tcas_normal_bus", "tcas_2nd_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "fws_1"
+power = ["fws_1_normal_bus", "fws_1_2nd_bus"]
+boot_time = "20 s"
+channels = 2
+
+[[computer.unit]]
+id = "fws_2"
+power = ["fws_2_normal_bus", "fws_2_2nd_bus"]
+boot_time = "20 s"
+channels = 2
+
+[[computer.unit]]
+id = "cpiom_b1"
+power = ["cpiom_b1_ags_bus", "cpiom_b1_tcs_bus", "cpiom_b1_vcs_bus", "cpiom_b1_cpcs_bus"]
+boot_time = "20 s"
+channels = 2
+
+[[computer.unit]]
+id = "ocsm_1"
+power = ["ocsm_1a_bus", "ocsm_1b_bus", "ocsm_1_ap_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "fadec_eng1"
+power = ["fadec_1a_bus", "fadec_1b_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "cpiom_b2"
+power = ["cpiom_b2_ags_bus", "cpiom_b2_tcs_bus", "cpiom_b2_vcs_bus", "cpiom_b2_cpcs_bus"]
+boot_time = "20 s"
+channels = 2
+
+[[computer.unit]]
+id = "ocsm_2"
+power = ["ocsm_2a_bus", "ocsm_2b_bus", "ocsm_2_ap_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "fadec_eng2"
+power = ["fadec_2a_bus", "fadec_2b_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "cpiom_b3"
+power = ["cpiom_b3_ags_bus", "cpiom_b3_tcs_bus", "cpiom_b3_vcs_bus", "cpiom_b3_cpcs_bus"]
+boot_time = "20 s"
+channels = 2
+
+[[computer.unit]]
+id = "ocsm_3"
+power = ["ocsm_3a_bus", "ocsm_3b_bus", "ocsm_3_ap_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "fadec_eng3"
+power = ["fadec_3a_bus", "fadec_3b_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "cpiom_b4"
+power = ["cpiom_b4_ags_bus", "cpiom_b4_tcs_bus", "cpiom_b4_vcs_bus", "cpiom_b4_cpcs_bus"]
+boot_time = "20 s"
+channels = 2
+
+[[computer.unit]]
+id = "ocsm_4"
+power = ["ocsm_4a_bus", "ocsm_4b_bus", "ocsm_4_ap_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "fadec_eng4"
+power = ["fadec_4a_bus", "fadec_4b_bus"]
+boot_time = "5 s"
+channels = 2
+
+[[computer.unit]]
+id = "fdac_1"
+power = ["fdac_1a_bus", "fdac_1b_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "tadd_1_unit"
+power = ["tadd_1_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "fdac_2"
+power = ["fdac_2a_bus", "fdac_2b_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "tadd_2_unit"
+power = ["tadd_2_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "vcm_fwd"
+power = ["vcm_fwd_1_bus", "vcm_fwd_2_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "vcm_aft"
+power = ["vcm_aft_1_bus", "vcm_aft_2_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "apu_ecu"
+power = ["apu_ecu_a_bus", "apu_ecu_b_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "egpwc_unit"
+power = ["egpwc_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "wxr_unit"
+power = ["wxr_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "xpdr_1_unit"
+power = ["xpdr_1_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "xpdr_2_unit"
+power = ["xpdr_2_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "vhf_1_unit"
+power = ["vhf_1_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "vhf_2_unit"
+power = ["vhf_2_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "hf_1_unit"
+power = ["hf_1_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "hf_2_unit"
+power = ["hf_2_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "satcom_unit"
+power = ["satcom_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "acars_mu_unit"
+power = ["acars_mu_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "dfdr_unit"
+power = ["dfdr_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "cvr_unit"
+power = ["cvr_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "qar_unit"
+power = ["qar_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "ra_sys_a_unit"
+power = ["ra_sys_a_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "ra_sys_b_unit"
+power = ["ra_sys_b_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "ra_sys_c_unit"
+power = ["ra_sys_c_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "isis_unit"
+power = ["isis_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "mmr_1_unit"
+power = ["mmr_1_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "mmr_2_unit"
+power = ["mmr_2_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "mmr_3_unit"
+power = ["mmr_3_bus"]
+boot_time = "5 s"
+
+[[computer.unit]]
+id = "cds_du_1_unit"
+power = ["cds_du_1_bus"]
+boot_time = "25 s"
+
+[[computer.unit]]
+id = "cds_du_2_unit"
+power = ["cds_du_2_bus"]
+boot_time = "25 s"
+
+[[computer.unit]]
+id = "cds_du_3_unit"
+power = ["cds_du_3_bus"]
+boot_time = "25 s"
+
+[[computer.unit]]
+id = "cds_du_4_unit"
+power = ["cds_du_4_bus"]
+boot_time = "25 s"
+
+[[computer.unit]]
+id = "cds_du_5_unit"
+power = ["cds_du_5_bus"]
+boot_time = "25 s"
+
+[[computer.unit]]
+id = "cds_du_6_unit"
+power = ["cds_du_6_bus"]
+boot_time = "25 s"
+
+[[computer.unit]]
+id = "cds_du_7_unit"
+power = ["cds_du_7_bus"]
+boot_time = "25 s"
+
+[[computer.unit]]
+id = "cds_du_8_unit"
+power = ["cds_du_8_bus"]
+boot_time = "25 s"

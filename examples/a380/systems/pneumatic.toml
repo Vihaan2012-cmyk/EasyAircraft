@@ -1,3 +1,5 @@
+# Four engine bleeds, each with an intermediate- and a high-pressure port; three crossbleed valves; APU bleed.
+
 [[pneumatic.duct]]
 id = "bleed{n}"
 count = 4
@@ -7,8 +9,12 @@ id = "manifold_l"
 volume = "0.3 m3"
 
 [[pneumatic.duct]]
-id = "manifold_c"
-volume = "0.3 m3"
+id = "centre_l"
+volume = "0.2 m3"
+
+[[pneumatic.duct]]
+id = "centre_r"
+volume = "0.2 m3"
 
 [[pneumatic.duct]]
 id = "manifold_r"
@@ -17,14 +23,89 @@ volume = "0.3 m3"
 [[pneumatic.duct]]
 id = "apu_duct"
 
+[[pneumatic.duct]]
+id = "nacelle{n}"
+count = 4
+
+# IP port; the HP valve opens when the IP port is weak at low thrust
 [[pneumatic.source]]
-id = "bleed{n}_port"
+id = "bleed{n}_ip"
 count = 4
 duct = "bleed{n}"
 pressure = "90 psi"
-temperature = "450 degC"
+temperature = "300 degC"
+flow = "if(eng{n}.n1 > 45, 5 kg/s, 2 kg/s)"
+available_when = "eng{n}.n3 > 30 && !fire{n}_handle.on"
+
+[[pneumatic.source]]
+id = "bleed{n}_hp"
+count = 4
+duct = "bleed{n}"
+pressure = "120 psi"
+temperature = "480 degC"
+flow = "if(eng{n}.n1 < 45, 4 kg/s, 0 kg/s)"
+available_when = "eng{n}.n3 > 30 && !fire{n}_handle.on && eng{n}.n1 < 45"
+
+# Pressure-regulating valves with precoolers: engines 1-2 to the left manifold, 3-4 to the right
+[[pneumatic.valve]]
+id = "prv1"
+between = ["bleed1", "manifold_l"]
+open_when = "bleed1_pb.pressed && bleed_eng_1.powered && !fire1_handle.on && !fadec1.starter"
+regulate = "40 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "prv2"
+between = ["bleed2", "manifold_l"]
+open_when = "bleed2_pb.pressed && bleed_eng_2.powered && !fire2_handle.on && !fadec2.starter"
+regulate = "40 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "prv3"
+between = ["bleed3", "manifold_r"]
+open_when = "bleed3_pb.pressed && bleed_eng_3.powered && !fire3_handle.on && !fadec3.starter"
+regulate = "40 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "prv4"
+between = ["bleed4", "manifold_r"]
+open_when = "bleed4_pb.pressed && bleed_eng_4.powered && !fire4_handle.on && !fadec4.starter"
+regulate = "40 psi"
+cool_to = "200 degC"
+
+[[pneumatic.valve]]
+id = "nai{n}"
+count = 4
+between = ["bleed{n}", "nacelle{n}"]
+open_when = "eng{n}_ai_pb.pressed"
+flow = "0.6 kg/s"
+
+[[pneumatic.consumer]]
+id = "nacelle{n}_ai"
+count = 4
+duct = "nacelle{n}"
+flow = "0.4 kg/s"
+on_when = "eng{n}_ai_pb.pressed"
+
+[[pneumatic.valve]]
+id = "xbleed_l"
+between = ["manifold_l", "centre_l"]
+open_when = "xbleed_l_pb.pressed || apu_bleed.open || fadec1.starter || fadec2.starter"
 flow = "6 kg/s"
-available_when = "eng{n}.n3 > 30"
+
+[[pneumatic.valve]]
+id = "xbleed_c"
+between = ["centre_l", "centre_r"]
+open_when = "xbleed_c_pb.pressed"
+flow = "6 kg/s"
+
+[[pneumatic.valve]]
+id = "xbleed_r"
+between = ["centre_r", "manifold_r"]
+open_when = "xbleed_r_pb.pressed || apu_bleed.open || fadec3.starter || fadec4.starter"
+flow = "6 kg/s"
 
 [[pneumatic.source]]
 id = "apu_load_compressor"
@@ -35,61 +116,25 @@ flow = "2.4 kg/s"
 available_when = "apu.available"
 
 [[pneumatic.valve]]
-id = "prv1"
-between = ["bleed1", "manifold_l"]
-open_when = "bleed1_sw.on && !fire1_handle.on"
-regulate = "44 psi"
-cool_to = "200 degC"
-
-[[pneumatic.valve]]
-id = "prv2"
-between = ["bleed2", "manifold_l"]
-open_when = "bleed2_sw.on && !fire2_handle.on"
-regulate = "44 psi"
-cool_to = "200 degC"
-
-[[pneumatic.valve]]
-id = "prv3"
-between = ["bleed3", "manifold_r"]
-open_when = "bleed3_sw.on && !fire3_handle.on"
-regulate = "44 psi"
-cool_to = "200 degC"
-
-[[pneumatic.valve]]
-id = "prv4"
-between = ["bleed4", "manifold_r"]
-open_when = "bleed4_sw.on && !fire4_handle.on"
-regulate = "44 psi"
-cool_to = "200 degC"
-
-[[pneumatic.valve]]
-id = "xbleed_l"
-between = ["manifold_l", "manifold_c"]
-open_when = "xbleed_l_sw.on || apu_bleed.open"
-flow = "5 kg/s"
-
-[[pneumatic.valve]]
-id = "xbleed_r"
-between = ["manifold_c", "manifold_r"]
-open_when = "xbleed_r_sw.on || apu_bleed.open"
-flow = "5 kg/s"
-
-[[pneumatic.valve]]
 id = "apu_bleed"
-between = ["apu_duct", "manifold_c"]
-open_when = "apu_bleed_sw.on && apu.available"
+between = ["apu_duct", "centre_l"]
+open_when = "apu_bleed_pb.pressed && apu.available"
 
 [[pneumatic.consumer]]
 id = "pack1"
 duct = "manifold_l"
-flow = "1.6 kg/s"
-on_when = "pack1_sw.on && !(fadec1.starter || fadec2.starter)"
+flow = "1.8 kg/s"
+on_when = "pack1_pb.pressed && (pack_1_flow_valve_1.powered || pack_1_flow_valve_2.powered) && (cpiom_b1.running || cpiom_b2.running) && !(fadec1.starter || fadec2.starter || fadec3.starter || fadec4.starter) && !ditching.on"
 
 [[pneumatic.consumer]]
 id = "pack2"
 duct = "manifold_r"
-flow = "1.6 kg/s"
-on_when = "pack2_sw.on && !(fadec3.starter || fadec4.starter)"
+flow = "1.8 kg/s"
+on_when = "pack2_pb.pressed && (pack_2_flow_valve_1.powered || pack_2_flow_valve_2.powered) && (cpiom_b3.running || cpiom_b4.running) && !(fadec1.starter || fadec2.starter || fadec3.starter || fadec4.starter) && !ditching.on"
+
+[[logic.flag]]
+id = "ditching"
+when = "false"
 
 [[pneumatic.consumer]]
 id = "start_valve1"
@@ -122,11 +167,11 @@ on_when = "fadec4.starter"
 [[pneumatic.consumer]]
 id = "wing_ai_l"
 duct = "manifold_l"
-flow = "0.6 kg/s"
-on_when = "wing_ai_sw.on"
+flow = "0.7 kg/s"
+on_when = "wing_ai_pb.pressed && !air.on_ground"
 
 [[pneumatic.consumer]]
 id = "wing_ai_r"
 duct = "manifold_r"
-flow = "0.6 kg/s"
-on_when = "wing_ai_sw.on"
+flow = "0.7 kg/s"
+on_when = "wing_ai_pb.pressed && !air.on_ground"

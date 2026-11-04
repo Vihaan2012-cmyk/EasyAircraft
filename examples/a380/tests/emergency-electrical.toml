@@ -1,0 +1,24 @@
+# In flight, all four generators lost: the RAT comes out and carries AC ESS, the shed buses drop.
+[[step]]
+at = "0 s"
+set = { "air.on_ground" = 0, "air.airspeed" = 128.6, "bat1_pb.pressed" = 1, "bat2_pb.pressed" = 1, "ess_bat_pb.pressed" = 1, "apu_bat_pb.pressed" = 1, "ext1_connected.on" = 1, "ext2_connected.on" = 1, "ext3_connected.on" = 1, "ext4_connected.on" = 1, "ext1_pb.pressed" = 1, "ext2_pb.pressed" = 1, "ext3_pb.pressed" = 1, "ext4_pb.pressed" = 1 }
+
+[[expect]]
+at = "30 s"
+that = "ac1.powered && ac_ess.powered && !rat_deployed.on && fws_up.on"
+
+[[step]]
+at = "31 s"
+set = { "ext1_connected.on" = 0, "ext2_connected.on" = 0, "ext3_connected.on" = 0, "ext4_connected.on" = 0 }
+
+[[expect]]
+at = "34 s"
+that = "emer_config.on && rat_deployed.on && rat_gen.ready && rat_lc.closed && ac_ess.powered && !ac_ess_shed.powered && dc_ess.powered && !dc_ess_shed.powered && elc.closed == false && master_warning.lit"
+
+[[step]]
+at = "35 s"
+set = { "air.airspeed" = 60 }
+
+[[expect]]
+at = "40 s"
+that = "!rat_gen.ready && dc_ess.powered && elc.closed && stat_inv.active && ac_ess.powered"
