@@ -89,6 +89,8 @@ pub struct App {
     engine_pick: Option<String>,
     cascade: Option<Cascade>,
     readers: Option<Vec<Vec<usize>>>,
+    engine_show: u8,
+    steady: HashMap<String, (easyacft_parts::engine::Gas, [f64; 3])>,
 }
 
 /// Every on/off value as it was when a failure went in, and when each one first changed after it.
@@ -274,6 +276,8 @@ impl App {
             engine_pick: None,
             cascade: None,
             readers: None,
+            engine_show: 0,
+            steady: HashMap::new(),
         };
         if !a.dir.is_empty() {
             a.reload();
@@ -308,6 +312,7 @@ impl App {
         }
         self.tables = scan_tables(&path);
         self.readers = None;
+        self.steady.clear();
         self.theme = read_theme(&self.dir);
         if let Some(of) = std::fs::read_to_string(path.join("aircraft.toml")).ok().and_then(|t| t.parse::<toml_edit::DocumentMut>().ok()).and_then(|d| d.get("variant").and_then(|v| v.get("of")).and_then(|v| v.as_str()).map(str::to_owned)) {
             self.compare_dir = path.join(of).display().to_string();
@@ -827,11 +832,35 @@ impl App {
             ui.label(format!("{}.{}", p.domain, p.kind));
             if p.kind == "gas_turbine" {
                 let params = easyacft_parts::engine::Params::from_part(&p, &base);
+                ui.horizontal(|ui| {
+                    ui.label("Show");
+                    for (k, n) in [(0u8, "Auto"), (1, "Live sim"), (2, "Idle"), (3, "Take-off")] {
+                        ui.selectable_value(&mut self.engine_show, k, n);
+                    }
+                });
                 let w = ui.available_width().min(1600.0);
                 let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, w * 0.56), Sense::click());
                 let painter = ui.painter_at(rect);
                 let mut live = self.engine_live(&p, ui.input(|i| i.time));
                 live.selected = self.engine_pick.clone();
+                let stopped = live.airflow < 0.01 * params.airflow;
+                let mode = if self.engine_show == 0 { if stopped { 3 } else { 1 } } else { self.engine_show };
+                if mode >= 2 {
+                    let share = if mode == 2 { 0.06 } else { 1.0 };
+                    let key = format!("{}|{mode}|{:?}", p.id, live.health);
+                    let (g, n) = *self.steady.entry(key).or_insert_with(|| easyacft_parts::engine::steady(&params, live.health, share));
+                    let pct = |v: f64| v * 100.0;
+                    live.n = match params.spools {
+                        1 => [pct(n[2]), 0.0, pct(n[2])],
+                        2 => [pct(n[0]), 0.0, pct(n[2])],
+                        _ => [pct(n[0]), pct(n[1]), pct(n[2])],
+                    };
+                    (live.t3, live.p3, live.tet, live.egt, live.fuel, live.thrust, live.airflow, live.shaft_power) = (g.t3, g.p3, g.t4, g.egt, g.wf, g.thrust, g.w, g.shaft);
+                    live.running = g.wf > 0.0;
+                    live.t0 = 288.15;
+                    let what = if mode == 2 { "IDLE" } else { "TAKE-OFF" };
+                    live.preview = Some(format!("PREVIEW: {what} STEADY STATE, SEA LEVEL STATIC{}", if stopped { "  (ENGINE NOT RUNNING IN THE SIM)" } else { "" }));
+                }
                 let hits = cutaway::draw(&painter, rect, &style::label(&p.id), &params, &live);
                 let at = |pos: Option<Pos2>| pos.and_then(|q| hits.iter().filter(|h| h.rect.contains(q)).min_by(|a, b| a.rect.area().total_cmp(&b.rect.area())).cloned());
                 let hovered = at(resp.hover_pos());

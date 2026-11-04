@@ -35,6 +35,7 @@ pub struct Live {
     pub bleeds: Vec<(String, State)>,
     pub anti_ice: Option<(String, State)>,
     pub selected: Option<String>,
+    pub preview: Option<String>,
     pub time: f64,
 }
 
@@ -85,6 +86,9 @@ const CALLOUT: Color32 = Color32::from_rgb(196, 202, 210);
 const LEADER: Color32 = Color32::from_rgba_premultiplied(70, 72, 76, 110);
 const BYPASS: Color32 = Color32::from_rgb(110, 215, 255);
 const FUEL: Color32 = Color32::from_rgb(255, 157, 226);
+const OIL: Color32 = Color32::from_rgb(214, 170, 60);
+const HATCH: Color32 = Color32::from_rgba_premultiplied(84, 90, 98, 150);
+const STREAM: Color32 = Color32::from_rgba_premultiplied(120, 150, 175, 70);
 
 fn stages_for(pr: f64, per: f64) -> usize {
     ((pr.max(1.0).ln() / per.ln()).ceil() as usize).clamp(1, 14)
@@ -102,6 +106,10 @@ pub fn heat(t: f64) -> Color32 {
         }
     }
     Color32::WHITE
+}
+
+fn core_n_live(l: &Live) -> f64 {
+    l.n[2].max(l.n[1])
 }
 
 fn damaged(base: Color32, d: f64) -> Color32 {
@@ -221,6 +229,26 @@ impl Pen<'_> {
             }
         }
         self.p.add(Shape::mesh(mesh));
+    }
+    /// Section hatching at 45 degrees between two radius curves.
+    fn hatch(&self, top: &dyn Fn(f32) -> f32, bottom: &dyn Fn(f32) -> f32, x0: f32, x1: f32, pitch: f32) {
+        let mut x = x0;
+        while x < x1 {
+            let (mut a, mut b) = ((x, bottom(x)), (x, bottom(x)));
+            for _ in 0..240 {
+                let nx = b.0 + 0.5;
+                let nr = b.1 + 0.5;
+                if nx > x1 || nr > top(nx) {
+                    break;
+                }
+                b = (nx, nr);
+            }
+            if (b.1 - a.1) > 1.0 {
+                a.1 += 0.3;
+                self.line(&[a, b], 0.5, HATCH);
+            }
+            x += pitch;
+        }
     }
     fn circle(&self, x: f32, r: f32, rad: f32, fill: Color32, w: f32, c: Color32) {
         let st = if w > 0.0 { Stroke::new(self.w(w), c) } else { Stroke::NONE };
@@ -483,10 +511,57 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     let plume = |x: f32| heat(egt - (egt - t0) * 0.5 * ((x - x_end) / 160.0).clamp(0.0, 1.0) as f64).gamma_multiply(0.24);
     pen.fill(&|x| tip(x_end) * (1.0 - (x - x_end) / 900.0), &|x| (hub(x_end) * (1.0 - (x - x_end) / 120.0)).max(0.0), x_end, x_end + 120.0, &plume);
 
+    // Stream tubes: core lines follow the annulus, bypass lines the duct, intake lines split at the splitter
+    let fan_face = fan_x.map_or(core_x0 - 40.0, |f| f.0);
+    let core_pts = |frac: f32| -> Vec<(f32, f32)> {
+        let mut pts = Vec::new();
+        let mut xx = core_x0 - 40.0;
+        while xx < x_end + 140.0 {
+            let xc = xx.min(x_end + 30.0);
+            let (hb, tp) = (hub(xc), tip(xc));
+            pts.push((xx, if xx > x_end { hb * (1.0 - (xx - x_end) / 220.0) + (tp - hb) * frac } else { hb + (tp - hb) * frac }));
+            xx += 6.0;
+        }
+        pts
+    };
+    let core_bound = if bypass { (r_split - r_hub_fan) / (r_tip - r_hub_fan) } else { 1.0 };
+    let outer_pts = |frac: f32| -> Vec<(f32, f32)> {
+        let r_in = r_hub_fan + 10.0 + (r_tip - r_hub_fan - 14.0) * frac;
+        let mut pts = vec![(-50.0, r_in * 1.08), (lip, r_in)];
+        if bypass && frac > core_bound {
+            let f = (frac - core_bound) / (1.0 - core_bound);
+            let mut xx = fan_face;
+            while xx < nac_end + 150.0 {
+                let inner = duct_in(xx);
+                let outer = nac_in(xx.min(nac_end));
+                pts.push((xx, inner + (outer - inner) * (0.1 + 0.8 * f) - if xx > nac_end { (xx - nac_end) * 0.12 } else { 0.0 }));
+                xx += 8.0;
+            }
+        } else {
+            pts.push((fan_face, r_in.min(r_split - 6.0)));
+            pts.push((core_x0 - 40.0, hub(core_x0 - 40.0) + (tip(core_x0 - 40.0) - hub(core_x0 - 40.0)) * (0.2 + 0.6 * (frac / core_bound.max(0.01)).min(1.0))));
+        }
+        pts
+    };
+    for k in 0..14 {
+        pen.line(&core_pts((k as f32 + 0.5) / 14.0), 0.5, STREAM);
+    }
+    for k in 0..16 {
+        pen.line(&outer_pts((k as f32 + 0.5) / 16.0), 0.5, STREAM);
+    }
+
     // Casings
     pen.fill(&|x| core_case(x) + 6.0, &|x| core_case(x), core_x0 - 20.0, x_end, &|_| CASE);
     pen.curve(&|x| core_case(x), core_x0 - 20.0, x_end, 1.2, EDGE);
     pen.curve(&|x| core_case(x) + 6.0, core_x0 - 20.0, x_end, 1.2, EDGE);
+    pen.hatch(&|x| core_case(x) + 6.0, &|x| core_case(x), core_x0 - 20.0, x_end, 3.0);
+    let mut joints: Vec<f32> = secs.iter().skip(1).map(|c| c.x0).collect();
+    joints.extend([comb0 + 12.0, comb1, x_end - 2.0]);
+    for jx in joints {
+        let r0 = core_case(jx) + 6.0;
+        pen.poly(&[(jx - 1.8, r0), (jx + 1.8, r0), (jx + 1.8, r0 + 5.0), (jx - 1.8, r0 + 5.0)], CASE, 0.7, EDGE);
+        pen.circle(jx, r0 + 3.0, 0.9, EDGE, 0.0, Color32::TRANSPARENT);
+    }
     if bypass {
         pen.fill(&|x| cowl(x), &|x| core_case(x) + 6.0, core_x0 - 10.0, x_end + 10.0, &|_| Color32::from_rgb(42, 45, 50));
         pen.curve(&|x| cowl(x), core_x0 - 10.0, x_end + 10.0, 1.6, EDGE);
@@ -496,9 +571,17 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
         pen.curve(&|x| nac_in(x), lip, nac_end, 1.4, EDGE);
         if let Some((f0, f1)) = fan_x {
             pen.fill(&|x| nac_in(x) + 14.0, &|x| nac_in(x), f0 - 30.0, f1 + 60.0, &|_| Color32::from_rgb(76, 82, 90));
-            for k in 0..10 {
-                let lx = f0 - 26.0 + k as f32 * 9.0;
-                pen.line(&[(lx, nac_in(lx) + 2.0), (lx + 5.0, nac_in(lx) + 12.0)], 0.8, Color32::from_rgb(110, 118, 128));
+            pen.hatch(&|x| nac_in(x) + 14.0, &|x| nac_in(x), f0 - 30.0, f1 + 60.0, 3.5);
+            pen.curve(&|x| nac_in(x) + 14.0, f0 - 30.0, f1 + 60.0, 0.8, EDGE);
+            let mut px = f1 + 66.0;
+            while px < nac_end - 156.0 {
+                pen.circle(px, nac_in(px) + 2.5, 0.7, EDGE, 0.0, Color32::TRANSPARENT);
+                px += 4.0;
+            }
+            let mut px = core_x0;
+            while px < nac_end - 10.0 {
+                pen.circle(px, cowl(px) - 2.5, 0.7, EDGE, 0.0, Color32::TRANSPARENT);
+                px += 4.0;
             }
         }
         let rx = nac_end - 150.0;
@@ -602,6 +685,27 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
                     }
                     if r.kind == Kind::Turb {
                         pen.line(&[(r.x + lean, tp - gap + 2.0), (r.x + r.chord + lean, tp - gap + 2.0)], 2.0, c);
+                        let mut tree = Vec::new();
+                        for k in 0..4 {
+                            let rr = hb - 1.5 * k as f32;
+                            let w = r.chord * if k % 2 == 0 { 0.32 } else { 0.2 };
+                            tree.push((xm - w, rr));
+                        }
+                        for k in (0..4).rev() {
+                            let rr = hb - 1.5 * k as f32;
+                            let w = r.chord * if k % 2 == 0 { 0.32 } else { 0.2 };
+                            tree.push((xm + w, rr));
+                        }
+                        pen.line(&tree, 0.5, Color32::from_rgb(150, 158, 168));
+                    } else {
+                        pen.line(&[(r.x + r.chord * 0.2, hb), (r.x + r.chord * 0.1, hb - 3.0), (r.x + r.chord * 0.9, hb - 3.0), (r.x + r.chord * 0.8, hb)], 0.5, Color32::from_rgb(150, 158, 168));
+                    }
+                }
+                if r.kind == Kind::Turb && r.spool >= 1 {
+                    for k in 1..4 {
+                        let rr = hb + (tp - hb) * k as f32 / 4.0;
+                        pen.circle(r.x + r.chord * 0.22, rr, 0.7, Color32::from_rgb(60, 66, 74), 0.0, Color32::TRANSPARENT);
+                        pen.circle(r.x + r.chord * 0.55, rr, 0.5, Color32::from_rgb(60, 66, 74), 0.0, Color32::TRANSPARENT);
                     }
                 }
             }
@@ -688,6 +792,62 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
         pen.line(&[(dash + 18.0, 0.0), (dash + 20.0, 0.0)], 1.0, Color32::from_rgb(140, 146, 154));
         dash += 24.0;
     }
+
+    // Rotor drums joining the disc rims of each module
+    for c in secs.iter().filter(|c| c.kind != Kind::Fan) {
+        pen.curve(&|x| hub(x) - 8.0, c.x0 + 4.0, c.x1 - 4.0, 1.0, Color32::from_rgb(110, 120, 132));
+    }
+
+    // Variable stator vanes on the front of the first core compressor: spindles, levers, unison ring, actuator
+    let vsv_sec = secs.iter().find(|c| c.kind == Kind::Comp && c.spool == if spools == 3 { 1 } else { 2 });
+    if let Some(vs) = vsv_sec {
+        let vanes: Vec<&Row> = rows.iter().filter(|r| !r.rotor && r.kind == Kind::Comp && r.x >= vs.x0 && r.x <= vs.x1).take(4).collect();
+        if let (Some(first), Some(last)) = (vanes.first(), vanes.last()) {
+            let ring = |x: f32| core_case(x) + 9.0;
+            for v in &vanes {
+                let xm = v.x + v.chord / 2.0;
+                pen.line(&[(xm, tip(xm)), (xm, ring(xm))], 0.8, EDGE);
+                pen.line(&[(xm, ring(xm)), (xm + 3.0, ring(xm) + 1.5)], 0.8, EDGE);
+            }
+            let (a, b) = (first.x + first.chord / 2.0, last.x + last.chord / 2.0 + 3.0);
+            pen.line(&[(a, ring(a) + 1.5), (b, ring(b) + 1.5)], 1.0, EDGE);
+            pen.poly(&[(a - 9.0, ring(a)), (a - 3.0, ring(a)), (a - 3.0, ring(a) + 3.5), (a - 9.0, ring(a) + 3.5)], CASE, 0.7, EDGE);
+        }
+    }
+
+    // Probes: T2 in the intake, T25 at the core inlet, P30 at the compressor exit, thermocouples at the LP turbine
+    let probe = Color32::from_rgb(226, 222, 150);
+    if bypass {
+        let px = lip + 46.0;
+        pen.line(&[(px, nac_in(px)), (px, nac_in(px) - 12.0)], 1.0, probe);
+        pen.circle(px, nac_in(px) - 12.0, 1.4, probe, 0.0, Color32::TRANSPARENT);
+    }
+    let core_mid = |x: f32| (hub(x) + tip(x)) / 2.0;
+    for (px, depth) in [(ix + 10.0, 0.5f32), (comb0 - 3.0, 0.0)] {
+        let rr = if depth > 0.0 { core_mid(px) } else { tip(px) };
+        pen.line(&[(px, core_case(px) + 6.0), (px, rr)], 1.0, probe);
+        pen.circle(px, rr, 1.4, probe, 0.0, Color32::TRANSPARENT);
+    }
+    let tgt_x = secs.iter().find(|c| c.spool == 0 && c.kind == Kind::Turb).map_or(x_end - 4.0, |c| c.x0 + 1.0);
+    for k in 0..2 {
+        let px = tgt_x - 3.0 + 4.0 * k as f32;
+        let rr = hub(px) + (tip(px) - hub(px)) * (0.35 + 0.3 * k as f32);
+        pen.line(&[(px, core_case(px) + 6.0), (px, rr)], 1.0, probe);
+        pen.circle(px, rr, 1.2, probe, 0.0, Color32::TRANSPARENT);
+    }
+
+    // Oil: bearing chambers fed and scavenged through the intermediate-case and exhaust-case struts
+    let oil_on = core_n_live(l) > 10.0;
+    let oil_c = if oil_on { OIL } else { OIL.gamma_multiply(0.45) };
+    for (ox, r0) in [(ix - 4.0, shaft_r(2) + 6.0), (x_end - 8.0, shaft_r(0) + 6.0)] {
+        pen.p.extend(Shape::dashed_line(&[pen.at(ox, r0), pen.at(ox, core_case(ox) + 6.0)], Stroke::new(pen.w(1.0), oil_c), 3.0 * s, 2.0 * s));
+        pen.circle(ox, core_case(ox) + 7.5, 1.4, oil_c, 0.0, Color32::TRANSPARENT);
+    }
+
+    // Fire detection loop around the hot section
+    let loop_c = if l.fire == State::Fail { style::RED } else { Color32::from_rgb(150, 70, 80) };
+    let loop_pts: Vec<Pos2> = (0..=40).map(|k| comb0 + 20.0 + (x_end - 12.0 - comb0 - 20.0) * k as f32 / 40.0).map(|x| pen.at(x, core_case(x) + 16.0)).collect();
+    pen.p.extend(Shape::dashed_line(&loop_pts, Stroke::new(pen.w(1.0), loop_c), 5.0 * s, 2.5 * s));
 
     // Services: one corridor through the intermediate-case strut and the bifurcation carries the radial drive,
     // the merged bleed duct and the fuel supply; nothing else crosses the bypass
@@ -795,50 +955,20 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     let base = 240.0 * flow;
     let moving = flow > 0.01;
     let core_flow = base * if h.surge { 0.45 } else { 1.0 };
-    let core_lines = [0.12f32, 0.32, 0.5, 0.68, 0.88];
-    for (k, frac) in core_lines.iter().enumerate() {
-        let mut pts = Vec::new();
-        let mut xx = core_x0 - 40.0;
-        while xx < x_end + 140.0 {
-            let xc = xx.min(x_end + 30.0);
-            let (hb, tp) = (hub(xc), tip(xc));
-            let y = if xx > x_end { hb * (1.0 - (xx - x_end) / 220.0) + (tp - hb) * frac } else { hb + (tp - hb) * frac };
-            pts.push((xx, y));
-            xx += 6.0;
+    if moving {
+        for (k, frac) in [0.1f32, 0.26, 0.42, 0.58, 0.74, 0.9].iter().enumerate() {
+            pen.particles(&core_pts(*frac), &|x| core_rel(x) * core_flow, &|x| heat(temp_at(x)), time + k as f32 * 0.21, 26, 1.8);
         }
-        if moving {
-            pen.particles(&pts, &|x| core_rel(x) * core_flow, &|x| heat(temp_at(x)), time + k as f32 * 0.21, 26, 1.8);
-        } else {
-            pen.line(&pts, 0.6, Color32::from_rgba_unmultiplied(150, 170, 190, 40));
-        }
-    }
-    let fan_face = fan_x.map_or(core_x0 - 40.0, |f| f.0);
-    let intake_lines: Vec<f32> = if bypass { vec![0.15, 0.35, 0.55, 0.75, 0.92] } else { vec![0.3, 0.7] };
-    for (k, frac) in intake_lines.iter().enumerate() {
-        let r_in = r_hub_fan + 10.0 + (r_tip - r_hub_fan - 14.0) * frac;
-        let mut pts = vec![(-50.0, r_in * 1.08), (lip, r_in)];
-        let core_bound = (r_split - r_hub_fan) / (r_tip - r_hub_fan);
-        if bypass && *frac > core_bound {
-            let f = (frac - core_bound) / (1.0 - core_bound);
-            let mut xx = fan_face;
-            while xx < nac_end + 150.0 {
-                let inner = duct_in(xx);
-                let outer = nac_in(xx.min(nac_end));
-                pts.push((xx, inner + (outer - inner) * (0.1 + 0.8 * f) - if xx > nac_end { (xx - nac_end) * 0.12 } else { 0.0 }));
-                xx += 8.0;
-            }
-            let spd = |x: f32| base * if x < fan_x1 { 0.9 } else if x < nac_end { 1.15 } else { 1.6 } * (1.0 - 0.35 * h.comp[0] as f32);
-            if moving {
+        let fan_k = 1.0 - 0.35 * h.comp[0] as f32;
+        let n_out = 10;
+        for k in 0..n_out {
+            let frac = (k as f32 + 0.5) / n_out as f32;
+            let pts = outer_pts(frac);
+            if bypass && frac > core_bound {
+                let spd = |x: f32| base * fan_k * if x < fan_x1 { 0.9 } else if x < nac_end { 1.15 } else { 1.6 };
                 pen.particles(&pts, &spd, &|_| BYPASS, time + k as f32 * 0.37, 30, 1.8);
             } else {
-                pen.line(&pts, 0.6, Color32::from_rgba_unmultiplied(150, 170, 190, 40));
-            }
-        } else {
-            let into = (core_x0 - 40.0, hub(core_x0 - 40.0) + (tip(core_x0 - 40.0) - hub(core_x0 - 40.0)) * 0.5);
-            pts.push((fan_face, r_in.min(r_split - 6.0)));
-            pts.push(into);
-            if moving {
-                pen.particles(&pts, &|_| base * 0.9, &|_| heat(t0), time + k as f32 * 0.29, 12, 1.8);
+                pen.particles(&pts, &|_| base * 0.9, &|_| heat(t0), time + k as f32 * 0.29, 10, 1.8);
             }
         }
     }
@@ -936,6 +1066,19 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     pen.line(&[(x_end + 80.0, -24.0), (x_end + 80.0, cone(x_end + 80.0) * 0.5)], 0.6, LEADER);
     pen.text(x_end + 80.0, -30.0, "EXHAUST CONE", 7.0, style::GREY_TEXT, Align2::CENTER_CENTER);
 
+    // Legend
+    let legend: [(Color32, &str, bool); 7] = [(heat(900.0), "CORE GAS", false), (BYPASS, "BYPASS AIR", false), (FUEL, "FUEL", false), (style::GREEN, "BLEED", false), (OIL, "OIL", true), (Color32::from_rgb(150, 70, 80), "FIRE LOOP", true), (probe, "PROBE", false)];
+    let mut lx = -50.0;
+    for (c, name, dashed) in legend {
+        if dashed {
+            pen.p.extend(Shape::dashed_line(&[pen.at(lx, -90.0), pen.at(lx + 16.0, -90.0)], Stroke::new(pen.w(1.4), c), 3.0 * s, 2.0 * s));
+        } else {
+            pen.line(&[(lx, -90.0), (lx + 16.0, -90.0)], 1.8, c);
+        }
+        pen.text(lx + 20.0, -90.0, name, 7.0, style::GREY_TEXT, Align2::LEFT_CENTER);
+        lx += 30.0 + pen.text_w(name, 7.0);
+    }
+
     // Station table and spool speeds at the right
     let tx = x_end + 92.0;
     let mut tr = band_r - 40.0;
@@ -982,8 +1125,13 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     if l.fire == State::Fail {
         faults.push("FIRE".into());
     }
+    let mut line_r = top_r - 22.0;
+    if let Some(pv) = &l.preview {
+        pen.text(-50.0, line_r, pv, 8.0, style::ORANGE, Align2::LEFT_TOP);
+        line_r -= 14.0;
+    }
     if !faults.is_empty() {
-        pen.text(-50.0, top_r - 22.0, &faults.join("   "), 8.0, style::RED, Align2::LEFT_TOP);
+        pen.text(-50.0, line_r, &faults.join("   "), 8.0, style::RED, Align2::LEFT_TOP);
     }
     let whole = pen.rect(-50.0, top_r - 2.0, 150.0, top_r - 20.0);
     hits.push(Hit { rect: whole, path: path("failed"), label: "Whole engine: failure".into(), level: l.failed as u8 as f64, graded: false });

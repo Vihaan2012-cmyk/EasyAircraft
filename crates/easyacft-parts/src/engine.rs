@@ -888,6 +888,33 @@ pub fn point(p: &Params, share: f64) -> (f64, f64, f64) {
     (g.wf, g.egt, g.thrust)
 }
 
+/// Steady state at sea-level static with the given damage: at a share of design thrust, or of design fuel flow
+/// for a turboprop. Returns the gas path and the spool speeds as shares of design.
+pub fn steady(p: &Params, h: Health, share: f64) -> (Gas, [f64; 3]) {
+    let base = Turbine::new(p.clone(), true);
+    let fresh = || Turbine { path: GasPath { p: base.path.p.clone(), d: base.path.d.clone(), h }, n: [share.sqrt().max(0.3); 3], last: Gas::default() };
+    if p.design_power > 0.0 {
+        let mut e = fresh();
+        let g = e.settle(&Flight { fuel: base.path.d.wf * share, ..Flight::static_isa() }, 25.0);
+        return (g, e.n);
+    }
+    let target = share * p.design_thrust;
+    let (mut lo, mut hi) = (0.0, base.path.d.wf * 1.6);
+    let mut out = (Gas::default(), [0.0; 3]);
+    for _ in 0..20 {
+        let mid = 0.5 * (lo + hi);
+        let mut e = fresh();
+        let g = e.settle(&Flight { fuel: mid, ..Flight::static_isa() }, 25.0);
+        out = (g, e.n);
+        if g.thrust < target {
+            lo = mid
+        } else {
+            hi = mid
+        }
+    }
+    out
+}
+
 pub fn fit_error(p: &Params, points: &[FitPoint]) -> (f64, Vec<(f64, f64, f64)>) {
     let mut err = 0.0;
     let mut rows = Vec::new();
