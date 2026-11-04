@@ -1,15 +1,18 @@
 //! EasyAcft Studio: open an aircraft folder, watch every system run, edit its files.
 
 mod diagram;
+mod cutaway;
 mod edit;
 mod engine_view;
 mod inspector;
 mod live;
 mod png;
+mod style;
 mod svg;
 mod why;
 
 use diagram::{Diagram, Role, DOMAINS};
+use style::State;
 use easyacft_lang::{load, Model, Type};
 use easyacft_parts::catalog;
 use easyacft_parts::Aircraft;
@@ -82,6 +85,20 @@ pub struct App {
     show_changes: bool,
     zoomed: bool,
     fit_size: Vec2,
+    engine_view: Option<String>,
+    engine_pick: Option<String>,
+    cascade: Option<Cascade>,
+    readers: Option<Vec<Vec<usize>>>,
+}
+
+/// Every on/off value as it was when a failure went in, and when each one first changed after it.
+struct Cascade {
+    cause: String,
+    start: f64,
+    base: Vec<(usize, f64)>,
+    seen: Vec<bool>,
+    /// Slot, seconds after the failure, value before.
+    first: Vec<(usize, f64, f64)>,
 }
 
 #[derive(Clone, Copy)]
@@ -135,6 +152,21 @@ fn templates() -> Vec<PathBuf> {
         }
     }
     Vec::new()
+}
+
+fn last_file() -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("EasyAcft").join("last-aircraft.txt"))
+}
+
+fn last_dir() -> String {
+    last_file().and_then(|f| std::fs::read_to_string(f).ok()).map(|s| s.trim().to_owned()).unwrap_or_default()
+}
+
+fn remember_dir(dir: &str) {
+    if let Some(f) = last_file() {
+        let _ = std::fs::create_dir_all(f.parent().unwrap());
+        let _ = std::fs::write(f, dir);
+    }
 }
 
 fn layout_file(dir: &str) -> PathBuf {
@@ -238,6 +270,10 @@ impl App {
             show_changes: false,
             zoomed: false,
             fit_size: Vec2::ZERO,
+            engine_view: None,
+            engine_pick: None,
+            cascade: None,
+            readers: None,
         };
         if !a.dir.is_empty() {
             a.reload();
@@ -260,6 +296,9 @@ impl App {
                 }
                 self.report = report.render();
                 self.status = format!("{}: {} parts", fresh.name, fresh.checked.parts.len());
+                if self.shot.is_none() {
+                    remember_dir(&self.dir);
+                }
                 self.aircraft = Some(fresh);
             }
             Err(report) => {
@@ -268,6 +307,7 @@ impl App {
             }
         }
         self.tables = scan_tables(&path);
+        self.readers = None;
         self.theme = read_theme(&self.dir);
         if let Some(of) = std::fs::read_to_string(path.join("aircraft.toml")).ok().and_then(|t| t.parse::<toml_edit::DocumentMut>().ok()).and_then(|d| d.get("variant").and_then(|v| v.get("of")).and_then(|v| v.as_str()).map(str::to_owned)) {
             self.compare_dir = path.join(of).display().to_string();
@@ -298,6 +338,65 @@ impl App {
         if let Some(a) = &mut self.aircraft {
             a.set(name, v);
         }
+    }
+
+    /// Sets a failure value and starts recording what changes because of it.
+    pub fn inject(&mut self, path: &str, v: f64, cause: String) {
+        if let Some(a) = &self.aircraft {
+            let base: Vec<(usize, f64)> = a.checked.slots.names.iter().enumerate().filter(|(_, (_, t))| matches!(t, Type::Bool)).map(|(i, _)| (i, self.value(i))).collect();
+            let seen = vec![false; base.len()];
+            self.cascade = Some(Cascade { cause, start: a.time, base, seen, first: Vec::new() });
+        }
+        self.set(path, v);
+    }
+
+    fn note_cascade(&mut self) {
+        let Some(t) = self.aircraft.as_ref().map(|a| a.time) else { return };
+        let Some(c) = &self.cascade else { return };
+        let fresh: Vec<usize> = (0..c.base.len()).filter(|&k| !c.seen[k] && self.value(c.base[k].0) != c.base[k].1).collect();
+        if let Some(c) = &mut self.cascade {
+            for k in fresh {
+                c.seen[k] = true;
+                c.first.push((c.base[k].0, t - c.start, c.base[k].1));
+            }
+        }
+    }
+
+    /// For each part, the parts whose expressions read it or that reference it.
+    fn readers(&mut self) -> &Vec<Vec<usize>> {
+        if self.readers.is_none() {
+            let mut r: Vec<Vec<usize>> = Vec::new();
+            if let Some(a) = &self.aircraft {
+                let c = &a.checked;
+                r = vec![Vec::new(); c.parts.len()];
+                for (j, p) in c.parts.iter().enumerate() {
+                    let mut from: Vec<usize> = Vec::new();
+                    for (_, src) in &p.exprs {
+                        for tok in src.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.')) {
+                            if let Some((id, _)) = tok.split_once('.') {
+                                if let Some(i) = c.find(id) {
+                                    from.push(i);
+                                }
+                            }
+                        }
+                    }
+                    for (_, v) in &p.values {
+                        match v {
+                            easyacft_lang::Value::Ref(i) => from.push(*i),
+                            easyacft_lang::Value::Refs(is) => from.extend(is.iter().copied()),
+                            _ => {}
+                        }
+                    }
+                    from.sort_unstable();
+                    from.dedup();
+                    for i in from.into_iter().filter(|&i| i != j) {
+                        r[i].push(j);
+                    }
+                }
+            }
+            self.readers = Some(r);
+        }
+        self.readers.as_ref().unwrap()
     }
 
     fn tick(&mut self) {
@@ -340,6 +439,7 @@ impl App {
                 pts.retain(|p| t - p[0] < 300.0);
             }
         }
+        self.note_cascade();
     }
 
     fn part_state(&self, p: &easyacft_lang::CheckedPart) -> (bool, bool, String) {
@@ -383,86 +483,118 @@ impl App {
         }
         let z = self.zoom;
         let origin = resp.rect.min.to_vec2() + self.offset;
-        let (ink, faint, fill) = (self.theme.ink, self.theme.faint, self.theme.fill);
-        painter.rect_filled(resp.rect, 0.0, self.theme.paper);
-        let labels = z >= 0.55;
-        let font = FontId::proportional(12.0 * z);
-        let small = FontId::proportional(10.5 * z);
+        let (ink, faint) = (style::GREEN, style::GREY_TEXT);
+        painter.rect_filled(resp.rect, 0.0, style::BG);
+        painter.rect_filled(resp.rect.shrink(6.0), 10.0, style::PANEL);
+        let labels = z >= 0.45;
+        let small = FontId::monospace(10.0 * z);
+        let fit = |text: &str, size: f32, max_w: f32, colour: Color32| -> Option<std::sync::Arc<egui::Galley>> {
+            let g = painter.layout_no_wrap(text.to_owned(), FontId::monospace(size), colour);
+            let k = (max_w / g.size().x.max(1.0)).min(1.0);
+            (size * k >= 6.0).then(|| if k < 1.0 { painter.layout_no_wrap(text.to_owned(), FontId::monospace(size * k), colour) } else { g })
+        };
         let at = |p: (f32, f32)| Pos2::new(p.0 * z, p.1 * z) + origin;
-        let stroke = |live: bool, failed: bool| Stroke::new(if live { 2.6f32 } else { 1.0 }, if failed || live { ink } else { faint });
-        let line = |pts: &[Pos2], s: Stroke, failed: bool| {
-            if failed {
-                painter.extend(egui::Shape::dashed_line(pts, s, 6.0, 4.0));
-            } else {
-                painter.add(egui::Shape::line(pts.to_vec(), s));
-            }
+        let box_of = |it: &diagram::Item| Rect::from_center_size(at(it.pos), Vec2::new(it.size.0, it.size.1) * z);
+        let mut occupied: Vec<Rect> = d.items.iter().map(|it| box_of(it).expand(2.0)).collect();
+        let state_of = |live: bool, failed: bool, text: &str| if failed { State::Fail } else if text.contains("tripped") || text.contains("shed") { State::Warn } else if live { State::Live } else { State::Off };
+        let wire = |pts: &[Pos2], st: State| {
+            painter.add(egui::Shape::line(pts.to_vec(), Stroke::new(if st == State::Off { 1.4 * z.max(0.6) } else { 2.6 * z.max(0.6) }, style::colour_of(st))));
         };
         for (part, l) in &d.links {
-            let (live, failed, _) = self.part_state(&a.checked.parts[*part]);
-            line(&[at(l[0]), at(l[1])], stroke(live, failed), failed);
+            let (live, failed, text) = self.part_state(&a.checked.parts[*part]);
+            wire(&[at(l[0]), at(l[1])], state_of(live, failed, &text));
         }
         let mut hit = None;
         let mut edge_labels = Vec::new();
         for e in &d.edges {
             let (live, failed, text) = self.part_state(&a.checked.parts[e.part]);
+            let st = state_of(live, failed, &text);
             let pts: Vec<Pos2> = e.path.iter().map(|&p| at(p)).collect();
-            line(&pts, stroke(live, failed), failed);
+            wire(&pts, if live { State::Live } else if failed { State::Fail } else { State::Off });
             let c = at(e.mark);
-            let r = Rect::from_center_size(c, Vec2::splat(14.0 * z));
-            painter.rect_filled(r, 2.0, fill);
+            let rad = 9.0 * z;
             let sel = self.selected == Some(e.part);
-            painter.rect_stroke(r, 2.0, if sel { Stroke::new(3.0f32, ink) } else { stroke(live, failed) });
-            if live {
-                painter.line_segment([c - Vec2::new(5.0 * z, 0.0), c + Vec2::new(5.0 * z, 0.0)], stroke(true, false));
-            }
-            let (tp, al) = if e.vertical { (c + Vec2::new(11.0 * z, 0.0), Align2::LEFT_CENTER) } else { (c - Vec2::new(0.0, 9.0 * z), Align2::CENTER_BOTTOM) };
+            painter.circle(c, rad, if st == State::Fail { style::RED } else { style::FILL }, Stroke::new(2.0f32 * z.max(0.6), if sel { style::SELECT } else { style::colour_of(st) }));
+            let along = if e.vertical { Vec2::new(0.0, 1.0) } else { Vec2::new(1.0, 0.0) };
+            let dir = if live { along } else { Vec2::new(along.y, along.x) };
+            painter.line_segment([c - dir * rad * 0.75, c + dir * rad * 0.75], Stroke::new(2.2f32 * z.max(0.6), if st == State::Fail { Color32::WHITE } else { style::colour_of(st) }));
+            occupied.push(Rect::from_center_size(c, Vec2::splat(2.0 * rad + 2.0)));
             if labels {
-                edge_labels.push((tp, al, format!("{} {text}", a.checked.parts[e.part].id)));
+                let t = if text.is_empty() { style::label(&a.checked.parts[e.part].id) } else { format!("{} {text}", style::label(&a.checked.parts[e.part].id)) };
+                edge_labels.push((c, rad, e.vertical, t, st));
             }
-            if resp.hover_pos().is_some_and(|h| r.expand(5.0).contains(h)) {
+            if resp.hover_pos().is_some_and(|h| (h - c).length() < rad + 5.0) {
                 hit = Some(e.part);
             }
-        }
-        for (tp, al, t) in edge_labels {
-            let g = painter.layout_no_wrap(t, small.clone(), faint);
-            let r = al.anchor_size(tp, g.size()).expand(1.5);
-            painter.rect_filled(r, 2.0, self.theme.paper);
-            painter.galley(r.min + Vec2::splat(1.5), g, faint);
         }
         for it in &d.items {
             let p = at(it.pos);
             let part = &a.checked.parts[it.part];
             let (live, failed, text) = self.part_state(part);
+            let st = state_of(live, failed, &text);
             let sel = self.selected == Some(it.part);
-            let s = Stroke::new(if sel { 3.0 } else { stroke(live, failed).width }, if live || sel || failed { ink } else { faint });
-            let rect = Rect::from_center_size(p, Vec2::new(it.size.0, it.size.1) * z);
-            let round = if it.role == Role::Source { it.size.1 * z / 2.0 } else { 3.0 };
-            painter.rect_filled(rect, round, fill);
-            if failed {
-                let c = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
-                painter.extend(egui::Shape::dashed_line(&c, s, 5.0, 3.0));
-            } else {
-                painter.rect_stroke(rect, round, s);
+            let rect = box_of(it);
+            style::squircle(&painter, rect, 9.0 * z, st);
+            if sel {
+                style::squircle_with(&painter, rect.expand(3.0 * z), 11.0 * z, Color32::TRANSPARENT, Stroke::new(2.0f32, style::SELECT));
             }
-            match it.role {
-                Role::Hub => {
-                    painter.text(Pos2::new(rect.left() + 8.0 * z, p.y), Align2::LEFT_CENTER, &part.id, font.clone(), ink);
-                    if labels {
-                        painter.text(Pos2::new(rect.right() - 8.0 * z, p.y), Align2::RIGHT_CENTER, text, small.clone(), faint);
-                    }
+            let name = style::label(&part.id);
+            let size = if it.role == Role::Hub { 12.5 * z } else { 10.0 * z };
+            let inner = rect.width() - 10.0 * z;
+            let mut sub: Vec<String> = Vec::new();
+            if labels && !text.is_empty() {
+                sub.push(text.clone());
+            }
+            if let Some(&(b, u)) = d.folded.get(&it.part) {
+                sub.push(if b == 0 { format!("{u} USERS") } else { format!("{b} CB  {u} USERS") });
+            }
+            let sub_g = if sub.is_empty() { None } else { fit(&sub.join("  "), 9.0 * z, inner, faint) };
+            let name_g = fit(&name, size, inner, style::text_of(st));
+            match (name_g, sub_g) {
+                (Some(g), Some(sg)) => {
+                    let gap = 2.0 * z;
+                    let total = g.size().y + gap + sg.size().y;
+                    let top = p.y - total / 2.0;
+                    painter.galley(Pos2::new(p.x - g.size().x / 2.0, top), g.clone(), style::text_of(st));
+                    painter.galley(Pos2::new(p.x - sg.size().x / 2.0, top + g.size().y + gap), sg, faint);
                 }
-                _ => {
-                    painter.text(p, Align2::CENTER_CENTER, &part.id, small.clone(), ink);
-                    if labels && !text.is_empty() {
-                        let (y, al) = if it.role == Role::Source { (rect.bottom() + 3.0, Align2::CENTER_TOP) } else { (rect.top() - 3.0, Align2::CENTER_BOTTOM) };
-                        painter.text(Pos2::new(p.x, y), al, text, small.clone(), faint);
-                    }
-                }
+                (Some(g), None) => painter.galley(p - g.size() / 2.0, g, style::text_of(st)),
+                _ => {}
             }
             if resp.hover_pos().is_some_and(|h| rect.expand(4.0).contains(h)) {
                 hit = Some(it.part);
             }
         }
+        for (c, rad, vertical, t, st) in edge_labels {
+            let colour = if st == State::Live || st == State::Off { faint } else { style::colour_of(st) };
+            let gap = rad + 4.0 * z;
+            let tries: [(Vec2, Align2); 4] = if vertical {
+                [(Vec2::new(gap, 0.0), Align2::LEFT_CENTER), (Vec2::new(-gap, 0.0), Align2::RIGHT_CENTER), (Vec2::new(gap, -gap), Align2::LEFT_BOTTOM), (Vec2::new(gap, gap), Align2::LEFT_TOP)]
+            } else {
+                [(Vec2::new(0.0, -gap), Align2::CENTER_BOTTOM), (Vec2::new(0.0, gap), Align2::CENTER_TOP), (Vec2::new(gap, -gap), Align2::LEFT_BOTTOM), (Vec2::new(-gap, -gap), Align2::RIGHT_BOTTOM)]
+            };
+            'size: for k in [1.0f32, 0.82] {
+                let Some(g) = fit(&t, 10.0 * z * k, f32::MAX, colour) else { break };
+                for (off, al) in tries {
+                    let r = al.anchor_size(c + off, g.size()).expand(1.5);
+                    if !occupied.iter().any(|o| o.intersects(r)) {
+                        painter.rect_filled(r, 2.0, style::PANEL);
+                        painter.galley(r.min + Vec2::splat(1.5), g, colour);
+                        occupied.push(r);
+                        break 'size;
+                    }
+                }
+            }
+        }
+        let resp = match hit {
+            Some(i) => {
+                let p = &a.checked.parts[i];
+                let (_, _, text) = self.part_state(p);
+                resp.on_hover_text_at_pointer(format!("{}  {}.{}\n{text}", p.id, p.domain, p.kind))
+            }
+            None => resp,
+        };
+        let _ = ink;
         let shift = ui.input(|i| i.modifiers.shift);
         if resp.drag_started() {
             if shift {
@@ -550,7 +682,8 @@ impl App {
             painter.text(resp.rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, format!("Not drawn: {}", names.join(", ")), small, faint);
         }
         if let Some((n, v)) = fail_set {
-            self.set(&n, v);
+            let cause = format!("{} {}", n.trim_end_matches(".failed"), if v != 0.0 { "failed" } else { "repaired" });
+            self.inject(&n, v, cause);
         }
     }
 
@@ -675,18 +808,85 @@ impl App {
         if engines.is_empty() {
             ui.label("No engines in this aircraft.");
         }
-        let th = self.theme;
-        for p in engines {
-            ui.heading(&p.id);
+        let ids: Vec<String> = engines.iter().map(|p| p.id.clone()).collect();
+        if self.engine_view.as_ref().is_none_or(|v| !ids.contains(v)) {
+            let sel = self.selected.map(|i| a.checked.parts[i].id.clone()).filter(|s| ids.contains(s));
+            self.engine_view = sel.or_else(|| engines.iter().find(|p| p.kind == "gas_turbine").map(|p| p.id.clone())).or_else(|| ids.first().cloned());
+        }
+        ui.horizontal_wrapped(|ui| {
+            for id in &ids {
+                if ui.selectable_label(self.engine_view.as_ref() == Some(id), id).clicked() {
+                    self.engine_view = Some(id.clone());
+                    self.engine_pick = None;
+                }
+            }
+        });
+        let view = self.engine_view.clone();
+        let mut actions: Vec<(String, f64, String)> = Vec::new();
+        for p in engines.into_iter().filter(|p| Some(&p.id) == view.as_ref()) {
             ui.label(format!("{}.{}", p.domain, p.kind));
             if p.kind == "gas_turbine" {
                 let params = easyacft_parts::engine::Params::from_part(&p, &base);
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().min(1100.0), 290.0), Sense::hover());
+                let w = ui.available_width().min(1600.0);
+                let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, w * 0.56), Sense::click());
                 let painter = ui.painter_at(rect);
-                painter.rect_filled(rect, 0.0, th.paper);
-                let id = p.id.clone();
-                let get = |n: &str| self.get(&format!("{id}.{n}"));
-                engine_view::draw(&painter, rect, &params, &get, th.ink, th.faint, th.fill);
+                let mut live = self.engine_live(&p, ui.input(|i| i.time));
+                live.selected = self.engine_pick.clone();
+                let hits = cutaway::draw(&painter, rect, &style::label(&p.id), &params, &live);
+                let at = |pos: Option<Pos2>| pos.and_then(|q| hits.iter().filter(|h| h.rect.contains(q)).min_by(|a, b| a.rect.area().total_cmp(&b.rect.area())).cloned());
+                let hovered = at(resp.hover_pos());
+                let mut resp = resp;
+                if let Some(h) = &hovered {
+                    painter.rect_stroke(h.rect.expand(1.5), 4.0, Stroke::new(1.2f32, Color32::from_gray(230)));
+                    let now = if h.graded { format!("damage {:.0} %", h.level * 100.0) } else if h.level != 0.0 { "failed".into() } else { "normal".into() };
+                    resp = resp.on_hover_text_at_pointer(format!("{}\n{}\nclick: what it feeds   right-click: fail", h.label, now));
+                }
+                if resp.clicked() || resp.secondary_clicked() {
+                    self.engine_pick = hovered.as_ref().map(|h| h.path.clone());
+                }
+                let menu_hit = self.engine_pick.as_ref().and_then(|pk| hits.iter().find(|h| &h.path == pk)).cloned();
+                resp.context_menu(|ui| {
+                    let Some(h) = &menu_hit else {
+                        ui.label("Right-click a component");
+                        return;
+                    };
+                    ui.strong(&h.label);
+                    let options: &[(&str, f64)] = if h.graded { &[("Light damage, 25 %", 0.25), ("Heavy damage, 60 %", 0.6), ("Destroyed", 1.0), ("Repair", 0.0)] } else { &[("Fail", 1.0), ("Repair", 0.0)] };
+                    for (name, v) in options {
+                        if ui.button(*name).clicked() {
+                            actions.push((h.path.clone(), *v, format!("{}: {}", h.label, name.to_lowercase())));
+                            ui.close_menu();
+                        }
+                    }
+                });
+                ui.add_space(6.0);
+                ui.columns(2, |cols| {
+                    cols[0].strong("Failures");
+                    let mut seen = std::collections::HashSet::new();
+                    egui::Grid::new(format!("fail_{}", p.id)).striped(true).show(&mut cols[0], |ui| {
+                        for h in hits.iter().filter(|h| seen.insert(h.path.clone())) {
+                            let col = if h.level != 0.0 { if h.level >= 0.5 || !h.graded { style::RED } else { style::ORANGE } } else { style::GREY_TEXT };
+                            if ui.selectable_label(self.engine_pick.as_ref() == Some(&h.path), egui::RichText::new(&h.label).color(col)).clicked() {
+                                self.engine_pick = Some(h.path.clone());
+                            }
+                            ui.horizontal(|ui| {
+                                let steps: &[(&str, f64)] = if h.graded { &[("0", 0.0), ("25", 0.25), ("60", 0.6), ("100", 1.0)] } else { &[("ok", 0.0), ("fail", 1.0)] };
+                                for (name, v) in steps {
+                                    if ui.selectable_label((h.level - v).abs() < 0.01, *name).clicked() && (h.level - v).abs() >= 0.01 {
+                                        actions.push((h.path.clone(), *v, format!("{}: {}", h.label, if *v == 0.0 { "repaired".to_owned() } else if h.graded { format!("{name} % damage") } else { "failed".to_owned() })));
+                                    }
+                                }
+                            });
+                            ui.end_row();
+                        }
+                    });
+                    if cols[0].button("Repair all").clicked() {
+                        for h in hits.iter().filter(|h| h.level != 0.0) {
+                            actions.push((h.path.clone(), 0.0, format!("{} repaired", p.id)));
+                        }
+                    }
+                    self.downstream_ui(&mut cols[1], &p.id);
+                });
                 let g = easyacft_parts::engine::GasPath::new(params);
                 egui::CollapsingHeader::new(format!("{} design point", p.id)).show(ui, |ui| {
                     egui::Grid::new(format!("d_{}", p.id)).show(ui, |ui| {
@@ -709,8 +909,165 @@ impl App {
                     }
                 });
             });
-            ui.separator();
         }
+        let many = actions.len() > 1;
+        for (path, v, cause) in actions {
+            if many {
+                self.set(&path, v);
+            } else {
+                self.inject(&path, v, cause);
+            }
+        }
+    }
+
+    /// Green on, grey off, red failed, from a part's own outputs.
+    fn part_light(&self, p: &easyacft_lang::CheckedPart) -> State {
+        let (live, failed, text) = self.part_state(p);
+        if failed {
+            return State::Fail;
+        }
+        if text.contains("shed") || text.contains("tripped") {
+            return State::Warn;
+        }
+        if live {
+            return State::Live;
+        }
+        let on = |n: &str| self.get(&format!("{}.{n}", p.id)).is_some_and(|v| v != 0.0);
+        if ["on", "active", "running", "powered", "available", "lit", "open", "closed", "ready", "valid", "supplied", "aligned"].iter().any(|n| on(n)) {
+            State::Live
+        } else {
+            State::Off
+        }
+    }
+
+    /// What reads the picked component's part, level by level, and every on/off value the last failure changed.
+    fn downstream_ui(&mut self, ui: &mut egui::Ui, engine: &str) {
+        self.readers();
+        let Some(a) = &self.aircraft else { return };
+        let Some(r) = &self.readers else { return };
+        let root_id = self.engine_pick.as_ref().and_then(|p| p.split_once('.')).map(|(id, _)| id.to_owned()).unwrap_or_else(|| engine.to_owned());
+        let Some(root) = a.checked.find(&root_id) else { return };
+        let mut seen = vec![false; a.checked.parts.len()];
+        seen[root] = true;
+        let mut frontier = vec![root];
+        let mut levels: Vec<Vec<usize>> = Vec::new();
+        let mut count = 0;
+        while levels.len() < 6 && count < 400 {
+            let mut next: Vec<usize> = frontier.iter().flat_map(|&i| r[i].iter().copied()).filter(|&j| !std::mem::replace(&mut seen[j], true)).collect();
+            if next.is_empty() {
+                break;
+            }
+            next.sort_by_key(|&j| (a.checked.parts[j].domain, a.checked.parts[j].id.clone()));
+            count += next.len();
+            levels.push(next.clone());
+            frontier = next;
+        }
+        let changed: std::collections::HashSet<usize> = self.cascade.as_ref().map(|c| c.first.iter().filter_map(|(s, _, _)| a.checked.slots.names.get(*s)).filter_map(|(n, _)| n.split_once('.')).filter_map(|(id, _)| a.checked.find(id)).collect()).unwrap_or_default();
+        let mut pick = None;
+        let mut clear = false;
+        ui.strong(format!("Downstream of {}  ({} parts)", root_id, count));
+        egui::ScrollArea::vertical().id_salt("down").max_height(300.0).show(ui, |ui| {
+            for (d, lv) in levels.iter().enumerate() {
+                ui.small(if d == 0 { "reads it directly".to_owned() } else { format!("{} steps away", d + 1) });
+                ui.horizontal_wrapped(|ui| {
+                    for &j in lv {
+                        let p = &a.checked.parts[j];
+                        let st = self.part_light(p);
+                        let mut t = egui::RichText::new(&p.id).monospace().size(11.5).color(style::text_of(st));
+                        if changed.contains(&j) {
+                            t = t.underline().strong();
+                        }
+                        if ui.add(egui::Label::new(t).sense(Sense::click())).on_hover_text(format!("{}.{}", p.domain, p.kind)).clicked() {
+                            pick = Some(j);
+                        }
+                    }
+                });
+            }
+        });
+        ui.add_space(6.0);
+        if let Some(c) = &self.cascade {
+            ui.strong(format!("Changed since: {}  ({})", c.cause, c.first.len()));
+            egui::ScrollArea::vertical().id_salt("cascade").max_height(300.0).show(ui, |ui| {
+                egui::Grid::new("cascade_grid").striped(true).show(ui, |ui| {
+                    for (s, t, was) in c.first.iter().take(400) {
+                        let Some((name, _)) = a.checked.slots.names.get(*s) else { continue };
+                        let (was, now) = (*was, self.value(*s));
+                        let bad = ["failed", "fault", "low", "lo_", "shed", "tripped", "warning", "caution", "fire", "alert", "lit", "overheat", "disagree"].iter().any(|k| name.contains(k));
+                        let col = if now != 0.0 && bad { style::RED } else if now != 0.0 { style::GREEN } else { style::ORANGE };
+                        ui.monospace(format!("+{t:.2} s"));
+                        if ui.add(egui::Label::new(egui::RichText::new(name).monospace().color(col)).sense(Sense::click())).clicked() {
+                            pick = name.split_once('.').and_then(|(id, _)| a.checked.find(id));
+                        }
+                        ui.monospace(format!("{} -> {}", if was != 0.0 { "on" } else { "off" }, if now != 0.0 { "on" } else { "off" }));
+                        ui.end_row();
+                    }
+                });
+            });
+            clear = ui.small_button("Clear").clicked();
+        } else {
+            ui.small("Fail a component to record everything it changes.");
+        }
+        if clear {
+            self.cascade = None;
+        }
+        if pick.is_some() {
+            self.selected = pick;
+            self.edits.clear();
+        }
+    }
+
+    fn engine_live(&self, e: &easyacft_lang::CheckedPart, time: f64) -> cutaway::Live {
+        let Some(a) = &self.aircraft else { return Default::default() };
+        let g = |n: &str| self.get(&format!("{}.{n}", e.id)).unwrap_or(0.0);
+        let on = |id: &str, n: &str| self.get(&format!("{id}.{n}")).is_some_and(|v| v != 0.0);
+        let spools = e.num("spools").clamp(1.0, 3.0) as usize;
+        let n = match spools {
+            1 => [g("n1"), 0.0, g("n1")],
+            2 => [g("n1"), 0.0, g("n2")],
+            _ => [g("n1"), g("n2"), g("n3")],
+        };
+        let t0 = e.part("air").and_then(|i| self.get(&format!("{}.temperature", a.checked.parts[i].id))).filter(|t| *t > 150.0).unwrap_or(288.15);
+        let me = a.checked.find(&e.id);
+        let fadec = a.checked.parts.iter().find(|p| p.domain == "fadec" && p.part("engine") == me);
+        let mentions = |p: &easyacft_lang::CheckedPart| p.exprs.iter().any(|(_, src)| src.match_indices(&format!("{}.", e.id)).any(|(i, _)| i == 0 || !src.as_bytes()[i - 1].is_ascii_alphanumeric() && src.as_bytes()[i - 1] != b'_'));
+        let st = |p: &easyacft_lang::CheckedPart, ok: &str| if on(&p.id, "failed") { State::Fail } else if on(&p.id, ok) { State::Live } else { State::Off };
+        let digits: String = e.id.chars().filter(|c| c.is_ascii_digit()).collect();
+        let health = easyacft_parts::engine::Health {
+            comp: [g("fan_damage"), g("lpc_damage"), g("ipc_damage"), g("hpc_damage")],
+            burner: g("combustor_damage"),
+            turb: [g("hpt_damage"), g("ipt_damage"), g("lpt_damage")],
+            surge: g("surge") != 0.0,
+            leak: g("case_leak"),
+            seized: [g("seized_lp") != 0.0, g("seized_ip") != 0.0, g("seized_hp") != 0.0],
+        };
+        let mut l = cutaway::Live { id: e.id.clone(), n, running: g("running") != 0.0, failed: g("failed") != 0.0, health, t0, t3: g("t3"), p3: g("p3"), tet: g("tet"), egt: g("egt"), fuel: g("fuel_flow"), thrust: g("thrust"), airflow: g("airflow"), shaft_power: g("shaft_power"), time, ..Default::default() };
+        if let Some(f) = fadec {
+            l.eec_id = Some(f.id.clone());
+            l.starter = on(&f.id, "starter");
+            l.ignition = on(&f.id, "ignition");
+            l.reverser = self.get(&format!("{}.reverser", f.id)).unwrap_or(0.0);
+            l.eec = if on(&f.id, "failed") { State::Fail } else if on(&f.id, "fault") { State::Warn } else if self.get(&format!("{}.state", f.id)).unwrap_or(0.0) > 0.0 || l.running { State::Live } else { State::Off };
+        }
+        for p in &a.checked.parts {
+            match (p.domain, p.kind) {
+                ("electrical", "generator") if mentions(p) => l.gens.push((p.id.clone(), st(p, "ready"))),
+                ("hydraulic", "pump") if mentions(p) => l.pumps.push((p.id.clone(), st(p, "running"))),
+                ("pneumatic", "source") if mentions(p) => l.bleeds.push((p.id.clone(), st(p, "available"))),
+                ("pneumatic", "consumer") if !digits.is_empty() && p.id.contains("nacelle") && p.id.contains(&digits) => l.anti_ice = Some((p.id.clone(), st(p, "supplied"))),
+                ("fire", "zone") if p.id.starts_with(&e.id) => {
+                    if on(&p.id, "burning") || on(&p.id, "detected") {
+                        l.fire = State::Fail;
+                    }
+                    let sw = p.exprs.iter().filter(|(k, _)| *k == "fire_when").flat_map(|(_, src)| src.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.')).map(str::to_owned).collect::<Vec<_>>()).filter_map(|t| t.split_once('.').map(|(id, _)| id.to_owned())).find(|id| a.checked.find(id).is_some_and(|i| a.checked.parts[i].domain == "cockpit"));
+                    if sw.is_some() {
+                        l.fire_switch = sw;
+                    }
+                }
+                _ => {}
+            }
+        }
+        l.bleeds.reverse();
+        l
     }
 
     fn computers_tab(&mut self, ui: &mut egui::Ui) {
@@ -1058,6 +1415,9 @@ impl eframe::App for App {
                             self.fit = true;
                         }
                     }
+                    if ui.selectable_label(false, "engines").clicked() {
+                        self.tab = Tab::Engine;
+                    }
                     if ui.button("Fit").clicked() {
                         self.fit = true;
                         self.zoomed = false;
@@ -1132,13 +1492,19 @@ impl eframe::App for App {
 }
 
 fn visuals() -> egui::Visuals {
-    let mut v = egui::Visuals::light();
-    let grey = Color32::from_gray(215);
-    v.selection.bg_fill = grey;
-    v.selection.stroke = Stroke::new(1.0f32, Color32::from_gray(20));
-    v.hyperlink_color = Color32::from_gray(20);
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0f32, Color32::from_gray(120));
-    v.widgets.active.bg_stroke = Stroke::new(1.0f32, Color32::from_gray(40));
+    let mut v = egui::Visuals::dark();
+    v.panel_fill = style::BG;
+    v.window_fill = style::PANEL;
+    v.extreme_bg_color = style::FILL;
+    v.faint_bg_color = style::PANEL;
+    v.selection.bg_fill = Color32::from_rgb(58, 61, 66);
+    v.selection.stroke = Stroke::new(1.0f32, Color32::from_gray(230));
+    v.hyperlink_color = Color32::from_gray(225);
+    v.widgets.noninteractive.bg_fill = style::PANEL;
+    v.widgets.inactive.bg_fill = Color32::from_rgb(45, 48, 53);
+    v.widgets.inactive.weak_bg_fill = Color32::from_rgb(45, 48, 53);
+    v.widgets.hovered.weak_bg_fill = Color32::from_rgb(58, 61, 66);
+    v.widgets.active.weak_bg_fill = Color32::from_rgb(70, 74, 80);
     v
 }
 
@@ -1185,7 +1551,7 @@ fn main() -> eframe::Result<()> {
     if args.first().is_some_and(|a| a == "--svg") {
         std::process::exit(if export(&args[1..]) { 0 } else { 1 });
     }
-    let dir = args.first().cloned().unwrap_or_default();
+    let dir = args.first().filter(|a| !a.starts_with("--")).cloned().unwrap_or_else(last_dir);
     let flag = |f: &str| args.iter().position(|a| a == f).and_then(|i| args.get(i + 1)).cloned();
     let shot = flag("--shot");
     let tab = flag("--tab");
@@ -1193,7 +1559,11 @@ fn main() -> eframe::Result<()> {
     let select = flag("--select");
     let scenario = flag("--scenario");
     let run: f64 = flag("--run").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-    let sets: Vec<(String, f64)> = args.windows(2).filter(|w| w[0] == "--set").filter_map(|w| w[1].split_once('=').map(|(n, v)| (n.to_owned(), v.parse().unwrap_or(0.0)))).collect();
+    let pairs = |f: &str| -> Vec<(String, f64)> { args.windows(2).filter(|w| w[0] == f).filter_map(|w| w[1].split_once('=').map(|(n, v)| (n.to_owned(), v.parse().unwrap_or(0.0)))).collect() };
+    let sets = pairs("--set");
+    let fails = pairs("--fail");
+    let pick = flag("--pick");
+    let zoom: Option<f32> = flag("--zoom").and_then(|s| s.parse().ok());
     let mut viewport = egui::ViewportBuilder::default().with_inner_size([1400.0, 860.0]).with_title("EasyAcft Studio");
     if shot.is_some() {
         viewport = viewport.with_position([-20000.0, -20000.0]).with_taskbar(false).with_decorations(false);
@@ -1203,8 +1573,8 @@ fn main() -> eframe::Result<()> {
         "EasyAcft Studio",
         options,
         Box::new(move |cc| {
-            cc.egui_ctx.set_theme(egui::ThemePreference::Light);
-            cc.egui_ctx.set_visuals_of(egui::Theme::Light, visuals());
+            cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
+            cc.egui_ctx.set_visuals_of(egui::Theme::Dark, visuals());
             let mut app = App::new(dir);
             for (n, v) in &sets {
                 app.set(n, *v);
@@ -1214,12 +1584,23 @@ fn main() -> eframe::Result<()> {
                     app.status = e;
                 }
             }
-            if let Some(a) = &mut app.aircraft {
-                let mut t = 0.0;
-                while t < run {
+            for (n, v) in &fails {
+                app.inject(n, *v, format!("{n} = {v}"));
+            }
+            let mut t = 0.0;
+            while t < run {
+                if let Some(a) = &mut app.aircraft {
                     a.step(0.05);
-                    t += 0.05;
                 }
+                app.note_cascade();
+                t += 0.05;
+            }
+            app.engine_pick = pick;
+            if let Some(z) = zoom {
+                app.zoom = z;
+                app.zoomed = true;
+                app.fit = false;
+                app.fit_size = Vec2::new(1.0, 1.0);
             }
             if let Some(d) = domain.and_then(|d| DOMAINS.iter().position(|x| *x == d)) {
                 app.domain = d;

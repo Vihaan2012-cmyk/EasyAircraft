@@ -87,6 +87,41 @@ impl App {
             }
         }
         let mut jump = None;
+        if part.domain == "electrical" && part.kind == "bus" {
+            let a = self.aircraft.as_ref().unwrap();
+            let mut rows: Vec<(usize, String)> = Vec::new();
+            for (k, q) in a.checked.parts.iter().enumerate() {
+                if q.domain != "electrical" {
+                    continue;
+                }
+                let between = q.parts("between");
+                if q.kind == "breaker" && between.contains(&sel) {
+                    let other = between.iter().copied().find(|&b| b != sel);
+                    let users: Vec<String> = a.checked.parts.iter().filter(|u| u.kind == "load" && other.is_some_and(|o| u.part("bus") == Some(o))).map(|u| {
+                        let w = self.get(&format!("{}.power", u.id)).unwrap_or(0.0);
+                        format!("{} {}", u.id, unit(Type::Num(easyacft_core::Dim::POWER), w))
+                    }).collect();
+                    let st = if self.get(&format!("{}.tripped", q.id)) == Some(1.0) { "TRIPPED" } else if self.get(&format!("{}.closed", q.id)) == Some(1.0) { "in" } else { "out" };
+                    let amps = self.get(&format!("{}.current", q.id)).unwrap_or(0.0);
+                    rows.push((k, format!("{}  {st}  {:.1} A  {}", q.id, amps.abs(), users.join(", "))));
+                } else if q.kind == "load" && q.part("bus") == Some(sel) {
+                    let w = self.get(&format!("{}.power", q.id)).unwrap_or(0.0);
+                    rows.push((k, format!("{}  {}", q.id, unit(Type::Num(easyacft_core::Dim::POWER), w))));
+                }
+            }
+            if !rows.is_empty() {
+                ui.separator();
+                egui::CollapsingHeader::new(format!("Breakers and users ({})", rows.len())).default_open(rows.len() <= 40).show(ui, |ui| {
+                    egui::ScrollArea::vertical().max_height(320.0).id_salt("feeders").show(ui, |ui| {
+                        for (k, t) in rows {
+                            if ui.link(t).clicked() {
+                                jump = Some(k);
+                            }
+                        }
+                    });
+                });
+            }
+        }
         {
             let a = self.aircraft.as_ref().unwrap();
             let get = |n: &str| self.get(n);

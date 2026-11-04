@@ -79,6 +79,19 @@ pub static SPECS: &[PartSpec] = &[
             ("shaft_power", W),
             ("running", B),
             ("failed", B),
+            ("fan_damage", N),
+            ("lpc_damage", N),
+            ("ipc_damage", N),
+            ("hpc_damage", N),
+            ("combustor_damage", N),
+            ("hpt_damage", N),
+            ("ipt_damage", N),
+            ("lpt_damage", N),
+            ("surge", B),
+            ("case_leak", N),
+            ("seized_lp", B),
+            ("seized_ip", B),
+            ("seized_hp", B),
         ],
     },
     PartSpec {
@@ -264,15 +277,31 @@ fn map_at(t: &Option<Table>, nc: f64, pr_d: f64, eta_d: f64, w_d: f64) -> (f64, 
     }
 }
 
+/// Component damage, 0 healthy to 1 destroyed.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Health {
+    /// Fan, LPC, IPC, HPC.
+    pub comp: [f64; 4],
+    pub burner: f64,
+    /// HPT, IPT, LPT.
+    pub turb: [f64; 3],
+    pub surge: bool,
+    /// Share of core flow lost through the casing after the HP compressor.
+    pub leak: f64,
+    /// LP, IP, HP.
+    pub seized: [bool; 3],
+}
+
 pub struct GasPath {
     pub p: Params,
     pub d: Design,
+    pub h: Health,
 }
 
 impl GasPath {
     /// Builds the engine, solving turbine entry temperature and turbine pressure ratios at sea-level static.
     pub fn new(p: Params) -> Self {
-        let mut g = GasPath { p, d: Design::default() };
+        let mut g = GasPath { p, d: Design::default(), h: Health::default() };
         let turboprop = g.p.design_power > 0.0;
         let (mut lo, mut hi) = (900.0, 2400.0);
         for _ in 0..60 {
@@ -377,9 +406,11 @@ impl GasPath {
             let nc = n[spool_of(stage)] / theta.sqrt();
             if map.is_some() { map_at(map, nc, 1.0, 1.0, 1.0).0 } else { nc.max(0.0) }
         };
+        let h = &self.h;
         let core_stage = if p.pr[3] > 1.0 { 3 } else if p.pr[2] > 1.0 { 2 } else { 1 };
-        let wc = p.airflow / (1.0 + p.bpr) * flow(core_stage, &p.hpc_map) * delta / theta.sqrt();
-        let wb = p.airflow * p.bpr / (1.0 + p.bpr) * flow(0, &p.fan_map) * delta / theta.sqrt();
+        let blockage = (1.0 - 0.25 * h.comp[core_stage]) * if h.surge { 0.45 } else { 1.0 };
+        let wc = p.airflow / (1.0 + p.bpr) * flow(core_stage, &p.hpc_map) * delta / theta.sqrt() * blockage;
+        let wb = p.airflow * p.bpr / (1.0 + p.bpr) * flow(0, &p.fan_map) * delta / theta.sqrt() * (1.0 - 0.35 * h.comp[0]);
         let w = wc + wb;
         let (mut t, mut pr) = (tt2, pt2);
         let mut power = [0.0; 3];
@@ -396,8 +427,11 @@ impl GasPath {
                 3 => map_at(&p.hpc_map, nc, p.pr[k], p.eta_c[k], 1.0),
                 _ => map_at(&None, nc, p.pr[k], p.eta_c[k], 1.0),
             };
-            let r = mapped.1.max(1.0);
-            let t_out = t * (1.0 + (r.powf(KA) - 1.0) / mapped.2.max(0.1));
+            let d = h.comp[k];
+            let stall = if h.surge && k >= 2 { 0.5 } else { 1.0 };
+            let r = 1.0 + (mapped.1.max(1.0) - 1.0) * (1.0 - 0.4 * d) * stall;
+            let eta = mapped.2 * (1.0 - 0.35 * d) * if h.surge && k >= 2 { 0.35 } else { 1.0 };
+            let t_out = t * (1.0 + (r.powf(KA) - 1.0) / eta.max(0.1));
             power[spool_of(k)] += mass * CP_AIR * (t_out - t);
             t = t_out;
             pr *= r;
@@ -411,10 +445,11 @@ impl GasPath {
         }
         let (t3, p3) = (t, pr);
         let cool = wc * p.cooling;
-        let wburn = (wc - cool - f.bleed).max(0.0);
+        let wburn = (wc * (1.0 - h.leak.clamp(0.0, 0.9)) - cool - f.bleed).max(0.0);
         let wf = f.fuel.min(wburn * FAR_MAX).max(0.0);
-        let t4 = if wburn + wf > 1e-6 { crate::engine::t_from_h(h_air(t3) + wf * p.lhv * p.eta_b / (wburn + wf)) } else { t3 };
-        let p4 = p3 * (1.0 - p.loss_b);
+        let eta_b = p.eta_b * (1.0 - 0.45 * h.burner);
+        let t4 = if wburn + wf > 1e-6 { crate::engine::t_from_h(h_air(t3) + wf * p.lhv * eta_b / (wburn + wf)) } else { t3 };
+        let p4 = p3 * (1.0 - p.loss_b - 0.15 * h.burner);
         let total = (p4 / f.p0.max(1.0)).max(1.0).ln();
         let total_d = (self.d.p4 / 101_325.0).max(1.0001).ln();
         let share = (total / total_d).clamp(0.0, 1.2);
@@ -437,16 +472,17 @@ impl GasPath {
             *pg /= r;
             wg * CP_GAS * dt * MECH
         };
-        turb[2] = stage(2, p.eta_t[0], wg, &mut tg, &mut pg);
+        let et = |i: usize, eta: f64| eta * (1.0 - 0.45 * h.turb[i]);
+        turb[2] = stage(2, et(0, p.eta_t[0]), wg, &mut tg, &mut pg);
         tg = (wg * CP_GAS * tg + cool * CP_AIR * t3) / (wg * CP_GAS + cool * CP_AIR).max(1e-9);
         wg += cool;
         if p.spools == 3 {
-            turb[1] = stage(1, p.eta_t[1], wg, &mut tg, &mut pg);
+            turb[1] = stage(1, et(1, p.eta_t[1]), wg, &mut tg, &mut pg);
         }
         let egt = tg;
         let mut shaft = 0.0;
         if p.spools >= 2 || p.design_power > 0.0 {
-            let lp = stage(0, p.eta_t[2], wg, &mut tg, &mut pg);
+            let lp = stage(0, et(2, p.eta_t[2]), wg, &mut tg, &mut pg);
             if p.design_power > 0.0 {
                 let speed = if f.output_rpm > 0.0 { (f.output_rpm / p.rpm[0].max(1.0)).clamp(0.0, 1.3) } else { 1.0 };
                 shaft = lp * (1.0 - 0.6 * (speed - 1.0).powi(2)).max(0.0);
@@ -506,6 +542,9 @@ impl Turbine {
             }
             let domega = net / (p.inertia[s] * omega);
             self.n[s] = (self.n[s] + domega * dt * 60.0 / (TAU * rpm_d)).clamp(0.0, 1.25);
+            if self.path.h.seized[s] {
+                self.n[s] = 0.0;
+            }
         }
         self.last = g;
         g
@@ -598,7 +637,7 @@ impl Engines {
                         bleed: expr_of(p, "bleed"),
                         reverser: expr_of(p, "reverser"),
                         output_rpm: expr_of(p, "output_rpm"),
-                        s: Slots::of(p, &["thrust", "n1", "n2", "n3", "egt", "tet", "p3", "t3", "p_ip", "fuel_flow", "airflow", "shaft_power", "running", "failed"]),
+                        s: Slots::of(p, &["thrust", "n1", "n2", "n3", "egt", "tet", "p3", "t3", "p_ip", "fuel_flow", "airflow", "shaft_power", "running", "failed", "fan_damage", "lpc_damage", "ipc_damage", "hpc_damage", "combustor_damage", "hpt_damage", "ipt_damage", "lpt_damage", "surge", "case_leak", "seized_lp", "seized_ip", "seized_hp"]),
                     });
                 }
                 "piston" => {
@@ -660,6 +699,15 @@ impl Domain for Engines {
             let (p0, t0, v0) = (slots[t.air[0]].max(1.0), slots[t.air[1]].max(150.0), slots[t.air[2]]);
             let mach = v0 / (1.4 * 287.05 * t0).sqrt();
             let failed = t.s.on(slots, "failed");
+            let d = |n: &str| t.s.get(slots, n).clamp(0.0, 1.0);
+            t.engine.path.h = Health {
+                comp: [d("fan_damage"), d("lpc_damage"), d("ipc_damage"), d("hpc_damage")],
+                burner: d("combustor_damage"),
+                turb: [d("hpt_damage"), d("ipt_damage"), d("lpt_damage")],
+                surge: t.s.on(slots, "surge"),
+                leak: d("case_leak"),
+                seized: [t.s.on(slots, "seized_lp"), t.s.on(slots, "seized_ip"), t.s.on(slots, "seized_hp")],
+            };
             let flight = Flight {
                 p0,
                 t0,
@@ -829,7 +877,7 @@ pub fn point(p: &Params, share: f64) -> (f64, f64, f64) {
     let mut g = Gas::default();
     for _ in 0..22 {
         let mid = 0.5 * (lo + hi);
-        let mut e = Turbine { path: GasPath { p: base.path.p.clone(), d: base.path.d.clone() }, n: [share.sqrt().max(0.3); 3], last: Gas::default() };
+        let mut e = Turbine { path: GasPath { p: base.path.p.clone(), d: base.path.d.clone(), h: Health::default() }, n: [share.sqrt().max(0.3); 3], last: Gas::default() };
         g = e.settle(&Flight { fuel: mid, ..Flight::static_isa() }, 25.0);
         if g.thrust < target {
             lo = mid

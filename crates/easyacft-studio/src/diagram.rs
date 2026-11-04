@@ -40,7 +40,12 @@ pub struct Diagram {
     pub items: Vec<Item>,
     pub edges: Vec<Edge>,
     pub links: Vec<(usize, [(f32, f32); 2])>,
+    /// Per drawn hub: breaker-fed sub-buses and loads folded into it.
+    pub folded: HashMap<usize, (usize, usize)>,
 }
+
+/// Most users a hub shows before they fold into its count.
+pub const MAX_SINKS: usize = 8;
 
 pub const DOMAINS: &[&str] = &["electrical", "hydraulic", "fuel", "pneumatic", "engine", "cockpit", "computer"];
 
@@ -122,8 +127,28 @@ pub fn edge_in(domain: &str, p: &CheckedPart) -> Option<(usize, usize)> {
 pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) -> Diagram {
     let mut d = Diagram::default();
     let parts: Vec<usize> = (0..c.parts.len()).filter(|&i| c.parts[i].domain == domain || (c.parts[i].domain == "custom" && easyacft_parts::custom::ports_of(c.parts[i].kind).iter().any(|x| x.domain == domain))).collect();
-    let hubs: Vec<usize> = parts.iter().copied().filter(|&i| role_in(domain, &c.parts[i]).is_some_and(|r| r.0 == Role::Hub)).collect();
-    let ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_in(domain, &c.parts[i]).map(|(a, b)| (i, a, b))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
+    let mut hubs: Vec<usize> = parts.iter().copied().filter(|&i| role_in(domain, &c.parts[i]).is_some_and(|r| r.0 == Role::Hub)).collect();
+    let mut ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_in(domain, &c.parts[i]).map(|(a, b)| (i, a, b))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
+    // A bus fed by one breaker and feeding only users is a distribution feeder: fold it into its parent.
+    let sources_of = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r == Role::Source && c.parts[i].part(f) == Some(h)));
+    let mut feeder_of: HashMap<usize, usize> = HashMap::new();
+    for &h in &hubs {
+        let touching: Vec<&(usize, usize, usize)> = ends.iter().filter(|(_, a, b)| *a == h || *b == h).collect();
+        if let [(e, a, b)] = touching[..] {
+            if c.parts[*e].kind == "breaker" && !sources_of(h) {
+                feeder_of.insert(h, if *a == h { *b } else { *a });
+            }
+        }
+    }
+    hubs.retain(|h| !feeder_of.contains_key(h));
+    ends.retain(|(_, a, b)| !feeder_of.contains_key(a) && !feeder_of.contains_key(b));
+    for (&f, &parent) in &feeder_of {
+        let top = feeder_of.get(&parent).copied().unwrap_or(parent);
+        let users = parts.iter().filter(|&&i| role_in(domain, &c.parts[i]).is_some_and(|(r, fl)| r == Role::Sink && c.parts[i].part(fl) == Some(f))).count();
+        let e = d.folded.entry(top).or_default();
+        e.0 += 1;
+        e.1 += users;
+    }
     let mut attached: HashMap<(usize, bool), Vec<usize>> = HashMap::new();
     for &i in &parts {
         let Some((r, field)) = role_in(domain, &c.parts[i]) else { continue };
@@ -132,6 +157,12 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
         }
         if let Some(h) = c.parts[i].part(field).filter(|h| hubs.contains(h)) {
             attached.entry((h, r == Role::Source)).or_default().push(i);
+        }
+    }
+    for ((h, src), list) in attached.iter_mut() {
+        if !*src && list.len() > MAX_SINKS {
+            d.folded.entry(*h).or_default().1 += list.len();
+            list.clear();
         }
     }
 
@@ -190,14 +221,14 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
     let child_w = |i: usize| {
         let w = text_w(&c.parts[i].id);
         match role_in(domain, &c.parts[i]).map(|r| r.0) {
-            Some(Role::Source) => (w + 12.0).max(40.0),
-            _ => (w + 16.0).max(46.0),
+            Some(Role::Source) => (w + 14.0).max(56.0),
+            _ => (w + 16.0).max(56.0),
         }
     };
     let side_w = |h: usize, below: bool| attached.get(&(h, below)).map_or(0.0, |l| l.iter().map(|&i| child_w(i) + 12.0).sum::<f32>());
     let degree = |h: usize| ends.iter().filter(|(_, a, b)| *a == h || *b == h).count() as f32;
     let width = |h: usize| (text_w(&c.parts[h].id) + 76.0).max(side_w(h, true).max(side_w(h, false)) + 24.0 + degree(h) * 26.0).max(110.0);
-    let (gap, dy, hub_h) = (44.0f32, 190.0f32, 28.0f32);
+    let (gap, dy, hub_h) = (44.0f32, 190.0f32, 40.0f32);
 
     let mut nodes: Vec<Node> = hubs.iter().map(|&h| Node { hub: Some(h), w: width(h) }).collect();
     let node_of: HashMap<usize, usize> = hubs.iter().enumerate().map(|(n, &h)| (h, n)).collect();
@@ -406,7 +437,7 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
                 cx += 10.0;
             }
             let r = if below { Role::Source } else { Role::Sink };
-            let size = if below { (w, 40.0) } else { (w, 22.0) };
+            let size = (w, 34.0);
             let y = if below { hi.bottom() + 52.0 } else { hi.top() - 52.0 };
             let pos = pinned.get(&c.parts[i].id).copied().unwrap_or((cx + w / 2.0, y));
             let attach = if below { hi.bottom() } else { hi.top() };
@@ -479,6 +510,7 @@ mod tests {
                 assert!(apart, "{} overlaps {}", a.checked.parts[x.part].id, a.checked.parts[y.part].id);
             }
         }
-        assert_eq!(d.edges.len(), a.checked.parts.iter().filter(|p| p.domain == "electrical" && edge_ends(p).is_some()).count());
+        let folded: usize = d.folded.values().map(|f| f.0).sum();
+        assert_eq!(d.edges.len() + folded, a.checked.parts.iter().filter(|p| p.domain == "electrical" && edge_ends(p).is_some()).count());
     }
 }

@@ -119,6 +119,33 @@ fn the_fadec_starts_the_engine_and_follows_the_lever() {
 }
 
 #[test]
+fn component_damage_changes_the_gas_path() {
+    let mut a = aircraft(JET);
+    a.set("master.on", 1.0);
+    a.set("start_sel.on", 1.0);
+    run(&mut a, 90.0);
+    a.set("start_sel.on", 0.0);
+    a.set("lever.position", 80.0);
+    run(&mut a, 40.0);
+    let (egt, n2, ff, thrust) = (a.get("eng.egt").unwrap(), a.get("eng.n2").unwrap(), a.get("eng.fuel_flow").unwrap(), a.get("eng.thrust").unwrap());
+    a.set("eng.hpt_damage", 0.6);
+    run(&mut a, 30.0);
+    let egt_hot = a.get("eng.egt").unwrap();
+    assert!(egt_hot > egt + 20.0 || a.get("eng.fuel_flow").unwrap() > ff * 1.05, "turbine damage runs hotter or burns more: egt {egt:.0} -> {egt_hot:.0}");
+    a.set("eng.hpt_damage", 0.0);
+    a.set("eng.surge", 1.0);
+    run(&mut a, 10.0);
+    let (n2s, egts, ths) = (a.get("eng.n2").unwrap(), a.get("eng.egt").unwrap(), a.get("eng.thrust").unwrap());
+    let why = format!("n2 {n2:.1} -> {n2s:.1}, egt {egt:.0} -> {egts:.0}, thrust {thrust:.0} -> {ths:.0}");
+    assert!(ths < thrust * 0.7 && egts > egt + 50.0 && n2s < n2 + 1.0, "surge: thrust lost, EGT up, core hangs: {why}");
+    a.set("eng.surge", 0.0);
+    a.set("eng.seized_hp", 1.0);
+    run(&mut a, 5.0);
+    assert_eq!(a.get("eng.n2"), Some(0.0), "seized spool stops");
+    assert_eq!(a.get("eng.running"), Some(0.0));
+}
+
+#[test]
 fn the_apu_starts_and_becomes_available() {
     let mut a = aircraft(JET);
     a.set("master.on", 1.0);

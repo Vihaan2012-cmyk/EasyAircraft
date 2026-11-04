@@ -53,6 +53,10 @@ pub fn render(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, g
             Role::Hub => {
                 let _ = writeln!(o, r#"<text x="{}" y="{}" font-size="12" fill="{ink}">{}</text>"#, x - iw / 2.0 + 8.0, y + 4.0, esc(&p.id));
                 let _ = writeln!(o, r#"<text x="{}" y="{}" text-anchor="end" fill="{faint}">{}</text>"#, x + iw / 2.0 - 8.0, y + 4.0, esc(&text));
+                if let Some(&(b, u)) = d.folded.get(&it.part) {
+                    let t = if b == 0 { format!("{u} users") } else { format!("{b} breakers, {u} users") };
+                    let _ = writeln!(o, r#"<text x="{x}" y="{}" font-size="10" text-anchor="middle" fill="{faint}">{t}</text>"#, it.bottom() + 12.0);
+                }
             }
             Role::Source | Role::Sink => {
                 let _ = writeln!(o, r#"<text x="{x}" y="{}" text-anchor="middle" fill="{ink}">{}</text>"#, y + 4.0, esc(&p.id));

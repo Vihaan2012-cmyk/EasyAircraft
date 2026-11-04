@@ -62,7 +62,7 @@ fn walk(c: &Checked, i: usize, depth: usize, get: &dyn Fn(&str) -> Option<f64>, 
     let mut next = Vec::new();
     if role(p).is_some_and(|r| r.0 == Role::Hub) {
         for (k, q) in c.parts.iter().enumerate() {
-            let feeds = edge_ends(q).is_some_and(|(a, b)| a == i || b == i) || role(q).is_some_and(|(r, f)| r == Role::Source && q.part(f) == Some(i));
+            let feeds = q.kind != "breaker" && edge_ends(q).is_some_and(|(a, b)| a == i || b == i) || role(q).is_some_and(|(r, f)| r == Role::Source && q.part(f) == Some(i));
             if feeds {
                 let (live, failed, text) = state(q, get);
                 let how = if failed { "failed".to_owned() } else if live { format!("supplying {text}") } else { format!("off {text}") };
