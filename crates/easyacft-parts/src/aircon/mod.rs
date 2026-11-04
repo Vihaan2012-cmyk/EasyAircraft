@@ -144,7 +144,7 @@ impl AirCon {
                 }
                 ("aircon", "zone") => {
                     let (Some(m), Some(f)) = (one(&mixers_ix, p.part("mixer")), one(&fus_ix, p.part("fuselage"))) else { continue };
-                    a.zones.extend(zone::Zone::new(c, p, m, f, one(&trims_ix, p.part("trim_valve"))));
+                    a.zones.extend(zone::Zone::new(c, p, m, f, one(&trims_ix, p.part("trim_valve")), one(&zones_ix, p.part("transfer_to"))));
                 }
                 ("aircon", "controller") => a.controllers.push(controller::Controller::new(p, map(&packs_ix, p.parts("packs")), map(&zones_ix, p.parts("zones")), map(&hot_ix, p.parts("hot_air")))),
                 ("aircon", "avionics_ventilation") => {
@@ -246,7 +246,7 @@ impl AirCon {
         // Recirculation fans draw the zones' exhaust air.
         for fan in &mut self.fans {
             let from: Vec<&zone::Zone> = if fan.zones.is_empty() { self.zones.iter().collect() } else { fan.zones.iter().filter_map(|&z| self.zones.get(z)).collect() };
-            let mut streams: Vec<Stream> = from.iter().map(|z| z.exhaust).collect();
+            let mut streams: Vec<Stream> = from.iter().map(|z| z.returned()).collect();
             if streams.iter().all(|s| s.flow <= 0.0) {
                 streams = from.iter().map(|z| Stream { flow: 1.0, ..z.exhaust }).collect();
             }
@@ -312,6 +312,24 @@ impl AirCon {
             z.step(slots, dt, supply, m.co2, m.ozone, trim, cabin_p, now);
         }
         self.grid_turn = self.grid_turn.wrapping_add(1);
+        // Air drifting along the cabin arrives in the next zone on the following step.
+        let outs: Vec<(Option<usize>, (Stream, f64, f64))> = self.zones.iter().map(|z| (z.transfer_to, z.transfer_out())).collect();
+        for z in &mut self.zones {
+            z.transfer_in = Stream::none(z.t, z.exhaust.p);
+            z.transfer_in_co2 = mixer::CO2_OUTSIDE;
+            z.transfer_in_smoke = 0.0;
+        }
+        for (to, (stream, co2, smoke)) in outs {
+            let Some(to) = to else { continue };
+            let Some(z) = self.zones.get_mut(to) else { continue };
+            let before = z.transfer_in.flow;
+            let total = before + stream.flow;
+            if total > 1e-9 {
+                z.transfer_in_co2 = (z.transfer_in_co2 * before + co2 * stream.flow) / total;
+                z.transfer_in_smoke = (z.transfer_in_smoke * before + smoke * stream.flow) / total;
+                z.transfer_in = thermo::mix(&[z.transfer_in, stream]);
+            }
+        }
         // The vessel: fresh air in, valves and leaks out; zones set its temperature.
         for (k, f) in self.fuselages.iter_mut().enumerate() {
             f.prime(slots);

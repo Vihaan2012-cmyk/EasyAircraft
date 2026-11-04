@@ -371,3 +371,55 @@ fn smoke_in_a_resolved_zone_reaches_its_detector() {
     assert!(s >= 2, "smoke takes time to drift to the ceiling: {s} s");
     assert_eq!(a.get("aft.smoke_detected"), Some(0.0), "HEPA filters stop it reaching the other zone");
 }
+
+#[test]
+fn moisture_freezes_on_the_skin_in_cruise_and_drips_after_landing_unless_it_is_dried() {
+    let wet = ACS.replace("grid_cell = \"0.5 m\"", "").replace("selected = \"295 K\"", "selected = \"295 K\"\ninsulation_capacity = 0.0004");
+    let dry = wet.replace("insulation_capacity = 0.0004", "insulation_capacity = 0.0004\ndrying_when = \"true\"");
+    let mut runs = Vec::new();
+    for src in [wet, dry] {
+        let (m, mut d) = load_str("aircon", &src);
+        let (mut a, _) = Aircraft::from_model(m, &mut d).unwrap_or_else(|r| panic!("{}", r.render()));
+        ground(&mut a);
+        a.set("pax.value", 300.0);
+        run(&mut a, 60.0);
+        a.set("air.on_ground", 0.0);
+        a.set("air.airspeed", 230.0);
+        a.set("air.altitude", 10_668.0);
+        for _ in 0..(2 * 3600 * 5) {
+            a.step(0.2);
+        }
+        let ice = get(&a, "aft.insulation_ice");
+        a.set("air.altitude", 0.0);
+        a.set("air.airspeed", 0.0);
+        a.set("air.on_ground", 1.0);
+        let mut dripped = 0.0;
+        for _ in 0..1800 {
+            for _ in 0..5 {
+                a.step(0.2);
+                dripped += get(&a, "aft.drip") * 0.2;
+            }
+        }
+        runs.push((ice, dripped));
+        all_finite(&a).unwrap();
+    }
+    let ((ice, drip), (dried_ice, _)) = (runs[0], runs[1]);
+    assert!(ice > 0.1, "{ice:.2} kg of ice behind the lining after two hours");
+    assert!(drip > 0.0, "it rains in the cabin after landing");
+    assert!(dried_ice < 0.2 * ice, "a zonal dryer keeps it dry: {dried_ice:.2} kg vs {ice:.2} kg");
+}
+
+#[test]
+fn air_drifts_aft_along_the_cabin_and_takes_smoke_with_it() {
+    let src = ACS
+        .replace("grid_cell = \"0.5 m\"\nlength = \"8 m\"", "transfer_to = \"aft\"\ntransfer = 0.3\nsmoke_when = \"pax.value > 200\"\nsmoke_rate = \"0.2 g/s\"")
+        .replace("selected = \"295 K\"", "selected = \"295 K\"\ntransfer_to = \"fwd\"\ntransfer = 0.0");
+    let (m, mut d) = load_str("aircon", &src);
+    let (mut a, _) = Aircraft::from_model(m, &mut d).unwrap_or_else(|r| panic!("{}", r.render()));
+    ground(&mut a);
+    run(&mut a, 60.0);
+    a.set("pax.value", 250.0);
+    run(&mut a, 300.0);
+    let (fwd, aft) = (get(&a, "fwd.smoke"), get(&a, "aft.smoke"));
+    assert!(fwd > 1.0 && aft > 0.05 * fwd && aft < fwd, "smoke {fwd:.1} mg/m³ forward, {aft:.2} aft");
+}

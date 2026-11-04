@@ -53,6 +53,13 @@ pub const SPEC: PartSpec = PartSpec {
         opt("detector_threshold", Kind::Number, "4", "smoke detector alarm, mg/m³ (about 3 %/m obscuration)"),
         opt("metabolic", Kind::Number, "1.0", "occupant activity for comfort, met: 1.0 seated, 2.0 cabin crew walking"),
         opt("clothing", Kind::Number, "0.7", "occupant clothing for comfort, clo"),
+        opt("transfer_to", Kind::Ref(&["aircon.zone"]), "", "the next zone along the cabin that part of its air drifts into, toward the outflow valve"),
+        opt("transfer", Kind::Number, "0", "share of its air that leaves through that zone rather than its own grilles"),
+        opt("skin_area", Kind::Number, "0", "inner skin area behind the lining, m²; 0 sizes it from the volume"),
+        opt("insulation_capacity", Kind::Number, "0.25", "water the insulation blankets hold before they drip, kg/m²"),
+        opt("vapour_conductance", Kind::Number, "0.0012", "how readily cabin moisture reaches the cold skin through the lining, m/s"),
+        opt("drying_when", WHEN, "false", "a zonal drying system blows dry air along the skin"),
+        opt("drying_humidity", Kind::Number, "0.0008", "humidity ratio of that dry air, kg/kg"),
         opt("grid_cell", Kind::Quantity(Dim::LENGTH), "0 m", "resolve the airflow on a grid of this cell size; 0 m for well mixed"),
         opt("length", Kind::Quantity(Dim::LENGTH), "10 m", "grid: zone length"),
         opt("section", Kind::Text, "circle", "grid: cabin cross-section: circle, ellipse, rectangle or polygon"),
@@ -97,6 +104,11 @@ pub const SPEC: PartSpec = PartSpec {
         ("ppd", N),
         ("smoke", N),
         ("smoke_detected", B),
+        ("skin_temperature", T),
+        ("insulation_water", Type::Num(Dim::MASS)),
+        ("insulation_ice", Type::Num(Dim::MASS)),
+        ("drip", MF),
+        ("condensing", B),
         ("duct_overheat", B),
         ("hot", B),
         ("cold", B),
@@ -136,6 +148,11 @@ const OUTPUTS: &[&str] = &[
     "ppd",
     "smoke",
     "smoke_detected",
+    "skin_temperature",
+    "insulation_water",
+    "insulation_ice",
+    "drip",
+    "condensing",
     "duct_overheat",
     "hot",
     "cold",
@@ -211,11 +228,24 @@ pub struct Zone {
     smoke: f64,
     /// Air extract fans take from the zone this step.
     pub extract: f64,
+    pub transfer_to: Option<usize>,
+    transfer: f64,
+    /// Air arriving from the zone before it along the cabin, with its CO2, ozone and smoke.
+    pub transfer_in: Stream,
+    pub transfer_in_co2: f64,
+    pub transfer_in_smoke: f64,
+    skin_area: f64,
+    capacity: f64,
+    vapour_g: f64,
+    drying: Option<Expr>,
+    drying_w: f64,
+    water: f64,
+    ice: f64,
     s: Slots,
 }
 
 impl Zone {
-    pub fn new(c: &Checked, p: &CheckedPart, mixer: usize, fuselage: usize, trim: Option<usize>) -> Option<Self> {
+    pub fn new(c: &Checked, p: &CheckedPart, mixer: usize, fuselage: usize, trim: Option<usize>, transfer_to: Option<usize>) -> Option<Self> {
         let air = [slot_of(c, p, "air", "temperature")?, slot_of(c, p, "air", "airspeed")?, slot_of(c, p, "air", "pressure")?];
         let volume = p.num("volume").max(0.1);
         let skin = p.num("skin_ua");
@@ -286,8 +316,29 @@ impl Zone {
             clo: p.num("clothing").clamp(0.0, 2.0),
             smoke: 0.0,
             extract: 0.0,
+            transfer_to,
+            transfer: p.num("transfer").clamp(0.0, 0.9),
+            transfer_in: Stream::none(t0, P_SL),
+            transfer_in_co2: CO2_OUTSIDE,
+            transfer_in_smoke: 0.0,
+            skin_area: { let a = p.num("skin_area"); if a > 0.0 { a } else { 2.2 * volume.powf(2.0 / 3.0) * (volume / 50.0).max(1.0).powf(1.0 / 3.0) } },
+            capacity: p.num("insulation_capacity").max(1e-4),
+            vapour_g: p.num("vapour_conductance").max(0.0),
+            drying: crate::expr_of(p, "drying_when"),
+            drying_w: p.num("drying_humidity").max(0.0),
+            water: 0.0,
+            ice: 0.0,
             s: Slots::of(p, OUTPUTS),
         })
+    }
+
+    /// The air this zone passes on along the cabin, and the share of its exhaust that goes back to its own grilles.
+    pub fn transfer_out(&self) -> (Stream, f64, f64) {
+        (self.exhaust.with_flow(self.exhaust.flow * self.transfer), self.exhaust_co2, self.smoke)
+    }
+
+    pub fn returned(&self) -> Stream {
+        self.exhaust.with_flow(self.exhaust.flow * (1.0 - self.transfer))
     }
 
     pub fn has_grid(&self) -> bool {
@@ -318,8 +369,12 @@ impl Zone {
         let solar = eval(&mut self.solar, slots, dt, 0.0).max(0.0);
 
         // Supply duct: trim air mixed in, then the duct walls' lag.
-        let duct = thermo::mix(&[supply, trim]);
-        let duct_co2 = if duct.flow > 1e-9 { (supply.flow * supply_co2 + trim.flow * CO2_OUTSIDE) / duct.flow } else { supply_co2 };
+        let arriving = self.transfer_in;
+        let duct = thermo::mix(&[supply, trim, arriving]);
+        let duct_co2 = if duct.flow > 1e-9 { (supply.flow * supply_co2 + trim.flow * CO2_OUTSIDE + arriving.flow * self.transfer_in_co2) / duct.flow } else { supply_co2 };
+        // Wet insulation conducts heat far better than dry.
+        let wet = ((self.water + self.ice) / (self.capacity * self.skin_area)).min(1.0);
+        let skin_ua = self.skin_ua * (1.0 + 1.5 * wet);
         if duct.flow > 1e-6 {
             self.duct_t = lag(self.duct_t, duct.t, self.duct_tau, dt);
             self.duct_w = duct.w;
@@ -349,7 +404,7 @@ impl Zone {
                     occupants,
                     heat: equip + solar,
                     skin_t,
-                    skin_ua: self.skin_ua,
+                    skin_ua,
                     density: rho,
                     furnishing_t: self.furn_t,
                     furnishing_ua: self.furn_ua,
@@ -366,11 +421,11 @@ impl Zone {
             self.smoke = self.last.smoke_mean;
         } else {
             // Well mixed: implicit in the supply and skin so large flows stay stable.
-            skin_loss = self.skin_ua * (self.t - skin_t);
+            skin_loss = skin_ua * (self.t - skin_t);
             furn_gain = self.furn_ua * (self.furn_t - self.t);
             let c_air = air_mass * CP;
             let g_supply = duct.flow * CP;
-            self.t = (c_air * self.t + dt * (g_supply * self.duct_t + heat + self.furn_ua * self.furn_t + self.skin_ua * skin_t)) / (c_air + dt * (g_supply + self.furn_ua + self.skin_ua));
+            self.t = (c_air * self.t + dt * (g_supply * self.duct_t + heat + self.furn_ua * self.furn_t + skin_ua * skin_t)) / (c_air + dt * (g_supply + self.furn_ua + skin_ua));
             let water = occupants * PAX_LATENT / thermo::LATENT;
             self.w = (air_mass * self.w + dt * (duct.flow * self.duct_w + water)) / (air_mass + dt * duct.flow);
             let co2_gen = occupants * PAX_CO2 * 1e6 / 1.52;
@@ -379,7 +434,8 @@ impl Zone {
             self.exhaust_co2 = self.co2;
             // Well mixed: what is made, against what the exhaust, extract fans and settling take away.
             let removal = (duct.flow + self.extract) / air_mass + 1.0 / 1800.0;
-            self.smoke = (self.smoke + dt * smoke_now * 1e6 / self.volume) / (1.0 + dt * removal);
+            let brought = arriving.flow * self.transfer_in_smoke / air_mass;
+            self.smoke = (self.smoke + dt * (smoke_now * 1e6 / self.volume + brought)) / (1.0 + dt * removal);
         }
         // Furnishings exchange with the air around them.
         self.furn_t += -furn_gain * dt / self.furn_c;
@@ -410,6 +466,31 @@ impl Zone {
         } else {
             (self.t, self.t, self.t, self.t, self.t, 0.0, duct.flow / rho.max(0.1) / self.volume.powf(2.0 / 3.0), self.co2)
         };
+        // Moisture behind the lining: it condenses or freezes on the cold structure and drips when it thaws.
+        let structure = skin_t + 0.15 * (self.t - skin_t);
+        let w_air = if yes(&mut self.drying, slots, dt, false) { self.drying_w.min(self.w) } else { self.w };
+        let rho_air = cabin_p / (thermo::R * self.t.max(150.0));
+        let flux = rho_air * self.vapour_g * self.skin_area * (w_air - thermo::w_sat(structure, cabin_p));
+        let (mut condensing, mut drip) = (false, 0.0);
+        if flux > 0.0 {
+            condensing = true;
+            if structure < thermo::T_ZERO { self.ice += flux * dt } else { self.water += flux * dt }
+        } else {
+            let dry = -flux * dt;
+            let from_water = dry.min(self.water);
+            self.water -= from_water;
+            self.ice = (self.ice - 0.3 * (dry - from_water)).max(0.0);
+        }
+        if structure > thermo::T_ZERO && self.ice > 0.0 {
+            let melt = (8.0 * self.skin_area * (structure - thermo::T_ZERO) / 3.34e5 * dt).min(self.ice);
+            self.ice -= melt;
+            self.water += melt;
+        }
+        let hold = self.capacity * self.skin_area;
+        if self.water > hold {
+            drip = (self.water - hold) / 30.0;
+            self.water -= drip * dt;
+        }
         let detector = if self.grid.is_some() { self.last.smoke_detector } else { self.smoke };
         let wall_t = self.t - 0.3 * (self.t - skin_t);
         let radiant = 0.6 * self.furn_t + 0.4 * wall_t;
@@ -447,6 +528,11 @@ impl Zone {
         s.put(slots, "ppd", ppd);
         s.put(slots, "smoke", detector);
         s.flag(slots, "smoke_detected", detector > self.detector);
+        s.put(slots, "skin_temperature", structure);
+        s.put(slots, "insulation_water", self.water);
+        s.put(slots, "insulation_ice", self.ice);
+        s.put(slots, "drip", drip);
+        s.flag(slots, "condensing", condensing);
         s.flag(slots, "duct_overheat", over);
         s.flag(slots, "hot", self.t > selected + 3.0);
         s.flag(slots, "cold", self.t < selected - 3.0);
@@ -457,7 +543,8 @@ impl Zone {
         v.extend([self.t, self.w, self.co2, self.furn_t, self.duct_t, self.duct_w, self.sensor.value]);
         v.extend([self.zone_ctl.integral, self.trim_ctl.integral, self.overheat.on as u8 as f64, self.overheat_t.elapsed, self.duct_demand, self.trim_command, self.grid_clock]);
         v.extend([self.exhaust.flow, self.exhaust.t, self.exhaust.p, self.exhaust.w, self.exhaust_co2, self.from_outside as u8 as f64]);
-        v.extend([self.ozone.ppb, self.ozone.twa, self.smoke, self.extract]);
+        v.extend([self.ozone.ppb, self.ozone.twa, self.smoke, self.extract, self.water, self.ice]);
+        v.extend([self.transfer_in.flow, self.transfer_in.t, self.transfer_in.p, self.transfer_in.w, self.transfer_in_co2, self.transfer_in_smoke]);
     }
 
     pub fn restore_scalar(&mut self, it: &mut impl Iterator<Item = f64>) {
@@ -483,6 +570,11 @@ impl Zone {
         self.ozone.twa = n();
         self.smoke = n();
         self.extract = n();
+        self.water = n();
+        self.ice = n();
+        self.transfer_in = Stream { flow: n(), t: n(), p: n(), w: n() };
+        self.transfer_in_co2 = n();
+        self.transfer_in_smoke = n();
     }
 
     pub fn grid_state(&self, v: &mut Vec<f64>) {
