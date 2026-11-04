@@ -44,6 +44,14 @@ pub fn expr_of(p: &CheckedPart, key: &str) -> Option<Expr> {
     p.expr(key).map(Expr::new)
 }
 
+/// Time one domain has spent stepping.
+#[derive(Clone, Debug, Default)]
+pub struct DomainTime {
+    pub name: &'static str,
+    pub seconds: f64,
+    pub steps: u64,
+}
+
 /// One simulated domain stepping at its own rate.
 pub trait Domain {
     fn name(&self) -> &'static str;
@@ -86,6 +94,8 @@ pub struct Aircraft {
     pub checked: Checked,
     pub slots: Vec<f64>,
     domains: Vec<(Rate, Box<dyn Domain>)>,
+    timing_on: bool,
+    timing: Option<Vec<DomainTime>>,
     custom: (Rate, custom::Custom),
     pub time: f64,
 }
@@ -150,7 +160,7 @@ impl Aircraft {
         let custom = (rate_for(rates, "custom", 0.01), custom::Custom::new(&checked));
         let watched = checked.slots.names.iter().enumerate().filter(|(_, (n, _))| [".failed", ".fault", ".aborted", ".shutdown", ".tripped", ".detected"].iter().any(|s| n.ends_with(s))).map(|(i, (n, _))| (i, n.clone(), false)).collect();
         let ground = checked.parts.iter().find(|p| p.domain == "environment").and_then(|p| checked.slots.index.get(&format!("{}.on_ground", p.id)).copied());
-        Self { log: Vec::new(), watched, ground, name: name.to_owned(), files, bindings, checked, slots, domains, custom, time: 0.0 }
+        Self { log: Vec::new(), watched, ground, name: name.to_owned(), files, bindings, checked, slots, domains, timing_on: false, timing: None, custom, time: 0.0 }
     }
 
     /// Steps every `[[custom.<kind>]]` part with `f`; returns how many there are.
@@ -160,17 +170,46 @@ impl Aircraft {
 
     pub fn step(&mut self, dt: f64) {
         self.time += dt;
+        let mut timing = self.timing.take();
+        let mut clock = |k: usize, name: &'static str, t: Option<std::time::Instant>, n: usize| {
+            if let (Some(tm), Some(t)) = (timing.as_mut(), t) {
+                if tm.len() <= k {
+                    tm.resize(k + 1, DomainTime::default());
+                }
+                tm[k].name = name;
+                tm[k].seconds += t.elapsed().as_secs_f64();
+                tm[k].steps += n as u64;
+            }
+        };
+        let now = || self.timing_on.then(std::time::Instant::now);
         let (rate, c) = &mut self.custom;
-        for _ in 0..rate.due(dt) {
+        let t = now();
+        let n = rate.due(dt);
+        for _ in 0..n {
             c.step(&mut self.slots, rate.period());
         }
-        for (rate, d) in &mut self.domains {
+        clock(0, "custom", t, n);
+        for (k, (rate, d)) in self.domains.iter_mut().enumerate() {
+            let t = now();
             let n = rate.due(dt);
             for _ in 0..n {
                 d.step(&mut self.slots, rate.period());
             }
+            clock(k + 1, d.name(), t, n);
         }
+        self.timing = timing;
         self.watch();
+    }
+
+    /// Starts timing every domain's steps from zero.
+    pub fn start_profile(&mut self) {
+        self.timing_on = true;
+        self.timing = Some(Vec::new());
+    }
+
+    /// Wall-clock time spent in each domain since `start_profile`.
+    pub fn profile(&self) -> &[DomainTime] {
+        self.timing.as_deref().unwrap_or(&[])
     }
 
     fn watch(&mut self) {

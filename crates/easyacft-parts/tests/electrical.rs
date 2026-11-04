@@ -213,3 +213,62 @@ fn wrong_units_and_names_are_caught_before_running() {
     assert!(text.contains("error[E0201]: nothing called `sw_batt.on`"), "{text}");
     assert!(text.contains("did you mean `sw_bat.on`?"), "{text}");
 }
+
+/// The share of charge below which a battery's voltage collapses (electrical.rs KNEE).
+const KNEE_CHARGE: f64 = 0.1;
+
+const FLAT: &str = r#"
+[[electrical.bus]]
+id = "dc"
+nominal = "28 V"
+
+[[electrical.battery]]
+id = "bat"
+bus = "dc"
+voltage = "28 V"
+capacity = "0.05 Ah"
+charge = 0.3
+
+[[electrical.load]]
+id = "radio"
+bus = "dc"
+power = "200 W"
+
+[[electrical.load]]
+id = "light"
+bus = "dc"
+power = "100 W"
+min_voltage = "26 V"
+"#;
+
+fn flat() -> Aircraft {
+    let (model, mut d) = load_str("flat", FLAT);
+    match Aircraft::from_model(model, &mut d) {
+        Ok((a, _)) => a,
+        Err(r) => panic!("{}", r.render()),
+    }
+}
+
+#[test]
+fn a_flat_battery_dies_and_its_bus_goes_dead() {
+    let mut a = flat();
+    run(&mut a, 1.0);
+    assert_eq!(a.get("dc.powered"), Some(1.0));
+    run(&mut a, 120.0);
+    assert!(a.get("bat.charge").unwrap() < KNEE_CHARGE, "charge {}", a.get("bat.charge").unwrap());
+    assert!(a.get("dc.voltage").unwrap() < 0.8 * 28.0, "past the knee its voltage falls away: {}", a.get("dc.voltage").unwrap());
+    assert_eq!(a.get("dc.powered"), Some(0.0), "and the bus goes dead, with nothing left drawing on it");
+    assert_eq!(a.get("radio.powered"), Some(0.0));
+}
+
+#[test]
+fn loads_drop_out_below_their_minimum_voltage_and_draw_what_the_bus_gives_them() {
+    let mut a = flat();
+    run(&mut a, 0.5);
+    let v = a.get("dc.voltage").unwrap();
+    assert!(v < 26.0 && v > 14.0, "the 30 % battery sags the bus: {v:.1} V");
+    assert_eq!(a.get("light.powered"), Some(0.0), "below 26 V the light switches itself off");
+    assert_eq!(a.get("light.power"), Some(0.0));
+    let p = a.get("radio.power").unwrap();
+    assert!((p - 200.0).abs() < 20.0, "constant power holds near nominal draw: {p:.0} W");
+}

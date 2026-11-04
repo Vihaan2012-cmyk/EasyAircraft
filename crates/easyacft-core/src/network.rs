@@ -33,8 +33,23 @@ pub struct Network {
     islands: Vec<Vec<NodeId>>,
     islands_dirty: bool,
     last: Vec<Option<Vec<f64>>>,
+    /// Built with the islands: each node's island and place in it, each island's closed links and
+    /// whether it holds state between steps.
+    island_of: Vec<usize>,
+    index: Vec<usize>,
+    links_of: Vec<Vec<LinkId>>,
+    dynamic: Vec<bool>,
+    scratch: Scratch,
     pub solves: usize,
     pub skips: usize,
+}
+
+/// Buffers reused by every solve.
+#[derive(Clone, Debug, Default)]
+struct Scratch {
+    a: Vec<f64>,
+    rhs: Vec<f64>,
+    coeff: Vec<(LinkId, f64, f64)>,
 }
 
 impl Network {
@@ -151,6 +166,24 @@ impl Network {
                 g
             })
             .collect();
+        let n = self.nodes.len();
+        self.island_of = vec![0; n];
+        self.index = vec![0; n];
+        for (i, island) in self.islands.iter().enumerate() {
+            for (k, &node) in island.iter().enumerate() {
+                self.island_of[node] = i;
+                self.index[node] = k;
+            }
+        }
+        self.links_of = vec![Vec::new(); self.islands.len()];
+        for (li, l) in self.links.iter().enumerate() {
+            if l.closed {
+                self.links_of[self.island_of[l.a]].push(li);
+            }
+        }
+        self.dynamic = (0..self.islands.len())
+            .map(|i| self.islands[i].iter().any(|&n| self.nodes[n].capacitance > 0.0) || self.links_of[i].iter().any(|&l| self.links[l].inertance > 0.0))
+            .collect();
         self.last = vec![None; self.islands.len()];
         self.islands_dirty = false;
     }
@@ -163,17 +196,11 @@ impl Network {
     }
 
     /// Island index of every node.
-    pub fn islands_of(&mut self) -> Vec<usize> {
+    pub fn islands_of(&mut self) -> &[usize] {
         if self.islands_dirty {
             self.rebuild_islands();
         }
-        let mut of = vec![0; self.nodes.len()];
-        for (i, island) in self.islands.iter().enumerate() {
-            for &n in island {
-                of[n] = i;
-            }
-        }
-        of
+        &self.island_of
     }
 
     pub fn step(&mut self, dt: f64) {
@@ -181,70 +208,61 @@ impl Network {
             self.rebuild_islands();
         }
         let dt = dt.max(1e-9);
-        let mut index = vec![usize::MAX; self.nodes.len()];
-        let mut link_of: Vec<Vec<LinkId>> = vec![Vec::new(); self.islands.len()];
-        for island in &self.islands {
-            for (k, &n) in island.iter().enumerate() {
-                index[n] = k;
-            }
-        }
-        let mut island_of = vec![0usize; self.nodes.len()];
-        for (i, island) in self.islands.iter().enumerate() {
-            for &n in island {
-                island_of[n] = i;
-            }
-        }
-        for (li, l) in self.links.iter().enumerate() {
-            if l.closed {
-                link_of[island_of[l.a]].push(li);
-            }
-        }
+        let mut sc = std::mem::take(&mut self.scratch);
         for i in 0..self.islands.len() {
-            let island = self.islands[i].clone();
+            let dynamic = self.dynamic[i];
+            let island = &self.islands[i];
+            if !dynamic {
+                if let Some(last) = &self.last[i] {
+                    if island.iter().enumerate().all(|(k, &n)| last[2 * k] == self.shunt[n] && last[2 * k + 1] == self.inject[n]) {
+                        self.skips += 1;
+                        continue;
+                    }
+                }
+            }
             let m = island.len();
-            let dynamic = island.iter().any(|&n| self.nodes[n].capacitance > 0.0) || link_of[i].iter().any(|&l| self.links[l].inertance > 0.0);
-            let mut key = Vec::with_capacity(2 * m);
-            for &n in &island {
-                key.push(self.shunt[n]);
-                key.push(self.inject[n]);
-            }
-            if !dynamic && self.last[i].as_ref() == Some(&key) {
-                self.skips += 1;
-                continue;
-            }
-            let mut a = vec![0.0; m * m];
-            let mut rhs = vec![0.0; m];
+            sc.a.clear();
+            sc.a.resize(m * m, 0.0);
+            sc.rhs.clear();
+            sc.rhs.resize(m, 0.0);
             for (k, &n) in island.iter().enumerate() {
                 let c = self.nodes[n].capacitance / dt;
-                a[k * m + k] += self.shunt[n] + LEAK + c;
-                rhs[k] += self.inject[n] + c * self.potential[n];
+                sc.a[k * m + k] += self.shunt[n] + LEAK + c;
+                sc.rhs[k] += self.inject[n] + c * self.potential[n];
             }
-            let mut coeff = Vec::with_capacity(link_of[i].len());
-            for &li in &link_of[i] {
+            sc.coeff.clear();
+            for &li in &self.links_of[i] {
                 let l = &self.links[li];
                 let lt = l.inertance / dt;
                 let denom = lt + l.resistance;
                 let (g, c0) = if denom <= 0.0 { (STIFF, 0.0) } else { (1.0 / denom, lt * self.flow[li] / denom) };
-                coeff.push((li, g, c0));
-                let (pa, pb) = (index[l.a], index[l.b]);
-                a[pa * m + pa] += g;
-                a[pb * m + pb] += g;
-                a[pa * m + pb] -= g;
-                a[pb * m + pa] -= g;
-                rhs[pa] -= c0;
-                rhs[pb] += c0;
+                sc.coeff.push((li, g, c0));
+                let (pa, pb) = (self.index[l.a], self.index[l.b]);
+                sc.a[pa * m + pa] += g;
+                sc.a[pb * m + pb] += g;
+                sc.a[pa * m + pb] -= g;
+                sc.a[pb * m + pa] -= g;
+                sc.rhs[pa] -= c0;
+                sc.rhs[pb] += c0;
             }
-            solve(&mut a, &mut rhs, m);
+            solve(&mut sc.a, &mut sc.rhs, m);
             for (k, &n) in island.iter().enumerate() {
-                self.potential[n] = rhs[k];
+                self.potential[n] = sc.rhs[k];
             }
-            for (li, g, c0) in coeff {
+            for &(li, g, c0) in &sc.coeff {
                 let l = &self.links[li];
                 self.flow[li] = g * (self.potential[l.a] - self.potential[l.b]) + c0;
             }
-            self.last[i] = if dynamic { None } else { Some(key) };
+            if dynamic {
+                self.last[i] = None;
+            } else {
+                let key = self.last[i].get_or_insert_with(Vec::new);
+                key.clear();
+                key.extend(island.iter().flat_map(|&n| [self.shunt[n], self.inject[n]]));
+            }
             self.solves += 1;
         }
+        self.scratch = sc;
     }
 
     /// Potentials then flows, for snapshots.
@@ -278,10 +296,11 @@ fn solve(a: &mut [f64], b: &mut [f64], m: usize) {
         if d.abs() < 1e-300 {
             continue;
         }
+        let last = (col..m).rev().find(|&k| a[col * m + k] != 0.0).unwrap_or(col);
         for row in col + 1..m {
             let f = a[row * m + col] / d;
             if f != 0.0 {
-                for k in col..m {
+                for k in col..=last {
                     a[row * m + k] -= f * a[col * m + k];
                 }
                 b[row] -= f * b[col];

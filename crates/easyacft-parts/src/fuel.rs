@@ -136,7 +136,7 @@ impl Fuel {
                 }
                 "line" => {
                     of.insert(i, NodeOf::Line(f.lines.len()));
-                    f.lines.push((net.add_node(1e-9), Slots::of(p, &["pressure", "failed"])));
+                    f.lines.push((net.add_node(0.0), Slots::of(p, &["pressure", "failed"])));
                 }
                 _ => {}
             }

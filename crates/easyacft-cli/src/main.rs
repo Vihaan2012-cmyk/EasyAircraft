@@ -30,7 +30,8 @@ fn usage() -> ExitCode {
   easyacft fit <aircraft dir> <engine id> <points.toml> [--tune name,name]
   easyacft import <file.acf | MSFS aircraft folder> <new folder>
   easyacft export <aircraft dir> <new folder> [--name crate-name]
-  easyacft test <aircraft dir> [scenario.toml]...   (default: every file in <dir>/tests)");
+  easyacft test <aircraft dir> [scenario.toml]...   (default: every file in <dir>/tests)
+  easyacft profile <aircraft dir> [--for 60s] [--scenario file.toml] [--budget 1ms]");
     ExitCode::from(2)
 }
 
@@ -182,6 +183,52 @@ values: {}", s.outputs.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", "));
                 ExitCode::FAILURE
             } else {
                 ExitCode::SUCCESS
+            }
+        }
+        Some("profile") if args.len() >= 2 => {
+            let Some(mut a) = load(&args[1]) else { return ExitCode::FAILURE };
+            let (mut total, mut budget, mut scenario) = (60.0, None, None);
+            let mut it = args[2..].iter();
+            while let Some(flag) = it.next() {
+                match (flag.as_str(), it.next()) {
+                    ("--for", Some(v)) => total = secs(v).unwrap_or(total),
+                    ("--budget", Some(v)) => budget = secs(v),
+                    ("--scenario", Some(v)) => scenario = Some(v.clone()),
+                    _ => return usage(),
+                }
+            }
+            if let Some(f) = scenario {
+                let text = std::fs::read_to_string(&f).unwrap_or_default();
+                if let Err(e) = easyacft_parts::scenario::run(&mut a, &text, 1.0 / 60.0) {
+                    eprintln!("{f}: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            let frame = 1.0 / 60.0;
+            a.start_profile();
+            let mut frames: Vec<f64> = Vec::new();
+            while (frames.len() as f64) * frame < total {
+                let t = std::time::Instant::now();
+                a.step(frame);
+                frames.push(t.elapsed().as_secs_f64());
+            }
+            let sim_s = frames.len() as f64 * frame;
+            let spent: f64 = frames.iter().sum();
+            println!("{:<12} {:>9} {:>12} {:>14} {:>7}", "domain", "steps", "us per step", "ms per sim s", "share");
+            for d in a.profile().iter().filter(|d| d.steps > 0) {
+                println!("{:<12} {:>9} {:>12.2} {:>14.3} {:>6.1}%", d.name, d.steps, d.seconds / d.steps as f64 * 1e6, d.seconds / sim_s * 1e3, d.seconds / spent * 100.0);
+            }
+            frames.sort_by(f64::total_cmp);
+            let mean = spent / frames.len().max(1) as f64;
+            let p99 = frames.get(frames.len() * 99 / 100).copied().unwrap_or(0.0);
+            let max = frames.last().copied().unwrap_or(0.0);
+            println!("{} frames of {:.1} ms: mean {:.3} ms, p99 {:.3} ms, max {:.3} ms ({:.0}x real time)", frames.len(), frame * 1e3, mean * 1e3, p99 * 1e3, max * 1e3, frame / mean.max(1e-12));
+            match budget {
+                Some(b) if mean > b => {
+                    eprintln!("mean frame {:.3} ms is over the {:.3} ms budget", mean * 1e3, b * 1e3);
+                    ExitCode::FAILURE
+                }
+                _ => ExitCode::SUCCESS,
             }
         }
         Some("sim") if args.len() >= 2 => {
