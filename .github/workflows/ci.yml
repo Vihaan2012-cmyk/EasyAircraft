@@ -10,3 +10,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace --release
+      - name: Every example scenario passes
+        run: |
+          cargo run --release -q -p easyacft-cli -- test examples/twin-jet
+          cargo run --release -q -p easyacft-cli -- test examples/piston-single
+          cargo run --release -q -p easyacft-cli -- test examples/a380
+      - name: A380 frame budget
+        run: cargo run --release -q -p easyacft-cli -- profile examples/a380 --for 30s --scenario examples/a380/tests/cold-start.toml --budget 2ms

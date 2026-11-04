@@ -4,6 +4,7 @@
 # DC: three battery charge regulator units and an APU TR, four 24 V batteries.
 
 # --- AC main buses -----------------------------------------------------------
+# 28 V buses count as powered down to 18 V, the MIL-STD-704 / DO-160 emergency limit for 28 V DC equipment.
 [[electrical.bus]]
 id = "ac{n}"
 count = 4
@@ -256,39 +257,42 @@ close_when = "!ac3.powered"
 [[electrical.bus]]
 id = "dc1"
 nominal = "28 V"
-powered_at = 0.79
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "dc2"
 nominal = "28 V"
-powered_at = 0.79
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "dc_ess"
 nominal = "28 V"
-powered_at = 0.79
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "dc_apu"
 nominal = "28 V"
-powered_at = 0.79
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "dc_eha"
 nominal = "28 V"
-powered_at = 0.79
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "bcru1_out"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "bcru2_out"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "bcru_ess_out"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.tru]]
 id = "bcru1"
@@ -361,21 +365,26 @@ close_when = "!dc2.powered"
 id = "hot_bat{n}"
 count = 2
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "hot_ess"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.bus]]
 id = "hot_apu"
 nominal = "28 V"
+powered_at = 0.643
 
+# Internal resistance: FlyByWire's Ni-Cd cell figure at 20 C (battery.rs CELL_INTERNAL_RESISTANCE_OHM_AT_20C).
 [[electrical.battery]]
 id = "bat{n}"
 count = 2
 bus = "hot_bat{n}"
 voltage = "24 V"
 capacity = "50 Ah"
+resistance = "0.011 ohm"
 charge_limit = "60 A"
 
 [[electrical.battery]]
@@ -383,6 +392,7 @@ id = "ess_bat"
 bus = "hot_ess"
 voltage = "24 V"
 capacity = "50 Ah"
+resistance = "0.011 ohm"
 charge_limit = "60 A"
 
 [[electrical.battery]]
@@ -390,6 +400,7 @@ id = "apu_bat"
 bus = "hot_apu"
 voltage = "24 V"
 capacity = "50 Ah"
+resistance = "0.011 ohm"
 charge_limit = "60 A"
 
 # Battery line contactors close when their pb is in, after the BCRU has dropped out
@@ -436,7 +447,7 @@ close_when = "air.on_ground && gnd_svc_sw.on && ext1.available && !ac2.powered"
 [[electrical.bus]]
 id = "dc_gnd_flt_svc"
 nominal = "28 V"
-powered_at = 0.79
+powered_at = 0.643
 
 [[electrical.tru]]
 id = "gnd_svc_tr"
@@ -448,7 +459,7 @@ rating = "3 kW"
 [[electrical.bus]]
 id = "dc_ess_shed"
 nominal = "28 V"
-powered_at = 0.79
+powered_at = 0.643
 
 [[electrical.contactor]]
 id = "dc_ess_shed_c"

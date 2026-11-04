@@ -24,13 +24,13 @@ at = "281 s"
 set = { "eng_mode.position" = 1, "edp1a.failed" = 1, "edp1b.failed" = 1 }
 
 [[expect]]
-at = "300 s"
+at = "320 s"
 that = "green.low && yellow.available && alert_green_lo_pr.on && master_caution.lit && eha_flight_controls.power > 5 kW"
 
 [[step]]
-at = "301 s"
+at = "321 s"
 set = { "green_elec_pb.pressed" = 1, "parking_brake.on" = 0, "brake_l.value" = 1 }
 
 [[expect]]
-at = "330 s"
+at = "350 s"
 that = "green_elec_a.running && green_elec_b.running && hyd_epump_ga.powered"

@@ -182,6 +182,18 @@ that = "dc1.voltage > 22 V"
 
 Put these in `<aircraft>/tests/`. Studio records them for you: press Record test, work the aircraft, press Stop.
 
+## How it runs
+
+- **Rates.** Each domain steps at its own period: logic, electrical and engines 10 ms, hydraulic 5 ms, pneumatic, controls and the ready-made systems 20 ms, fuel 50 ms. Change them under `[rates]`, for example `electrical = "5 ms"`.
+- **One step behind.** A domain reads every value as the last step left it. A chain of parts that each wait on the one before settles one link per step: five contactors in a row take 50 ms at 10 ms.
+- **Networks.** Each step is one linear solve per island of connected nodes, with no iteration. An electrical island whose sources and loads have not changed is not solved again; hydraulic, pneumatic and fuel islands hold pressure between steps, so they solve every step.
+- **Loads** draw constant power, linearised at the last step's bus voltage. Below `min_voltage` (default half the bus nominal) a load switches itself off and draws nothing; it comes back 0.5 s after its bus is 10 % above that. A constant-power load cannot be solved below about half voltage in one linear step without oscillating, so the dropout comes first.
+- **Batteries.** Open-circuit voltage runs from 0.88 to 1.05 of nominal over 10 to 100 % charge and falls to zero below 10 %, so a flat battery stops holding its bus up.
+- **Generators.** `rating` is apparent power (kVA); `power_factor`, default 1, sets the real power load shedding counts on.
+- **Expressions.** `&&`, `||` and `if` evaluate only the side they take. A `delay`, `off_delay`, `latch` or `rising` on a side not taken resets, so `if(armed, latch(fault, reset), false)` only latches while armed. `off_delay` starts expired. Division by zero gives 0.
+- **Units.** Torque and energy share a dimension (N*m is J), so the checker accepts `"500 J"` where a torque goes; rpm and Hz are both frequency (60 rpm is 1 Hz).
+- **Cost.** `easyacft profile <aircraft dir> [--scenario f] [--budget 1ms]` times every domain. The A380 example (2,035 parts, engines running) averages about 0.2 ms per 60 Hz frame.
+
 ## Studio
 
 - every system drawn from the files, live: heavy line supplied, thin line off, dashed failed;

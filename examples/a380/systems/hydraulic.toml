@@ -1,12 +1,14 @@
 # Two 5000 psi systems: green from engines 1 and 2, yellow from engines 3 and 4, two engine pumps per engine,
 # two AC motor pumps per system. No PTU; flight controls also have electro-hydrostatic backups (see loads.toml).
 
+# Static leak: FlyByWire's SYSTEM_SECTION_STATIC_LEAK_GAL_P_S, 0.03 gal/s.
 [[hydraulic.circuit]]
 id = "green"
 nominal = "5000 psi"
 fluid = "125 L"
 low_pressure = "3000 psi"
 compliance = 4e-11
+leak = "6.8 L/min"
 
 [[hydraulic.circuit]]
 id = "yellow"
@@ -14,6 +16,7 @@ nominal = "5000 psi"
 fluid = "125 L"
 low_pressure = "3000 psi"
 compliance = 4e-11
+leak = "6.8 L/min"
 
 [[hydraulic.pump]]
 id = "edp{n}a"

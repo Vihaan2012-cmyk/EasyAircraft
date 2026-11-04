@@ -1,5 +1,5 @@
 # Circuit breakers and the consumers behind them, one bus per breaker.
-# Generated from the breaker list; consumer power is estimated from each breaker's rating.
+# Generated from the breaker list; each consumer's power is its catalogue figure, or its breaker rating less a 25 % margin.
 
 # CAB FAN 1, ATA 21
 [[electrical.bus]]
@@ -14,7 +14,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cab_fan_1"
 bus = "cab_fan_1_bus"
-power = "410 W"
+power = "500 W"
 
 # CAB FAN 2, ATA 21
 [[electrical.bus]]
@@ -29,7 +29,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cab_fan_2"
 bus = "cab_fan_2_bus"
-power = "410 W"
+power = "500 W"
 
 # CAB FAN 3, ATA 21
 [[electrical.bus]]
@@ -44,7 +44,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cab_fan_3"
 bus = "cab_fan_3_bus"
-power = "410 W"
+power = "500 W"
 
 # CAB FAN 4, ATA 21
 [[electrical.bus]]
@@ -59,7 +59,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cab_fan_4"
 bus = "cab_fan_4_bus"
-power = "410 W"
+power = "500 W"
 
 # HOT AIR VALVE 1, ATA 21
 [[electrical.bus]]
@@ -74,7 +74,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "hotair_1"
 bus = "hotair_1_bus"
-power = "30 W"
+power = "92 W"
 
 # HOT AIR VALVE 2, ATA 21
 [[electrical.bus]]
@@ -89,12 +89,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "hotair_2"
 bus = "hotair_2_bus"
-power = "30 W"
+power = "92 W"
 
 # FWD CARGO ISOL VALVE, ATA 21
 [[electrical.bus]]
 id = "fwd_isol_valve_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fwd_isol_valve"
@@ -104,12 +105,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fwd_isol_valve"
 bus = "fwd_isol_valve_bus"
-power = "5 W"
+power = "67 W"
 
 # FWD CARGO EXTRACT FAN, ATA 21
 [[electrical.bus]]
 id = "fwd_extract_fan_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fwd_extract_fan"
@@ -119,12 +121,13 @@ rating = "10 A"
 [[electrical.load]]
 id = "fwd_extract_fan"
 bus = "fwd_extract_fan_bus"
-power = "130 W"
+power = "224 W"
 
 # BULK CARGO ISOL VALVE, ATA 21
 [[electrical.bus]]
 id = "bulk_isol_valve_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bulk_isol_valve"
@@ -134,12 +137,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "bulk_isol_valve"
 bus = "bulk_isol_valve_bus"
-power = "5 W"
+power = "67 W"
 
 # BULK CARGO EXTRACT FAN, ATA 21
 [[electrical.bus]]
 id = "bulk_extract_fan_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bulk_extract_fan"
@@ -149,7 +153,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "bulk_extract_fan"
 bus = "bulk_extract_fan_bus"
-power = "130 W"
+power = "224 W"
 
 # BULK CARGO HEATER, ATA 21
 [[electrical.bus]]
@@ -164,7 +168,7 @@ rating = "15 A"
 [[electrical.load]]
 id = "cargo_heater"
 bus = "cargo_heater_bus"
-power = "830 W"
+power = "1.38 kW"
 shed_priority = 4
 
 # FDAC 1 CHANNEL 1, ATA 21
@@ -180,7 +184,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "fdac_1a"
 bus = "fdac_1a_bus"
-power = "30 W"
+power = "92 W"
 
 # FDAC 1 CHANNEL 2, ATA 21
 [[electrical.bus]]
@@ -195,7 +199,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "fdac_1b"
 bus = "fdac_1b_bus"
-power = "30 W"
+power = "92 W"
 
 # FDAC 2 CHANNEL 1, ATA 21
 [[electrical.bus]]
@@ -210,7 +214,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "fdac_2a"
 bus = "fdac_2a_bus"
-power = "30 W"
+power = "92 W"
 
 # FDAC 2 CHANNEL 2, ATA 21
 [[electrical.bus]]
@@ -225,7 +229,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "fdac_2b"
 bus = "fdac_2b_bus"
-power = "30 W"
+power = "92 W"
 
 # TADD CHANNEL 1, ATA 21
 [[electrical.bus]]
@@ -240,7 +244,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "tadd_1"
 bus = "tadd_1_bus"
-power = "30 W"
+power = "92 W"
 
 # TADD CHANNEL 2, ATA 21
 [[electrical.bus]]
@@ -255,12 +259,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "tadd_2"
 bus = "tadd_2_bus"
-power = "30 W"
+power = "92 W"
 
 # VCM FWD CHANNEL 1, ATA 21
 [[electrical.bus]]
 id = "vcm_fwd_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_vcm_fwd_1"
@@ -270,12 +275,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "vcm_fwd_1"
 bus = "vcm_fwd_1_bus"
-power = "20 W"
+power = "67 W"
 
 # VCM FWD CHANNEL 2, ATA 21
 [[electrical.bus]]
 id = "vcm_fwd_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_vcm_fwd_2"
@@ -285,12 +291,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "vcm_fwd_2"
 bus = "vcm_fwd_2_bus"
-power = "20 W"
+power = "67 W"
 
 # VCM AFT CHANNEL 1, ATA 21
 [[electrical.bus]]
 id = "vcm_aft_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_vcm_aft_1"
@@ -300,12 +307,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "vcm_aft_1"
 bus = "vcm_aft_1_bus"
-power = "20 W"
+power = "67 W"
 
 # VCM AFT CHANNEL 2, ATA 21
 [[electrical.bus]]
 id = "vcm_aft_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_vcm_aft_2"
@@ -315,12 +323,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "vcm_aft_2"
 bus = "vcm_aft_2_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 1 AUTO PARTITION, ATA 21
 [[electrical.bus]]
 id = "ocsm_1_ap_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_1_ap"
@@ -330,12 +339,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_1_ap"
 bus = "ocsm_1_ap_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 2 AUTO PARTITION, ATA 21
 [[electrical.bus]]
 id = "ocsm_2_ap_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_2_ap"
@@ -345,12 +355,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_2_ap"
 bus = "ocsm_2_ap_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 3 AUTO PARTITION, ATA 21
 [[electrical.bus]]
 id = "ocsm_3_ap_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_3_ap"
@@ -360,12 +371,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_3_ap"
 bus = "ocsm_3_ap_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 4 AUTO PARTITION, ATA 21
 [[electrical.bus]]
 id = "ocsm_4_ap_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_4_ap"
@@ -375,12 +387,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_4_ap"
 bus = "ocsm_4_ap_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 1 CHANNEL 1, ATA 21
 [[electrical.bus]]
 id = "ocsm_1a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_1a"
@@ -390,12 +403,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_1a"
 bus = "ocsm_1a_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 1 CHANNEL 2, ATA 21
 [[electrical.bus]]
 id = "ocsm_1b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_1b"
@@ -405,12 +419,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_1b"
 bus = "ocsm_1b_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 2 CHANNEL 1, ATA 21
 [[electrical.bus]]
 id = "ocsm_2a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_2a"
@@ -420,12 +435,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_2a"
 bus = "ocsm_2a_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 2 CHANNEL 2, ATA 21
 [[electrical.bus]]
 id = "ocsm_2b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_2b"
@@ -435,12 +451,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_2b"
 bus = "ocsm_2b_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 3 CHANNEL 1, ATA 21
 [[electrical.bus]]
 id = "ocsm_3a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_3a"
@@ -450,12 +467,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_3a"
 bus = "ocsm_3a_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 3 CHANNEL 2, ATA 21
 [[electrical.bus]]
 id = "ocsm_3b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_3b"
@@ -465,12 +483,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_3b"
 bus = "ocsm_3b_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 4 CHANNEL 1, ATA 21
 [[electrical.bus]]
 id = "ocsm_4a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_4a"
@@ -480,12 +499,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_4a"
 bus = "ocsm_4a_bus"
-power = "20 W"
+power = "67 W"
 
 # OCSM 4 CHANNEL 2, ATA 21
 [[electrical.bus]]
 id = "ocsm_4b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ocsm_4b"
@@ -495,12 +515,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "ocsm_4b"
 bus = "ocsm_4b_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B1 AGS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b1_ags_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b1_ags"
@@ -510,12 +531,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b1_ags"
 bus = "cpiom_b1_ags_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B2 AGS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b2_ags_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b2_ags"
@@ -525,12 +547,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b2_ags"
 bus = "cpiom_b2_ags_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B3 AGS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b3_ags_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b3_ags"
@@ -540,12 +563,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b3_ags"
 bus = "cpiom_b3_ags_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B4 AGS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b4_ags_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b4_ags"
@@ -555,12 +579,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b4_ags"
 bus = "cpiom_b4_ags_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B1 TCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b1_tcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b1_tcs"
@@ -570,12 +595,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b1_tcs"
 bus = "cpiom_b1_tcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B2 TCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b2_tcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b2_tcs"
@@ -585,12 +611,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b2_tcs"
 bus = "cpiom_b2_tcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B3 TCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b3_tcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b3_tcs"
@@ -600,12 +627,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b3_tcs"
 bus = "cpiom_b3_tcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B4 TCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b4_tcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b4_tcs"
@@ -615,12 +643,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b4_tcs"
 bus = "cpiom_b4_tcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B1 VCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b1_vcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b1_vcs"
@@ -630,12 +659,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b1_vcs"
 bus = "cpiom_b1_vcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B2 VCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b2_vcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b2_vcs"
@@ -645,12 +675,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b2_vcs"
 bus = "cpiom_b2_vcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B3 VCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b3_vcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b3_vcs"
@@ -660,12 +691,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b3_vcs"
 bus = "cpiom_b3_vcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B4 VCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b4_vcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b4_vcs"
@@ -675,12 +707,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b4_vcs"
 bus = "cpiom_b4_vcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B1 CPCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b1_cpcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b1_cpcs"
@@ -690,12 +723,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b1_cpcs"
 bus = "cpiom_b1_cpcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B2 CPCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b2_cpcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b2_cpcs"
@@ -705,12 +739,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b2_cpcs"
 bus = "cpiom_b2_cpcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B3 CPCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b3_cpcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b3_cpcs"
@@ -720,12 +755,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b3_cpcs"
 bus = "cpiom_b3_cpcs_bus"
-power = "20 W"
+power = "67 W"
 
 # CPIOM B4 CPCS APP, ATA 21
 [[electrical.bus]]
 id = "cpiom_b4_cpcs_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cpiom_b4_cpcs"
@@ -735,12 +771,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cpiom_b4_cpcs"
 bus = "cpiom_b4_cpcs_bus"
-power = "20 W"
+power = "67 W"
 
 # PACK 1 FLOW VALVE 1, ATA 21
 [[electrical.bus]]
 id = "pack_1_flow_valve_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_1_flow_valve_1"
@@ -750,12 +787,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "pack_1_flow_valve_1"
 bus = "pack_1_flow_valve_1_bus"
-power = "5 W"
+power = "67 W"
 
 # PACK 1 FLOW VALVE 2, ATA 21
 [[electrical.bus]]
 id = "pack_1_flow_valve_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_1_flow_valve_2"
@@ -765,12 +803,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "pack_1_flow_valve_2"
 bus = "pack_1_flow_valve_2_bus"
-power = "5 W"
+power = "67 W"
 
 # PACK 2 FLOW VALVE 1, ATA 21
 [[electrical.bus]]
 id = "pack_2_flow_valve_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_2_flow_valve_1"
@@ -780,12 +819,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "pack_2_flow_valve_1"
 bus = "pack_2_flow_valve_1_bus"
-power = "5 W"
+power = "67 W"
 
 # PACK 2 FLOW VALVE 2, ATA 21
 [[electrical.bus]]
 id = "pack_2_flow_valve_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_2_flow_valve_2"
@@ -795,7 +835,7 @@ rating = "3 A"
 [[electrical.load]]
 id = "pack_2_flow_valve_2"
 bus = "pack_2_flow_valve_2_bus"
-power = "5 W"
+power = "67 W"
 
 # AVIONICS BAY FAN 1, ATA 21
 [[electrical.bus]]
@@ -810,7 +850,7 @@ rating = "4 A"
 [[electrical.load]]
 id = "avionics_fan_1"
 bus = "avionics_fan_1_bus"
-power = "220 W"
+power = "368 W"
 
 # AVIONICS BAY FAN 2, ATA 21
 [[electrical.bus]]
@@ -825,7 +865,7 @@ rating = "4 A"
 [[electrical.load]]
 id = "avionics_fan_2"
 bus = "avionics_fan_2_bus"
-power = "220 W"
+power = "368 W"
 
 # AVIONICS BAY FAN 3, ATA 21
 [[electrical.bus]]
@@ -840,7 +880,7 @@ rating = "4 A"
 [[electrical.load]]
 id = "avionics_fan_3"
 bus = "avionics_fan_3_bus"
-power = "220 W"
+power = "368 W"
 
 # AVIONICS BAY FAN 4, ATA 21
 [[electrical.bus]]
@@ -855,12 +895,13 @@ rating = "4 A"
 [[electrical.load]]
 id = "avionics_fan_4"
 bus = "avionics_fan_4_bus"
-power = "220 W"
+power = "368 W"
 
 # FIRE DET ENG1 LOOP A, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng1_a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng1_a"
@@ -870,12 +911,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng1_a"
 bus = "fire_loop_eng1_a_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET ENG1 LOOP B, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng1_b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng1_b"
@@ -885,12 +927,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng1_b"
 bus = "fire_loop_eng1_b_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET ENG2 LOOP A, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng2_a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng2_a"
@@ -900,12 +943,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng2_a"
 bus = "fire_loop_eng2_a_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET ENG2 LOOP B, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng2_b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng2_b"
@@ -915,12 +959,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng2_b"
 bus = "fire_loop_eng2_b_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET ENG3 LOOP A, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng3_a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng3_a"
@@ -930,12 +975,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng3_a"
 bus = "fire_loop_eng3_a_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET ENG3 LOOP B, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng3_b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng3_b"
@@ -945,12 +991,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng3_b"
 bus = "fire_loop_eng3_b_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET ENG4 LOOP A, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng4_a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng4_a"
@@ -960,12 +1007,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng4_a"
 bus = "fire_loop_eng4_a_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET ENG4 LOOP B, ATA 26
 [[electrical.bus]]
 id = "fire_loop_eng4_b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_eng4_b"
@@ -975,12 +1023,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_eng4_b"
 bus = "fire_loop_eng4_b_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET APU LOOP A, ATA 26
 [[electrical.bus]]
 id = "fire_loop_apu_a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_apu_a"
@@ -990,12 +1039,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_apu_a"
 bus = "fire_loop_apu_a_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET APU LOOP B, ATA 26
 [[electrical.bus]]
 id = "fire_loop_apu_b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_apu_b"
@@ -1005,12 +1055,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_apu_b"
 bus = "fire_loop_apu_b_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET MLGBAY LOOP A, ATA 26
 [[electrical.bus]]
 id = "fire_loop_mlgbay_a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_mlgbay_a"
@@ -1020,12 +1071,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_mlgbay_a"
 bus = "fire_loop_mlgbay_a_bus"
-power = "5 W"
+power = "20 W"
 
 # FIRE DET MLGBAY LOOP B, ATA 26
 [[electrical.bus]]
 id = "fire_loop_mlgbay_b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fire_loop_mlgbay_b"
@@ -1035,12 +1087,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fire_loop_mlgbay_b"
 bus = "fire_loop_mlgbay_b_bus"
-power = "5 W"
+power = "20 W"
 
 # ROLLOUT NORMAL FEED, ATA 22
 [[electrical.bus]]
 id = "rollout_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_rollout_normal"
@@ -1050,12 +1103,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "rollout_normal"
 bus = "rollout_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # ROLLOUT 2ND FEED, ATA 22
 [[electrical.bus]]
 id = "rollout_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_rollout_2nd"
@@ -1065,12 +1119,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "rollout_2nd"
 bus = "rollout_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # FCU 1 NORMAL FEED, ATA 22
 [[electrical.bus]]
 id = "fcu_1_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcu_1_normal"
@@ -1080,12 +1135,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcu_1_normal"
 bus = "fcu_1_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # FCU 1 2ND FEED, ATA 22
 [[electrical.bus]]
 id = "fcu_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcu_1_2nd"
@@ -1095,12 +1151,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcu_1_2nd"
 bus = "fcu_1_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # FCU 2 NORMAL FEED, ATA 22
 [[electrical.bus]]
 id = "fcu_2_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcu_2_normal"
@@ -1110,12 +1167,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcu_2_normal"
 bus = "fcu_2_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # FCU 2 2ND FEED, ATA 22
 [[electrical.bus]]
 id = "fcu_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcu_2_2nd"
@@ -1125,12 +1183,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcu_2_2nd"
 bus = "fcu_2_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # PRIM 1 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "prim_1_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prim_1_normal"
@@ -1140,12 +1199,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "prim_1_normal"
 bus = "prim_1_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # PRIM 1 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "prim_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prim_1_2nd"
@@ -1155,12 +1215,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "prim_1_2nd"
 bus = "prim_1_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # PRIM 2 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "prim_2_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prim_2_normal"
@@ -1170,12 +1231,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "prim_2_normal"
 bus = "prim_2_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # PRIM 2 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "prim_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prim_2_2nd"
@@ -1185,12 +1247,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "prim_2_2nd"
 bus = "prim_2_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # PRIM 3 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "prim_3_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prim_3_normal"
@@ -1200,12 +1263,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "prim_3_normal"
 bus = "prim_3_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # PRIM 3 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "prim_3_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prim_3_2nd"
@@ -1215,12 +1279,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "prim_3_2nd"
 bus = "prim_3_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # SEC 1 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "sec_1_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_sec_1_normal"
@@ -1230,12 +1295,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "sec_1_normal"
 bus = "sec_1_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # SEC 1 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "sec_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_sec_1_2nd"
@@ -1245,12 +1311,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "sec_1_2nd"
 bus = "sec_1_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # SEC 2 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "sec_2_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_sec_2_normal"
@@ -1260,12 +1327,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "sec_2_normal"
 bus = "sec_2_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # SEC 2 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "sec_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_sec_2_2nd"
@@ -1275,12 +1343,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "sec_2_2nd"
 bus = "sec_2_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # SEC 3 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "sec_3_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_sec_3_normal"
@@ -1290,12 +1359,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "sec_3_normal"
 bus = "sec_3_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # SEC 3 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "sec_3_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_sec_3_2nd"
@@ -1305,12 +1375,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "sec_3_2nd"
 bus = "sec_3_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # FCDC 1 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "fcdc_1_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcdc_1_normal"
@@ -1320,12 +1391,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcdc_1_normal"
 bus = "fcdc_1_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # FCDC 1 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "fcdc_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcdc_1_2nd"
@@ -1335,12 +1407,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcdc_1_2nd"
 bus = "fcdc_1_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # FCDC 2 NORMAL FEED, ATA 27
 [[electrical.bus]]
 id = "fcdc_2_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcdc_2_normal"
@@ -1350,12 +1423,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcdc_2_normal"
 bus = "fcdc_2_normal_bus"
-power = "30 W"
+power = "100 W"
 
 # FCDC 2 2ND FEED, ATA 27
 [[electrical.bus]]
 id = "fcdc_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fcdc_2_2nd"
@@ -1365,12 +1439,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fcdc_2_2nd"
 bus = "fcdc_2_2nd_bus"
-power = "30 W"
+power = "100 W"
 
 # LGCIU 1 NORMAL FEED, ATA 32
 [[electrical.bus]]
 id = "lgciu_1_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_lgciu_1_normal"
@@ -1380,12 +1455,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "lgciu_1_normal"
 bus = "lgciu_1_normal_bus"
-power = "20 W"
+power = "67 W"
 
 # LGCIU 1 2ND FEED, ATA 32
 [[electrical.bus]]
 id = "lgciu_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_lgciu_1_2nd"
@@ -1395,12 +1471,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "lgciu_1_2nd"
 bus = "lgciu_1_2nd_bus"
-power = "20 W"
+power = "67 W"
 
 # LGCIU 2 NORMAL FEED, ATA 32
 [[electrical.bus]]
 id = "lgciu_2_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_lgciu_2_normal"
@@ -1410,12 +1487,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "lgciu_2_normal"
 bus = "lgciu_2_normal_bus"
-power = "20 W"
+power = "67 W"
 
 # LGCIU 2 2ND FEED, ATA 32
 [[electrical.bus]]
 id = "lgciu_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_lgciu_2_2nd"
@@ -1425,7 +1503,7 @@ rating = "3 A"
 [[electrical.load]]
 id = "lgciu_2_2nd"
 bus = "lgciu_2_2nd_bus"
-power = "20 W"
+power = "67 W"
 
 # HYD GREEN ELEC PUMP A, ATA 29
 [[electrical.bus]]
@@ -1440,7 +1518,7 @@ rating = "30 A"
 [[electrical.load]]
 id = "hyd_epump_ga"
 bus = "hyd_epump_ga_bus"
-power = "1.66 kW"
+power = "2.76 kW"
 on_when = "green_elec_pb.pressed"
 shed_priority = 3
 
@@ -1448,6 +1526,7 @@ shed_priority = 3
 [[electrical.bus]]
 id = "hyd_epump_ga_coil_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_hyd_epump_ga_coil"
@@ -1457,7 +1536,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "hyd_epump_ga_coil"
 bus = "hyd_epump_ga_coil_bus"
-power = "5 W"
+power = "22 W"
 on_when = "green_elec_pb.pressed"
 shed_priority = 3
 
@@ -1474,7 +1553,7 @@ rating = "30 A"
 [[electrical.load]]
 id = "hyd_epump_gb"
 bus = "hyd_epump_gb_bus"
-power = "1.66 kW"
+power = "2.76 kW"
 on_when = "green_elec_pb.pressed"
 shed_priority = 3
 
@@ -1482,6 +1561,7 @@ shed_priority = 3
 [[electrical.bus]]
 id = "hyd_epump_gb_coil_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_hyd_epump_gb_coil"
@@ -1491,7 +1571,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "hyd_epump_gb_coil"
 bus = "hyd_epump_gb_coil_bus"
-power = "5 W"
+power = "22 W"
 on_when = "green_elec_pb.pressed"
 shed_priority = 3
 
@@ -1508,7 +1588,7 @@ rating = "30 A"
 [[electrical.load]]
 id = "hyd_epump_ya"
 bus = "hyd_epump_ya_bus"
-power = "1.66 kW"
+power = "2.76 kW"
 on_when = "yellow_elec_pb.pressed"
 shed_priority = 3
 
@@ -1516,6 +1596,7 @@ shed_priority = 3
 [[electrical.bus]]
 id = "hyd_epump_ya_coil_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_hyd_epump_ya_coil"
@@ -1525,7 +1606,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "hyd_epump_ya_coil"
 bus = "hyd_epump_ya_coil_bus"
-power = "5 W"
+power = "22 W"
 on_when = "yellow_elec_pb.pressed"
 shed_priority = 3
 
@@ -1542,7 +1623,7 @@ rating = "30 A"
 [[electrical.load]]
 id = "hyd_epump_yb"
 bus = "hyd_epump_yb_bus"
-power = "1.66 kW"
+power = "2.76 kW"
 on_when = "yellow_elec_pb.pressed"
 shed_priority = 3
 
@@ -1550,6 +1631,7 @@ shed_priority = 3
 [[electrical.bus]]
 id = "hyd_epump_yb_coil_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_hyd_epump_yb_coil"
@@ -1559,7 +1641,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "hyd_epump_yb_coil"
 bus = "hyd_epump_yb_coil_bus"
-power = "5 W"
+power = "22 W"
 on_when = "yellow_elec_pb.pressed"
 shed_priority = 3
 
@@ -1567,6 +1649,7 @@ shed_priority = 3
 [[electrical.bus]]
 id = "autobrake_disarm_sol_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_autobrake_disarm_sol"
@@ -1576,12 +1659,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "autobrake_disarm_sol"
 bus = "autobrake_disarm_sol_bus"
-power = "5 W"
+power = "56 W"
 
 # PROX UPLOCK GEAR NOSE 1, ATA 32
 [[electrical.bus]]
 id = "prox_uplock_gear_nose_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_uplock_gear_nose_1"
@@ -1597,6 +1681,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_downlock_gear_nose_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_downlock_gear_nose_2"
@@ -1612,6 +1697,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_uplock_gear_right_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_uplock_gear_right_1"
@@ -1627,6 +1713,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_downlock_gear_right_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_downlock_gear_right_2"
@@ -1642,6 +1729,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_uplock_gear_left_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_uplock_gear_left_2"
@@ -1657,6 +1745,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_downlock_gear_left_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_downlock_gear_left_1"
@@ -1672,6 +1761,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_uplock_door_nose_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_uplock_door_nose_1"
@@ -1687,6 +1777,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_downlock_door_nose_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_downlock_door_nose_2"
@@ -1702,6 +1793,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_uplock_door_right_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_uplock_door_right_2"
@@ -1717,6 +1809,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_downlock_door_right_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_downlock_door_right_1"
@@ -1732,6 +1825,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_uplock_door_left_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_uplock_door_left_2"
@@ -1747,6 +1841,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "prox_downlock_door_left_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_prox_downlock_door_left_1"
@@ -1762,6 +1857,7 @@ power = "5 W"
 [[electrical.bus]]
 id = "gear_actuator_nose_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_gear_actuator_nose"
@@ -1771,13 +1867,14 @@ rating = "125 A"
 [[electrical.load]]
 id = "gear_actuator_nose"
 bus = "gear_actuator_nose_bus"
-power = "840 W"
+power = "2.8 kW"
 on_when = "nose_gear.in_transit"
 
 # GEAR ACTUATOR LEFT, ATA 32
 [[electrical.bus]]
 id = "gear_actuator_left_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_gear_actuator_left"
@@ -1787,13 +1884,14 @@ rating = "125 A"
 [[electrical.load]]
 id = "gear_actuator_left"
 bus = "gear_actuator_left_bus"
-power = "840 W"
+power = "2.8 kW"
 on_when = "wing_gear_l.in_transit"
 
 # GEAR ACTUATOR RIGHT, ATA 32
 [[electrical.bus]]
 id = "gear_actuator_right_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_gear_actuator_right"
@@ -1803,13 +1901,14 @@ rating = "125 A"
 [[electrical.load]]
 id = "gear_actuator_right"
 bus = "gear_actuator_right_bus"
-power = "840 W"
+power = "2.8 kW"
 on_when = "wing_gear_r.in_transit"
 
 # GEAR DOOR ACTUATOR NOSE, ATA 32
 [[electrical.bus]]
 id = "gear_door_actuator_nose_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_gear_door_actuator_nose"
@@ -1819,13 +1918,14 @@ rating = "125 A"
 [[electrical.load]]
 id = "gear_door_actuator_nose"
 bus = "gear_door_actuator_nose_bus"
-power = "840 W"
+power = "2.8 kW"
 on_when = "nose_gear.in_transit"
 
 # GEAR DOOR ACTUATOR LEFT, ATA 32
 [[electrical.bus]]
 id = "gear_door_actuator_left_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_gear_door_actuator_left"
@@ -1835,13 +1935,14 @@ rating = "125 A"
 [[electrical.load]]
 id = "gear_door_actuator_left"
 bus = "gear_door_actuator_left_bus"
-power = "840 W"
+power = "2.8 kW"
 on_when = "wing_gear_l.in_transit"
 
 # GEAR DOOR ACTUATOR RIGHT, ATA 32
 [[electrical.bus]]
 id = "gear_door_actuator_right_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_gear_door_actuator_right"
@@ -1851,7 +1952,7 @@ rating = "125 A"
 [[electrical.load]]
 id = "gear_door_actuator_right"
 bus = "gear_door_actuator_right_bus"
-power = "840 W"
+power = "2.8 kW"
 on_when = "wing_gear_r.in_transit"
 
 # RA SYS A, ATA 34
@@ -1867,7 +1968,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_sys_a"
 bus = "ra_sys_a_bus"
-power = "30 W"
+power = "92 W"
 
 # RA SYS B, ATA 34
 [[electrical.bus]]
@@ -1882,7 +1983,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_sys_b"
 bus = "ra_sys_b_bus"
-power = "30 W"
+power = "92 W"
 
 # RA SYS C, ATA 34
 [[electrical.bus]]
@@ -1897,7 +1998,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_sys_c"
 bus = "ra_sys_c_bus"
-power = "30 W"
+power = "92 W"
 
 # RA 1 ANTENNA INTERRUPT, ATA 34
 [[electrical.bus]]
@@ -1912,7 +2013,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_ant_interrupt_1"
 bus = "ra_ant_interrupt_1_bus"
-power = "30 W"
+power = "10 W"
 
 # RA 1 ANTENNA DIRECT COUPLING, ATA 34
 [[electrical.bus]]
@@ -1927,7 +2028,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_ant_coupling_1"
 bus = "ra_ant_coupling_1_bus"
-power = "30 W"
+power = "10 W"
 
 # RA 2 ANTENNA INTERRUPT, ATA 34
 [[electrical.bus]]
@@ -1942,7 +2043,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_ant_interrupt_2"
 bus = "ra_ant_interrupt_2_bus"
-power = "30 W"
+power = "10 W"
 
 # RA 2 ANTENNA DIRECT COUPLING, ATA 34
 [[electrical.bus]]
@@ -1957,7 +2058,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_ant_coupling_2"
 bus = "ra_ant_coupling_2_bus"
-power = "30 W"
+power = "10 W"
 
 # RA 3 ANTENNA INTERRUPT, ATA 34
 [[electrical.bus]]
@@ -1972,7 +2073,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_ant_interrupt_3"
 bus = "ra_ant_interrupt_3_bus"
-power = "30 W"
+power = "10 W"
 
 # RA 3 ANTENNA DIRECT COUPLING, ATA 34
 [[electrical.bus]]
@@ -1987,7 +2088,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "ra_ant_coupling_3"
 bus = "ra_ant_coupling_3_bus"
-power = "30 W"
+power = "10 W"
 
 # EGPWC (TAWS), ATA 34
 [[electrical.bus]]
@@ -2002,7 +2103,7 @@ rating = "2 A"
 [[electrical.load]]
 id = "egpwc"
 bus = "egpwc_bus"
-power = "60 W"
+power = "100 W"
 
 # FUEL PUMP 0, ATA 28
 [[electrical.bus]]
@@ -2017,7 +2118,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_0"
 bus = "fuel_pump_0_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed1_main_pb.pressed"
 
 # FUEL PUMP 1, ATA 28
@@ -2033,7 +2134,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_1"
 bus = "fuel_pump_1_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed2_main_pb.pressed"
 
 # FUEL PUMP 2, ATA 28
@@ -2049,7 +2150,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_2"
 bus = "fuel_pump_2_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed3_main_pb.pressed"
 
 # FUEL PUMP 3, ATA 28
@@ -2065,7 +2166,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_3"
 bus = "fuel_pump_3_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed4_main_pb.pressed"
 
 # FUEL PUMP 4, ATA 28
@@ -2081,7 +2182,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_4"
 bus = "fuel_pump_4_bus"
-power = "550 W"
+power = "920 W"
 on_when = "apu_master_pb.pressed"
 shed_priority = 2
 
@@ -2098,7 +2199,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_5"
 bus = "fuel_pump_5_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed1_stby_pb.pressed && (!feed1_main.running || feed1_main.low_pressure)"
 
 # FUEL PUMP 6, ATA 28
@@ -2114,7 +2215,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_6"
 bus = "fuel_pump_6_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed2_stby_pb.pressed && (!feed2_main.running || feed2_main.low_pressure)"
 
 # FUEL PUMP 7, ATA 28
@@ -2130,7 +2231,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_7"
 bus = "fuel_pump_7_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed3_stby_pb.pressed && (!feed3_main.running || feed3_main.low_pressure)"
 
 # FUEL PUMP 8, ATA 28
@@ -2146,7 +2247,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_8"
 bus = "fuel_pump_8_bus"
-power = "550 W"
+power = "920 W"
 on_when = "feed4_stby_pb.pressed && (!feed4_main.running || feed4_main.low_pressure)"
 
 # FUEL PUMP 9, ATA 28
@@ -2162,7 +2263,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_9"
 bus = "fuel_pump_9_bus"
-power = "550 W"
+power = "920 W"
 on_when = "false"
 
 # FUEL PUMP 10, ATA 28
@@ -2178,7 +2279,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_10"
 bus = "fuel_pump_10_bus"
-power = "550 W"
+power = "920 W"
 on_when = "inner_l_xfr_cmd.on"
 shed_priority = 2
 
@@ -2195,7 +2296,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_11"
 bus = "fuel_pump_11_bus"
-power = "550 W"
+power = "920 W"
 on_when = "mid_l_xfr_cmd.on"
 shed_priority = 2
 
@@ -2212,7 +2313,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_12"
 bus = "fuel_pump_12_bus"
-power = "550 W"
+power = "920 W"
 on_when = "inner_r_xfr_cmd.on"
 shed_priority = 2
 
@@ -2229,7 +2330,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_13"
 bus = "fuel_pump_13_bus"
-power = "550 W"
+power = "920 W"
 on_when = "mid_r_xfr_cmd.on"
 shed_priority = 2
 
@@ -2246,7 +2347,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_14"
 bus = "fuel_pump_14_bus"
-power = "550 W"
+power = "920 W"
 on_when = "false"
 
 # FUEL PUMP 15, ATA 28
@@ -2262,7 +2363,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_15"
 bus = "fuel_pump_15_bus"
-power = "550 W"
+power = "920 W"
 on_when = "outer_l_xfr_cmd.on"
 shed_priority = 2
 
@@ -2279,7 +2380,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_16"
 bus = "fuel_pump_16_bus"
-power = "550 W"
+power = "920 W"
 on_when = "trim_xfr_cmd.on"
 shed_priority = 2
 
@@ -2296,7 +2397,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_17"
 bus = "fuel_pump_17_bus"
-power = "550 W"
+power = "920 W"
 on_when = "false"
 
 # FUEL PUMP 18, ATA 28
@@ -2312,7 +2413,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_18"
 bus = "fuel_pump_18_bus"
-power = "550 W"
+power = "920 W"
 on_when = "outer_r_xfr_cmd.on"
 shed_priority = 2
 
@@ -2329,7 +2430,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_19"
 bus = "fuel_pump_19_bus"
-power = "550 W"
+power = "920 W"
 on_when = "false"
 
 # FUEL PUMP 20, ATA 28
@@ -2345,7 +2446,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_20"
 bus = "fuel_pump_20_bus"
-power = "550 W"
+power = "920 W"
 on_when = "jettisoning.on"
 shed_priority = 2
 
@@ -2362,7 +2463,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_21"
 bus = "fuel_pump_21_bus"
-power = "550 W"
+power = "920 W"
 on_when = "false"
 
 # FUEL PUMP 22, ATA 28
@@ -2378,7 +2479,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_22"
 bus = "fuel_pump_22_bus"
-power = "550 W"
+power = "920 W"
 on_when = "jettisoning.on"
 shed_priority = 2
 
@@ -2395,7 +2496,7 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_23"
 bus = "fuel_pump_23_bus"
-power = "550 W"
+power = "920 W"
 on_when = "false"
 
 # FUEL PUMP 24, ATA 28
@@ -2411,13 +2512,14 @@ rating = "10 A"
 [[electrical.load]]
 id = "fuel_pump_24"
 bus = "fuel_pump_24_bus"
-power = "550 W"
+power = "920 W"
 on_when = "false"
 
 # FUEL VALVE 0, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_0_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_0"
@@ -2427,12 +2529,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_0"
 bus = "fuel_valve_0_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 1, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_1"
@@ -2442,12 +2545,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_1"
 bus = "fuel_valve_1_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 2, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_2"
@@ -2457,12 +2561,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_2"
 bus = "fuel_valve_2_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 3, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_3_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_3"
@@ -2472,12 +2577,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_3"
 bus = "fuel_valve_3_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 4, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_4_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_4"
@@ -2487,12 +2593,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_4"
 bus = "fuel_valve_4_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 5, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_5_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_5"
@@ -2502,12 +2609,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_5"
 bus = "fuel_valve_5_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 6, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_6_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_6"
@@ -2517,12 +2625,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_6"
 bus = "fuel_valve_6_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 7, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_7_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_7"
@@ -2532,12 +2641,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_7"
 bus = "fuel_valve_7_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 8, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_8_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_8"
@@ -2547,12 +2657,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_8"
 bus = "fuel_valve_8_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 9, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_9_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_9"
@@ -2562,12 +2673,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_9"
 bus = "fuel_valve_9_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 10, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_10_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_10"
@@ -2577,12 +2689,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_10"
 bus = "fuel_valve_10_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 11, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_11_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_11"
@@ -2592,12 +2705,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_11"
 bus = "fuel_valve_11_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 12, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_12_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_12"
@@ -2607,12 +2721,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_12"
 bus = "fuel_valve_12_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 13, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_13_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_13"
@@ -2622,12 +2737,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_13"
 bus = "fuel_valve_13_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 14, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_14_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_14"
@@ -2637,12 +2753,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_14"
 bus = "fuel_valve_14_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 15, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_15_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_15"
@@ -2652,12 +2769,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_15"
 bus = "fuel_valve_15_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 16, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_16_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_16"
@@ -2667,12 +2785,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_16"
 bus = "fuel_valve_16_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 17, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_17_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_17"
@@ -2682,12 +2801,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_17"
 bus = "fuel_valve_17_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 18, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_18_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_18"
@@ -2697,12 +2817,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_18"
 bus = "fuel_valve_18_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 19, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_19_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_19"
@@ -2712,12 +2833,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_19"
 bus = "fuel_valve_19_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 20, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_20_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_20"
@@ -2727,12 +2849,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_20"
 bus = "fuel_valve_20_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 21, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_21_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_21"
@@ -2742,12 +2865,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_21"
 bus = "fuel_valve_21_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 22, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_22_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_22"
@@ -2757,12 +2881,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_22"
 bus = "fuel_valve_22_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 23, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_23_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_23"
@@ -2772,12 +2897,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_23"
 bus = "fuel_valve_23_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 24, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_24_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_24"
@@ -2787,12 +2913,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_24"
 bus = "fuel_valve_24_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 25, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_25_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_25"
@@ -2802,12 +2929,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_25"
 bus = "fuel_valve_25_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 26, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_26_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_26"
@@ -2817,12 +2945,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_26"
 bus = "fuel_valve_26_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 27, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_27_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_27"
@@ -2832,12 +2961,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_27"
 bus = "fuel_valve_27_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 28, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_28_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_28"
@@ -2847,12 +2977,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_28"
 bus = "fuel_valve_28_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 29, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_29_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_29"
@@ -2862,12 +2993,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_29"
 bus = "fuel_valve_29_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 30, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_30_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_30"
@@ -2877,12 +3009,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_30"
 bus = "fuel_valve_30_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 31, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_31_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_31"
@@ -2892,12 +3025,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_31"
 bus = "fuel_valve_31_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 32, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_32_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_32"
@@ -2907,12 +3041,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_32"
 bus = "fuel_valve_32_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 33, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_33_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_33"
@@ -2922,12 +3057,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_33"
 bus = "fuel_valve_33_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 34, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_34_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_34"
@@ -2937,12 +3073,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_34"
 bus = "fuel_valve_34_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 35, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_35_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_35"
@@ -2952,12 +3089,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_35"
 bus = "fuel_valve_35_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 36, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_36_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_36"
@@ -2967,12 +3105,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_36"
 bus = "fuel_valve_36_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 37, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_37_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_37"
@@ -2982,12 +3121,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_37"
 bus = "fuel_valve_37_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 38, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_38_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_38"
@@ -2997,12 +3137,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_38"
 bus = "fuel_valve_38_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 39, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_39_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_39"
@@ -3012,12 +3153,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_39"
 bus = "fuel_valve_39_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 40, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_40_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_40"
@@ -3027,12 +3169,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_40"
 bus = "fuel_valve_40_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 41, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_41_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_41"
@@ -3042,12 +3185,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_41"
 bus = "fuel_valve_41_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 42, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_42_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_42"
@@ -3057,12 +3201,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_42"
 bus = "fuel_valve_42_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 43, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_43_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_43"
@@ -3072,12 +3217,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_43"
 bus = "fuel_valve_43_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 44, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_44_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_44"
@@ -3087,12 +3233,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_44"
 bus = "fuel_valve_44_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 45, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_45_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_45"
@@ -3102,12 +3249,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_45"
 bus = "fuel_valve_45_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 46, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_46_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_46"
@@ -3117,12 +3265,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_46"
 bus = "fuel_valve_46_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 47, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_47_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_47"
@@ -3132,12 +3281,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_47"
 bus = "fuel_valve_47_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 48, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_48_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_48"
@@ -3147,12 +3297,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_48"
 bus = "fuel_valve_48_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 49, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_49_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_49"
@@ -3162,12 +3313,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_49"
 bus = "fuel_valve_49_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 50, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_50_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_50"
@@ -3177,12 +3329,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_50"
 bus = "fuel_valve_50_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 51, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_51_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_51"
@@ -3192,12 +3345,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_51"
 bus = "fuel_valve_51_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 52, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_52_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_52"
@@ -3207,12 +3361,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_52"
 bus = "fuel_valve_52_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 53, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_53_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_53"
@@ -3222,12 +3377,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_53"
 bus = "fuel_valve_53_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 54, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_54_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_54"
@@ -3237,12 +3393,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_54"
 bus = "fuel_valve_54_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 55, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_55_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_55"
@@ -3252,12 +3409,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_55"
 bus = "fuel_valve_55_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 56, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_56_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_56"
@@ -3267,12 +3425,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_56"
 bus = "fuel_valve_56_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 57, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_57_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_57"
@@ -3282,12 +3441,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_57"
 bus = "fuel_valve_57_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 58, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_58_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_58"
@@ -3297,12 +3457,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_58"
 bus = "fuel_valve_58_bus"
-power = "5 W"
+power = "67 W"
 
 # FUEL VALVE 59, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_59_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_59"
@@ -3312,7 +3473,7 @@ rating = "3 A"
 [[electrical.load]]
 id = "fuel_valve_59"
 bus = "fuel_valve_59_bus"
-power = "5 W"
+power = "67 W"
 
 # LANDING LIGHTS, ATA 33
 [[electrical.bus]]
@@ -3327,7 +3488,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "light_landing"
 bus = "light_landing_bus"
-power = "410 W"
+power = "690 W"
 on_when = "land_sw.on"
 
 # TAXI LIGHTS, ATA 33
@@ -3343,7 +3504,7 @@ rating = "3 A"
 [[electrical.load]]
 id = "light_taxi"
 bus = "light_taxi_bus"
-power = "170 W"
+power = "276 W"
 on_when = "taxi_sw.on || turnoff_sw.on"
 
 # NAV LIGHTS, ATA 33
@@ -3359,7 +3520,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "light_nav"
 bus = "light_nav_bus"
-power = "30 W"
+power = "92 W"
 on_when = "nav_sw.on"
 
 # BEACON LIGHTS, ATA 33
@@ -3375,7 +3536,7 @@ rating = "2 A"
 [[electrical.load]]
 id = "light_beacon"
 bus = "light_beacon_bus"
-power = "60 W"
+power = "184 W"
 on_when = "beacon_sw.on"
 
 # STROBE LIGHTS, ATA 33
@@ -3391,7 +3552,7 @@ rating = "4 A"
 [[electrical.load]]
 id = "light_strobe"
 bus = "light_strobe_bus"
-power = "110 W"
+power = "368 W"
 on_when = "strobe_sw.on"
 
 # LOGO LIGHTS, ATA 33
@@ -3407,7 +3568,7 @@ rating = "2 A"
 [[electrical.load]]
 id = "light_logo"
 bus = "light_logo_bus"
-power = "60 W"
+power = "184 W"
 on_when = "logo_sw.on"
 
 # WING LIGHTS, ATA 33
@@ -3423,13 +3584,14 @@ rating = "2 A"
 [[electrical.load]]
 id = "light_wing"
 bus = "light_wing_bus"
-power = "60 W"
+power = "184 W"
 on_when = "wing_light_sw.on"
 
 # RECOGNITION LIGHTS, ATA 33
 [[electrical.bus]]
 id = "light_recognition_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_light_recognition"
@@ -3439,7 +3601,7 @@ rating = "2 A"
 [[electrical.load]]
 id = "light_recognition"
 bus = "light_recognition_bus"
-power = "10 W"
+power = "45 W"
 on_when = "nav_sw.on"
 
 # CABIN LIGHTS, ATA 33
@@ -3455,7 +3617,7 @@ rating = "3 A"
 [[electrical.load]]
 id = "light_cabin"
 bus = "light_cabin_bus"
-power = "80 W"
+power = "276 W"
 on_when = "commercial_pb.pressed"
 shed_priority = 5
 
@@ -3463,6 +3625,7 @@ shed_priority = 5
 [[electrical.bus]]
 id = "light_panel_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_light_panel"
@@ -3472,12 +3635,13 @@ rating = "2 A"
 [[electrical.load]]
 id = "light_panel"
 bus = "light_panel_bus"
-power = "10 W"
+power = "45 W"
 
 # PEDESTAL LIGHTS, ATA 33
 [[electrical.bus]]
 id = "light_pedestal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_light_pedestal"
@@ -3487,12 +3651,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "light_pedestal"
 bus = "light_pedestal_bus"
-power = "10 W"
+power = "22 W"
 
 # GLARESHIELD LIGHTS, ATA 33
 [[electrical.bus]]
 id = "light_glareshield_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_light_glareshield"
@@ -3502,7 +3667,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "light_glareshield"
 bus = "light_glareshield_bus"
-power = "10 W"
+power = "22 W"
 
 # WINDSHIELD HEAT 1, ATA 30
 [[electrical.bus]]
@@ -3517,7 +3682,7 @@ rating = "25 A"
 [[electrical.load]]
 id = "windshield_heat_1"
 bus = "windshield_heat_1_bus"
-power = "1.38 kW"
+power = "2 kW"
 on_when = "window_heat_pb.pressed || !air.on_ground"
 shed_priority = 1
 
@@ -3534,7 +3699,7 @@ rating = "25 A"
 [[electrical.load]]
 id = "windshield_heat_2"
 bus = "windshield_heat_2_bus"
-power = "1.38 kW"
+power = "2 kW"
 on_when = "window_heat_pb.pressed || !air.on_ground"
 shed_priority = 1
 
@@ -3551,7 +3716,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "pitot_heat_1"
 bus = "pitot_heat_1_bus"
-power = "210 W"
+power = "690 W"
 on_when = "probe_heat_pb.pressed || !air.on_ground || eng1.running || eng2.running || eng3.running || eng4.running"
 
 # PITOT HEAT 2, ATA 30
@@ -3567,7 +3732,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "pitot_heat_2"
 bus = "pitot_heat_2_bus"
-power = "210 W"
+power = "690 W"
 on_when = "probe_heat_pb.pressed || !air.on_ground || eng1.running || eng2.running || eng3.running || eng4.running"
 
 # PITOT HEAT 3, ATA 30
@@ -3583,13 +3748,14 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "pitot_heat_3"
 bus = "pitot_heat_3_bus"
-power = "210 W"
+power = "690 W"
 on_when = "probe_heat_pb.pressed || !air.on_ground || eng1.running || eng2.running || eng3.running || eng4.running"
 
 # AOA HEAT 1, ATA 30
 [[electrical.bus]]
 id = "aoa_heat_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_aoa_heat_1"
@@ -3599,13 +3765,14 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "aoa_heat_1"
 bus = "aoa_heat_1_bus"
-power = "50 W"
+power = "168 W"
 on_when = "probe_heat_pb.pressed || !air.on_ground || eng1.running || eng2.running || eng3.running || eng4.running"
 
 # AOA HEAT 2, ATA 30
 [[electrical.bus]]
 id = "aoa_heat_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_aoa_heat_2"
@@ -3615,13 +3782,14 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "aoa_heat_2"
 bus = "aoa_heat_2_bus"
-power = "50 W"
+power = "168 W"
 on_when = "probe_heat_pb.pressed || !air.on_ground || eng1.running || eng2.running || eng3.running || eng4.running"
 
 # TAT PROBE HEAT, ATA 30
 [[electrical.bus]]
 id = "tat_heat_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_tat_heat"
@@ -3631,7 +3799,7 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "tat_heat"
 bus = "tat_heat_bus"
-power = "50 W"
+power = "168 W"
 on_when = "probe_heat_pb.pressed || !air.on_ground || eng1.running || eng2.running || eng3.running || eng4.running"
 
 # FWD UPPER GALLEY, ATA 25
@@ -3647,7 +3815,7 @@ rating = "90 A"
 [[electrical.load]]
 id = "galley_fwd_upper"
 bus = "galley_fwd_upper_bus"
-power = "4.97 kW"
+power = "8.28 kW"
 on_when = "galley_pb.pressed"
 shed_priority = 9
 
@@ -3664,7 +3832,7 @@ rating = "90 A"
 [[electrical.load]]
 id = "galley_aft_upper"
 bus = "galley_aft_upper_bus"
-power = "4.97 kW"
+power = "8.28 kW"
 on_when = "galley_pb.pressed"
 shed_priority = 9
 
@@ -3681,7 +3849,7 @@ rating = "125 A"
 [[electrical.load]]
 id = "galley_fwd_main"
 bus = "galley_fwd_main_bus"
-power = "6.9 kW"
+power = "11.5 kW"
 on_when = "galley_pb.pressed"
 shed_priority = 9
 
@@ -3698,7 +3866,7 @@ rating = "125 A"
 [[electrical.load]]
 id = "galley_mid_main"
 bus = "galley_mid_main_bus"
-power = "6.9 kW"
+power = "11.5 kW"
 on_when = "galley_pb.pressed"
 shed_priority = 9
 
@@ -3715,7 +3883,7 @@ rating = "125 A"
 [[electrical.load]]
 id = "galley_aft_main"
 bus = "galley_aft_main_bus"
-power = "6.9 kW"
+power = "11.5 kW"
 on_when = "galley_pb.pressed"
 shed_priority = 9
 
@@ -3732,7 +3900,7 @@ rating = "35 A"
 [[electrical.load]]
 id = "galley_lower"
 bus = "galley_lower_bus"
-power = "1.93 kW"
+power = "3.22 kW"
 on_when = "galley_pb.pressed"
 shed_priority = 9
 
@@ -3749,7 +3917,7 @@ rating = "35 A"
 [[electrical.load]]
 id = "ife_upper_deck"
 bus = "ife_upper_deck_bus"
-power = "1.93 kW"
+power = "3.22 kW"
 on_when = "commercial_pb.pressed"
 shed_priority = 7
 
@@ -3766,7 +3934,7 @@ rating = "50 A"
 [[electrical.load]]
 id = "ife_main_fwd"
 bus = "ife_main_fwd_bus"
-power = "2.76 kW"
+power = "4.6 kW"
 on_when = "commercial_pb.pressed"
 shed_priority = 7
 
@@ -3783,7 +3951,7 @@ rating = "60 A"
 [[electrical.load]]
 id = "ife_main_mid"
 bus = "ife_main_mid_bus"
-power = "3.31 kW"
+power = "5.52 kW"
 on_when = "commercial_pb.pressed"
 shed_priority = 7
 
@@ -3800,7 +3968,7 @@ rating = "50 A"
 [[electrical.load]]
 id = "ife_main_aft"
 bus = "ife_main_aft_bus"
-power = "2.76 kW"
+power = "4.6 kW"
 on_when = "commercial_pb.pressed"
 shed_priority = 7
 
@@ -3817,7 +3985,7 @@ rating = "50 A"
 [[electrical.load]]
 id = "ife_server"
 bus = "ife_server_bus"
-power = "1.38 kW"
+power = "4.6 kW"
 on_when = "commercial_pb.pressed"
 shed_priority = 7
 
@@ -3825,6 +3993,7 @@ shed_priority = 7
 [[electrical.bus]]
 id = "fms_1_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fms_1_normal"
@@ -3834,12 +4003,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fms_1_normal"
 bus = "fms_1_normal_bus"
-power = "20 W"
+power = "67 W"
 
 # FMS 1 2ND FEED, ATA 34
 [[electrical.bus]]
 id = "fms_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fms_1_2nd"
@@ -3849,12 +4019,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fms_1_2nd"
 bus = "fms_1_2nd_bus"
-power = "20 W"
+power = "67 W"
 
 # FMS 2 NORMAL FEED, ATA 34
 [[electrical.bus]]
 id = "fms_2_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fms_2_normal"
@@ -3864,12 +4035,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fms_2_normal"
 bus = "fms_2_normal_bus"
-power = "20 W"
+power = "67 W"
 
 # FMS 2 2ND FEED, ATA 34
 [[electrical.bus]]
 id = "fms_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fms_2_2nd"
@@ -3879,12 +4051,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fms_2_2nd"
 bus = "fms_2_2nd_bus"
-power = "20 W"
+power = "67 W"
 
 # FMS 3 NORMAL FEED, ATA 34
 [[electrical.bus]]
 id = "fms_3_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fms_3_normal"
@@ -3894,12 +4067,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "fms_3_normal"
 bus = "fms_3_normal_bus"
-power = "20 W"
+power = "67 W"
 
 # FMS 3 2ND FEED, ATA 34
 [[electrical.bus]]
 id = "fms_3_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fms_3_2nd"
@@ -3909,7 +4083,7 @@ rating = "3 A"
 [[electrical.load]]
 id = "fms_3_2nd"
 bus = "fms_3_2nd_bus"
-power = "20 W"
+power = "67 W"
 
 # ADIRU 1 NORMAL FEED, ATA 34
 [[electrical.bus]]
@@ -3924,12 +4098,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "adirs_1_normal"
 bus = "adirs_1_normal_bus"
-power = "30 W"
+power = "92 W"
 
 # ADIRU 1 2ND FEED, ATA 34
 [[electrical.bus]]
 id = "adirs_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_adirs_1_2nd"
@@ -3939,7 +4114,7 @@ rating = "4 A"
 [[electrical.load]]
 id = "adirs_1_2nd"
 bus = "adirs_1_2nd_bus"
-power = "30 W"
+power = "90 W"
 
 # ADIRU 2 NORMAL FEED, ATA 34
 [[electrical.bus]]
@@ -3954,12 +4129,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "adirs_2_normal"
 bus = "adirs_2_normal_bus"
-power = "30 W"
+power = "92 W"
 
 # ADIRU 2 2ND FEED, ATA 34
 [[electrical.bus]]
 id = "adirs_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_adirs_2_2nd"
@@ -3969,7 +4145,7 @@ rating = "4 A"
 [[electrical.load]]
 id = "adirs_2_2nd"
 bus = "adirs_2_2nd_bus"
-power = "30 W"
+power = "90 W"
 
 # ADIRU 3 NORMAL FEED, ATA 34
 [[electrical.bus]]
@@ -3984,12 +4160,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "adirs_3_normal"
 bus = "adirs_3_normal_bus"
-power = "30 W"
+power = "92 W"
 
 # ADIRU 3 2ND FEED, ATA 34
 [[electrical.bus]]
 id = "adirs_3_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_adirs_3_2nd"
@@ -3999,12 +4176,13 @@ rating = "4 A"
 [[electrical.load]]
 id = "adirs_3_2nd"
 bus = "adirs_3_2nd_bus"
-power = "30 W"
+power = "90 W"
 
 # TCAS COMPUTER NORMAL FEED, ATA 34
 [[electrical.bus]]
 id = "tcas_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_tcas_normal"
@@ -4014,12 +4192,13 @@ rating = "4 A"
 [[electrical.load]]
 id = "tcas_normal"
 bus = "tcas_normal_bus"
-power = "30 W"
+power = "90 W"
 
 # TCAS COMPUTER 2ND FEED, ATA 34
 [[electrical.bus]]
 id = "tcas_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_tcas_2nd"
@@ -4029,12 +4208,13 @@ rating = "4 A"
 [[electrical.load]]
 id = "tcas_2nd"
 bus = "tcas_2nd_bus"
-power = "30 W"
+power = "90 W"
 
 # TRANSPONDER 1, ATA 34
 [[electrical.bus]]
 id = "xpdr_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_xpdr_1"
@@ -4044,12 +4224,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "xpdr_1"
 bus = "xpdr_1_bus"
-power = "20 W"
+power = "67 W"
 
 # TRANSPONDER 2, ATA 34
 [[electrical.bus]]
 id = "xpdr_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_xpdr_2"
@@ -4059,12 +4240,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "xpdr_2"
 bus = "xpdr_2_bus"
-power = "20 W"
+power = "67 W"
 
 # VHF 1, ATA 23
 [[electrical.bus]]
 id = "vhf_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_vhf_1"
@@ -4074,12 +4256,13 @@ rating = "2 A"
 [[electrical.load]]
 id = "vhf_1"
 bus = "vhf_1_bus"
-power = "10 W"
+power = "45 W"
 
 # VHF 2, ATA 23
 [[electrical.bus]]
 id = "vhf_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_vhf_2"
@@ -4089,7 +4272,7 @@ rating = "2 A"
 [[electrical.load]]
 id = "vhf_2"
 bus = "vhf_2_bus"
-power = "10 W"
+power = "45 W"
 
 # WEATHER RADAR, ATA 34
 [[electrical.bus]]
@@ -4104,12 +4287,13 @@ rating = "2 A"
 [[electrical.load]]
 id = "wxr"
 bus = "wxr_bus"
-power = "60 W"
+power = "184 W"
 
 # BLEED ENG 1 VALVES, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_1"
@@ -4119,12 +4303,13 @@ rating = "10 A"
 [[electrical.load]]
 id = "bleed_eng_1"
 bus = "bleed_eng_1_bus"
-power = "70 W"
+power = "224 W"
 
 # BLEED ENG 2 VALVES, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_2"
@@ -4134,12 +4319,13 @@ rating = "10 A"
 [[electrical.load]]
 id = "bleed_eng_2"
 bus = "bleed_eng_2_bus"
-power = "70 W"
+power = "224 W"
 
 # BLEED ENG 3 VALVES, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_3_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_3"
@@ -4149,12 +4335,13 @@ rating = "10 A"
 [[electrical.load]]
 id = "bleed_eng_3"
 bus = "bleed_eng_3_bus"
-power = "70 W"
+power = "224 W"
 
 # BLEED ENG 4 VALVES, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_4_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_4"
@@ -4164,12 +4351,13 @@ rating = "10 A"
 [[electrical.load]]
 id = "bleed_eng_4"
 bus = "bleed_eng_4_bus"
-power = "70 W"
+power = "224 W"
 
 # EXTERNAL POWER CONTACTOR CONTROL, ATA 24
 [[electrical.bus]]
 id = "ext_pwr_contactor_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ext_pwr_contactor"
@@ -4179,12 +4367,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "ext_pwr_contactor"
 bus = "ext_pwr_contactor_bus"
-power = "5 W"
+power = "22 W"
 
 # BATTERY 1 CHARGE LIMITER, ATA 24
 [[electrical.bus]]
 id = "bat_charge_limiter_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bat_charge_limiter_1"
@@ -4194,12 +4383,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "bat_charge_limiter_1"
 bus = "bat_charge_limiter_1_bus"
-power = "5 W"
+power = "22 W"
 
 # BATTERY 2 CHARGE LIMITER, ATA 24
 [[electrical.bus]]
 id = "bat_charge_limiter_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bat_charge_limiter_2"
@@ -4209,12 +4399,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "bat_charge_limiter_2"
 bus = "bat_charge_limiter_2_bus"
-power = "5 W"
+power = "22 W"
 
 # SATCOM, ATA 23
 [[electrical.bus]]
 id = "satcom_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_satcom"
@@ -4224,12 +4415,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "satcom"
 bus = "satcom_bus"
-power = "30 W"
+power = "112 W"
 
 # HF 1, ATA 23
 [[electrical.bus]]
 id = "hf_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_hf_1"
@@ -4239,12 +4431,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "hf_1"
 bus = "hf_1_bus"
-power = "30 W"
+power = "112 W"
 
 # HF 2, ATA 23
 [[electrical.bus]]
 id = "hf_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_hf_2"
@@ -4254,12 +4447,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "hf_2"
 bus = "hf_2_bus"
-power = "30 W"
+power = "112 W"
 
 # ACARS MU, ATA 23
 [[electrical.bus]]
 id = "acars_mu_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_acars_mu"
@@ -4269,7 +4463,7 @@ rating = "3 A"
 [[electrical.load]]
 id = "acars_mu"
 bus = "acars_mu_bus"
-power = "20 W"
+power = "67 W"
 
 # PA AMPLIFIER, ATA 23
 [[electrical.bus]]
@@ -4284,12 +4478,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "pa_amplifier"
 bus = "pa_amplifier_bus"
-power = "80 W"
+power = "276 W"
 
 # INTERPHONE, ATA 23
 [[electrical.bus]]
 id = "interphone_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_interphone"
@@ -4299,12 +4494,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "interphone"
 bus = "interphone_bus"
-power = "20 W"
+power = "67 W"
 
 # DFDR, ATA 31
 [[electrical.bus]]
 id = "dfdr_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_dfdr"
@@ -4314,12 +4510,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "dfdr"
 bus = "dfdr_bus"
-power = "20 W"
+power = "67 W"
 
 # CVR, ATA 31
 [[electrical.bus]]
 id = "cvr_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cvr"
@@ -4329,12 +4526,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "cvr"
 bus = "cvr_bus"
-power = "20 W"
+power = "67 W"
 
 # QAR, ATA 31
 [[electrical.bus]]
 id = "qar_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_qar"
@@ -4344,12 +4542,13 @@ rating = "2 A"
 [[electrical.load]]
 id = "qar"
 bus = "qar_bus"
-power = "10 W"
+power = "45 W"
 
 # CREW OXYGEN SHUTOFF VALVE, ATA 35
 [[electrical.bus]]
 id = "crew_o2_shutoff_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_crew_o2_shutoff"
@@ -4359,12 +4558,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "crew_o2_shutoff"
 bus = "crew_o2_shutoff_bus"
-power = "5 W"
+power = "67 W"
 
 # PAX OXYGEN GENERATOR CONTROL, ATA 35
 [[electrical.bus]]
 id = "pax_o2_gen_ctl_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pax_o2_gen_ctl"
@@ -4374,12 +4574,13 @@ rating = "2 A"
 [[electrical.load]]
 id = "pax_o2_gen_ctl"
 bus = "pax_o2_gen_ctl_bus"
-power = "5 W"
+power = "45 W"
 
 # OXYGEN PRESSURE TRANSDUCER, ATA 35
 [[electrical.bus]]
 id = "o2_pressure_xducer_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_o2_pressure_xducer"
@@ -4389,12 +4590,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "o2_pressure_xducer"
 bus = "o2_pressure_xducer_bus"
-power = "5 W"
+power = "22 W"
 
 # APU ECU CHANNEL A, ATA 49
 [[electrical.bus]]
 id = "apu_ecu_a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_apu_ecu_a"
@@ -4404,13 +4606,14 @@ rating = "3 A"
 [[electrical.load]]
 id = "apu_ecu_a"
 bus = "apu_ecu_a_bus"
-power = "20 W"
+power = "67 W"
 on_when = "apu_master_pb.pressed"
 
 # APU ECU CHANNEL B, ATA 49
 [[electrical.bus]]
 id = "apu_ecu_b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_apu_ecu_b"
@@ -4420,13 +4623,14 @@ rating = "3 A"
 [[electrical.load]]
 id = "apu_ecu_b"
 bus = "apu_ecu_b_bus"
-power = "20 W"
+power = "67 W"
 on_when = "apu_master_pb.pressed"
 
 # APU FUEL SHUTOFF VALVE, ATA 49
 [[electrical.bus]]
 id = "apu_fuel_shutoff_valve_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_apu_fuel_shutoff_valve"
@@ -4436,13 +4640,14 @@ rating = "3 A"
 [[electrical.load]]
 id = "apu_fuel_shutoff_valve"
 bus = "apu_fuel_shutoff_valve_bus"
-power = "5 W"
+power = "67 W"
 on_when = "apu_master_pb.pressed"
 
 # APU START CONTACTOR, ATA 49
 [[electrical.bus]]
 id = "apu_start_contactor_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_apu_start_contactor"
@@ -4452,13 +4657,14 @@ rating = "1 A"
 [[electrical.load]]
 id = "apu_start_contactor"
 bus = "apu_start_contactor_bus"
-power = "5 W"
+power = "22 W"
 on_when = "apu.starting"
 
 # FADEC 1 CHANNEL A, ATA 73
 [[electrical.bus]]
 id = "fadec_1a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_1a"
@@ -4468,13 +4674,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_1a"
 bus = "fadec_1a_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng1_master.on || eng_mode.position != 1 || eng1.running"
 
 # FADEC 1 CHANNEL B, ATA 73
 [[electrical.bus]]
 id = "fadec_1b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_1b"
@@ -4484,13 +4691,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_1b"
 bus = "fadec_1b_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng1_master.on || eng_mode.position != 1 || eng1.running"
 
 # FADEC 2 CHANNEL A, ATA 73
 [[electrical.bus]]
 id = "fadec_2a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_2a"
@@ -4500,13 +4708,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_2a"
 bus = "fadec_2a_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng2_master.on || eng_mode.position != 1 || eng2.running"
 
 # FADEC 2 CHANNEL B, ATA 73
 [[electrical.bus]]
 id = "fadec_2b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_2b"
@@ -4516,13 +4725,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_2b"
 bus = "fadec_2b_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng2_master.on || eng_mode.position != 1 || eng2.running"
 
 # FADEC 3 CHANNEL A, ATA 73
 [[electrical.bus]]
 id = "fadec_3a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_3a"
@@ -4532,13 +4742,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_3a"
 bus = "fadec_3a_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng3_master.on || eng_mode.position != 1 || eng3.running"
 
 # FADEC 3 CHANNEL B, ATA 73
 [[electrical.bus]]
 id = "fadec_3b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_3b"
@@ -4548,13 +4759,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_3b"
 bus = "fadec_3b_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng3_master.on || eng_mode.position != 1 || eng3.running"
 
 # FADEC 4 CHANNEL A, ATA 73
 [[electrical.bus]]
 id = "fadec_4a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_4a"
@@ -4564,13 +4776,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_4a"
 bus = "fadec_4a_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng4_master.on || eng_mode.position != 1 || eng4.running"
 
 # FADEC 4 CHANNEL B, ATA 73
 [[electrical.bus]]
 id = "fadec_4b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fadec_4b"
@@ -4580,13 +4793,14 @@ rating = "4 A"
 [[electrical.load]]
 id = "fadec_4b"
 bus = "fadec_4b_bus"
-power = "30 W"
+power = "90 W"
 on_when = "eng4_master.on || eng_mode.position != 1 || eng4.running"
 
 # IGNITION 1 EXCITER A, ATA 74
 [[electrical.bus]]
 id = "ignition_1a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_1a"
@@ -4596,13 +4810,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_1a"
 bus = "ignition_1a_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec1.ignition"
 
 # IGNITION 1 EXCITER B, ATA 74
 [[electrical.bus]]
 id = "ignition_1b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_1b"
@@ -4612,13 +4827,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_1b"
 bus = "ignition_1b_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec1.ignition"
 
 # IGNITION 2 EXCITER A, ATA 74
 [[electrical.bus]]
 id = "ignition_2a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_2a"
@@ -4628,13 +4844,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_2a"
 bus = "ignition_2a_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec2.ignition"
 
 # IGNITION 2 EXCITER B, ATA 74
 [[electrical.bus]]
 id = "ignition_2b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_2b"
@@ -4644,13 +4861,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_2b"
 bus = "ignition_2b_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec2.ignition"
 
 # IGNITION 3 EXCITER A, ATA 74
 [[electrical.bus]]
 id = "ignition_3a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_3a"
@@ -4660,13 +4878,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_3a"
 bus = "ignition_3a_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec3.ignition"
 
 # IGNITION 3 EXCITER B, ATA 74
 [[electrical.bus]]
 id = "ignition_3b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_3b"
@@ -4676,13 +4895,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_3b"
 bus = "ignition_3b_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec3.ignition"
 
 # IGNITION 4 EXCITER A, ATA 74
 [[electrical.bus]]
 id = "ignition_4a_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_4a"
@@ -4692,13 +4912,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_4a"
 bus = "ignition_4a_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec4.ignition"
 
 # IGNITION 4 EXCITER B, ATA 74
 [[electrical.bus]]
 id = "ignition_4b_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_ignition_4b"
@@ -4708,13 +4929,14 @@ rating = "15 A"
 [[electrical.load]]
 id = "ignition_4b"
 bus = "ignition_4b_bus"
-power = "100 W"
+power = "336 W"
 on_when = "fadec4.ignition"
 
 # ENG FIRE BOTTLE 1 SQUIB 1, ATA 26
 [[electrical.bus]]
 id = "eng_fire_bottle_1_squib_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_eng_fire_bottle_1_squib_1"
@@ -4724,12 +4946,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "eng_fire_bottle_1_squib_1"
 bus = "eng_fire_bottle_1_squib_1_bus"
-power = "5 W"
+power = "22 W"
 
 # ENG FIRE BOTTLE 1 SQUIB 2, ATA 26
 [[electrical.bus]]
 id = "eng_fire_bottle_1_squib_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_eng_fire_bottle_1_squib_2"
@@ -4739,12 +4962,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "eng_fire_bottle_1_squib_2"
 bus = "eng_fire_bottle_1_squib_2_bus"
-power = "5 W"
+power = "22 W"
 
 # ENG FIRE BOTTLE 2 SQUIB 1, ATA 26
 [[electrical.bus]]
 id = "eng_fire_bottle_2_squib_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_eng_fire_bottle_2_squib_1"
@@ -4754,12 +4978,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "eng_fire_bottle_2_squib_1"
 bus = "eng_fire_bottle_2_squib_1_bus"
-power = "5 W"
+power = "22 W"
 
 # ENG FIRE BOTTLE 2 SQUIB 2, ATA 26
 [[electrical.bus]]
 id = "eng_fire_bottle_2_squib_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_eng_fire_bottle_2_squib_2"
@@ -4769,12 +4994,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "eng_fire_bottle_2_squib_2"
 bus = "eng_fire_bottle_2_squib_2_bus"
-power = "5 W"
+power = "22 W"
 
 # APU FIRE BOTTLE SQUIB 1, ATA 26
 [[electrical.bus]]
 id = "apu_fire_bottle_squib_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_apu_fire_bottle_squib_1"
@@ -4784,12 +5010,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "apu_fire_bottle_squib_1"
 bus = "apu_fire_bottle_squib_1_bus"
-power = "5 W"
+power = "22 W"
 
 # APU FIRE BOTTLE SQUIB 2, ATA 26
 [[electrical.bus]]
 id = "apu_fire_bottle_squib_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_apu_fire_bottle_squib_2"
@@ -4799,12 +5026,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "apu_fire_bottle_squib_2"
 bus = "apu_fire_bottle_squib_2_bus"
-power = "5 W"
+power = "22 W"
 
 # RAT DEPLOY SOLENOID, ATA 29
 [[electrical.bus]]
 id = "rat_deploy_solenoid_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_rat_deploy_solenoid"
@@ -4814,12 +5042,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "rat_deploy_solenoid"
 bus = "rat_deploy_solenoid_bus"
-power = "5 W"
+power = "112 W"
 
 # FWD CARGO DOOR ACTUATOR CONTROL, ATA 52
 [[electrical.bus]]
 id = "cargo_door_fwd_actuator_ctl_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cargo_door_fwd_actuator_ctl"
@@ -4829,13 +5058,14 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cargo_door_fwd_actuator_ctl"
 bus = "cargo_door_fwd_actuator_ctl_bus"
-power = "5 W"
+power = "168 W"
 on_when = "false"
 
 # AFT CARGO DOOR ACTUATOR CONTROL, ATA 52
 [[electrical.bus]]
 id = "cargo_door_aft_actuator_ctl_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cargo_door_aft_actuator_ctl"
@@ -4845,13 +5075,14 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cargo_door_aft_actuator_ctl"
 bus = "cargo_door_aft_actuator_ctl_bus"
-power = "5 W"
+power = "168 W"
 on_when = "false"
 
 # EMER LIGHTING BATTERY CHARGER 1, ATA 33
 [[electrical.bus]]
 id = "emer_lighting_charger_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_emer_lighting_charger_1"
@@ -4861,12 +5092,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "emer_lighting_charger_1"
 bus = "emer_lighting_charger_1_bus"
-power = "30 W"
+power = "112 W"
 
 # EMER LIGHTING BATTERY CHARGER 2, ATA 33
 [[electrical.bus]]
 id = "emer_lighting_charger_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_emer_lighting_charger_2"
@@ -4876,7 +5108,7 @@ rating = "5 A"
 [[electrical.load]]
 id = "emer_lighting_charger_2"
 bus = "emer_lighting_charger_2_bus"
-power = "30 W"
+power = "112 W"
 
 # EXTERIOR SERVICE LIGHTING, ATA 33
 [[electrical.bus]]
@@ -4891,13 +5123,14 @@ rating = "2 A"
 [[electrical.load]]
 id = "ext_service_lighting"
 bus = "ext_service_lighting_bus"
-power = "60 W"
+power = "184 W"
 on_when = "false"
 
 # FUEL VALVE 0 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_0_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_0_pos_ind"
@@ -4907,12 +5140,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_0_pos_ind"
 bus = "fuel_valve_0_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 1 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_1_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_1_pos_ind"
@@ -4922,12 +5156,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_1_pos_ind"
 bus = "fuel_valve_1_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 2 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_2_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_2_pos_ind"
@@ -4937,12 +5172,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_2_pos_ind"
 bus = "fuel_valve_2_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 3 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_3_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_3_pos_ind"
@@ -4952,12 +5188,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_3_pos_ind"
 bus = "fuel_valve_3_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 4 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_4_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_4_pos_ind"
@@ -4967,12 +5204,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_4_pos_ind"
 bus = "fuel_valve_4_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 5 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_5_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_5_pos_ind"
@@ -4982,12 +5220,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_5_pos_ind"
 bus = "fuel_valve_5_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 6 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_6_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_6_pos_ind"
@@ -4997,12 +5236,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_6_pos_ind"
 bus = "fuel_valve_6_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 7 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_7_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_7_pos_ind"
@@ -5012,12 +5252,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_7_pos_ind"
 bus = "fuel_valve_7_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 8 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_8_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_8_pos_ind"
@@ -5027,12 +5268,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_8_pos_ind"
 bus = "fuel_valve_8_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 9 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_9_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_9_pos_ind"
@@ -5042,12 +5284,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_9_pos_ind"
 bus = "fuel_valve_9_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 10 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_10_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_10_pos_ind"
@@ -5057,12 +5300,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_10_pos_ind"
 bus = "fuel_valve_10_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 11 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_11_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_11_pos_ind"
@@ -5072,12 +5316,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_11_pos_ind"
 bus = "fuel_valve_11_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 12 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_12_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_12_pos_ind"
@@ -5087,12 +5332,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_12_pos_ind"
 bus = "fuel_valve_12_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 13 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_13_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_13_pos_ind"
@@ -5102,12 +5348,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_13_pos_ind"
 bus = "fuel_valve_13_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 14 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_14_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_14_pos_ind"
@@ -5117,12 +5364,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_14_pos_ind"
 bus = "fuel_valve_14_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 15 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_15_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_15_pos_ind"
@@ -5132,12 +5380,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_15_pos_ind"
 bus = "fuel_valve_15_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 16 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_16_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_16_pos_ind"
@@ -5147,12 +5396,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_16_pos_ind"
 bus = "fuel_valve_16_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 17 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_17_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_17_pos_ind"
@@ -5162,12 +5412,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_17_pos_ind"
 bus = "fuel_valve_17_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 18 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_18_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_18_pos_ind"
@@ -5177,12 +5428,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_18_pos_ind"
 bus = "fuel_valve_18_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 19 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_19_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_19_pos_ind"
@@ -5192,12 +5444,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_19_pos_ind"
 bus = "fuel_valve_19_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 20 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_20_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_20_pos_ind"
@@ -5207,12 +5460,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_20_pos_ind"
 bus = "fuel_valve_20_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 21 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_21_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_21_pos_ind"
@@ -5222,12 +5476,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_21_pos_ind"
 bus = "fuel_valve_21_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 22 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_22_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_22_pos_ind"
@@ -5237,12 +5492,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_22_pos_ind"
 bus = "fuel_valve_22_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 23 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_23_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_23_pos_ind"
@@ -5252,12 +5508,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_23_pos_ind"
 bus = "fuel_valve_23_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 24 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_24_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_24_pos_ind"
@@ -5267,12 +5524,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_24_pos_ind"
 bus = "fuel_valve_24_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 25 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_25_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_25_pos_ind"
@@ -5282,12 +5540,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_25_pos_ind"
 bus = "fuel_valve_25_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 26 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_26_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_26_pos_ind"
@@ -5297,12 +5556,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_26_pos_ind"
 bus = "fuel_valve_26_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 27 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_27_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_27_pos_ind"
@@ -5312,12 +5572,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_27_pos_ind"
 bus = "fuel_valve_27_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 28 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_28_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_28_pos_ind"
@@ -5327,12 +5588,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_28_pos_ind"
 bus = "fuel_valve_28_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 29 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_29_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_29_pos_ind"
@@ -5342,12 +5604,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_29_pos_ind"
 bus = "fuel_valve_29_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 30 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_30_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_30_pos_ind"
@@ -5357,12 +5620,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_30_pos_ind"
 bus = "fuel_valve_30_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 31 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_31_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_31_pos_ind"
@@ -5372,12 +5636,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_31_pos_ind"
 bus = "fuel_valve_31_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 32 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_32_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_32_pos_ind"
@@ -5387,12 +5652,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_32_pos_ind"
 bus = "fuel_valve_32_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 33 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_33_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_33_pos_ind"
@@ -5402,12 +5668,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_33_pos_ind"
 bus = "fuel_valve_33_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 34 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_34_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_34_pos_ind"
@@ -5417,12 +5684,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_34_pos_ind"
 bus = "fuel_valve_34_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 35 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_35_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_35_pos_ind"
@@ -5432,12 +5700,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_35_pos_ind"
 bus = "fuel_valve_35_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 36 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_36_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_36_pos_ind"
@@ -5447,12 +5716,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_36_pos_ind"
 bus = "fuel_valve_36_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 37 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_37_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_37_pos_ind"
@@ -5462,12 +5732,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_37_pos_ind"
 bus = "fuel_valve_37_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 38 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_38_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_38_pos_ind"
@@ -5477,12 +5748,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_38_pos_ind"
 bus = "fuel_valve_38_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 39 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_39_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_39_pos_ind"
@@ -5492,12 +5764,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_39_pos_ind"
 bus = "fuel_valve_39_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 40 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_40_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_40_pos_ind"
@@ -5507,12 +5780,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_40_pos_ind"
 bus = "fuel_valve_40_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 41 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_41_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_41_pos_ind"
@@ -5522,12 +5796,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_41_pos_ind"
 bus = "fuel_valve_41_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 42 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_42_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_42_pos_ind"
@@ -5537,12 +5812,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_42_pos_ind"
 bus = "fuel_valve_42_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 43 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_43_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_43_pos_ind"
@@ -5552,12 +5828,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_43_pos_ind"
 bus = "fuel_valve_43_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 44 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_44_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_44_pos_ind"
@@ -5567,12 +5844,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_44_pos_ind"
 bus = "fuel_valve_44_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 45 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_45_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_45_pos_ind"
@@ -5582,12 +5860,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_45_pos_ind"
 bus = "fuel_valve_45_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 46 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_46_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_46_pos_ind"
@@ -5597,12 +5876,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_46_pos_ind"
 bus = "fuel_valve_46_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 47 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_47_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_47_pos_ind"
@@ -5612,12 +5892,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_47_pos_ind"
 bus = "fuel_valve_47_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 48 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_48_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_48_pos_ind"
@@ -5627,12 +5908,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_48_pos_ind"
 bus = "fuel_valve_48_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 49 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_49_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_49_pos_ind"
@@ -5642,12 +5924,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_49_pos_ind"
 bus = "fuel_valve_49_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 50 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_50_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_50_pos_ind"
@@ -5657,12 +5940,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_50_pos_ind"
 bus = "fuel_valve_50_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 51 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_51_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_51_pos_ind"
@@ -5672,12 +5956,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_51_pos_ind"
 bus = "fuel_valve_51_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 52 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_52_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_52_pos_ind"
@@ -5687,12 +5972,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_52_pos_ind"
 bus = "fuel_valve_52_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 53 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_53_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_53_pos_ind"
@@ -5702,12 +5988,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_53_pos_ind"
 bus = "fuel_valve_53_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 54 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_54_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_54_pos_ind"
@@ -5717,12 +6004,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_54_pos_ind"
 bus = "fuel_valve_54_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 55 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_55_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_55_pos_ind"
@@ -5732,12 +6020,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_55_pos_ind"
 bus = "fuel_valve_55_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 56 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_56_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_56_pos_ind"
@@ -5747,12 +6036,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_56_pos_ind"
 bus = "fuel_valve_56_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 57 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_57_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_57_pos_ind"
@@ -5762,12 +6052,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_57_pos_ind"
 bus = "fuel_valve_57_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 58 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_58_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_58_pos_ind"
@@ -5777,12 +6068,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_58_pos_ind"
 bus = "fuel_valve_58_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FUEL VALVE 59 POSITION IND, ATA 28
 [[electrical.bus]]
 id = "fuel_valve_59_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fuel_valve_59_pos_ind"
@@ -5792,7 +6084,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "fuel_valve_59_pos_ind"
 bus = "fuel_valve_59_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # HOT AIR VALVE 1 POSITION IND, ATA 21
 [[electrical.bus]]
@@ -5807,7 +6099,7 @@ rating = "1 A"
 [[electrical.load]]
 id = "hotair_1_pos_ind"
 bus = "hotair_1_pos_ind_bus"
-power = "5 W"
+power = "92 W"
 
 # HOT AIR VALVE 2 POSITION IND, ATA 21
 [[electrical.bus]]
@@ -5822,12 +6114,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "hotair_2_pos_ind"
 bus = "hotair_2_pos_ind_bus"
-power = "5 W"
+power = "92 W"
 
 # FWD CARGO ISOL VALVE POSITION IND, ATA 21
 [[electrical.bus]]
 id = "fwd_isol_valve_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fwd_isol_valve_pos_ind"
@@ -5837,12 +6130,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "fwd_isol_valve_pos_ind"
 bus = "fwd_isol_valve_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # BULK CARGO ISOL VALVE POSITION IND, ATA 21
 [[electrical.bus]]
 id = "bulk_isol_valve_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bulk_isol_valve_pos_ind"
@@ -5852,12 +6146,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "bulk_isol_valve_pos_ind"
 bus = "bulk_isol_valve_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # PACK 1 FLOW VALVE 1 POSITION IND, ATA 21
 [[electrical.bus]]
 id = "pack_1_flow_valve_1_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_1_flow_valve_1_pos_ind"
@@ -5867,12 +6162,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "pack_1_flow_valve_1_pos_ind"
 bus = "pack_1_flow_valve_1_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # PACK 1 FLOW VALVE 2 POSITION IND, ATA 21
 [[electrical.bus]]
 id = "pack_1_flow_valve_2_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_1_flow_valve_2_pos_ind"
@@ -5882,12 +6178,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "pack_1_flow_valve_2_pos_ind"
 bus = "pack_1_flow_valve_2_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # PACK 2 FLOW VALVE 1 POSITION IND, ATA 21
 [[electrical.bus]]
 id = "pack_2_flow_valve_1_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_2_flow_valve_1_pos_ind"
@@ -5897,12 +6194,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "pack_2_flow_valve_1_pos_ind"
 bus = "pack_2_flow_valve_1_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # PACK 2 FLOW VALVE 2 POSITION IND, ATA 21
 [[electrical.bus]]
 id = "pack_2_flow_valve_2_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_pack_2_flow_valve_2_pos_ind"
@@ -5912,12 +6210,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "pack_2_flow_valve_2_pos_ind"
 bus = "pack_2_flow_valve_2_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # BLEED ENG 1 VALVES POSITION IND, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_1_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_1_pos_ind"
@@ -5927,12 +6226,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "bleed_eng_1_pos_ind"
 bus = "bleed_eng_1_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # BLEED ENG 2 VALVES POSITION IND, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_2_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_2_pos_ind"
@@ -5942,12 +6242,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "bleed_eng_2_pos_ind"
 bus = "bleed_eng_2_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # BLEED ENG 3 VALVES POSITION IND, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_3_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_3_pos_ind"
@@ -5957,12 +6258,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "bleed_eng_3_pos_ind"
 bus = "bleed_eng_3_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # BLEED ENG 4 VALVES POSITION IND, ATA 36
 [[electrical.bus]]
 id = "bleed_eng_4_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_bleed_eng_4_pos_ind"
@@ -5972,12 +6274,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "bleed_eng_4_pos_ind"
 bus = "bleed_eng_4_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # APU FUEL SHUTOFF VALVE POSITION IND, ATA 49
 [[electrical.bus]]
 id = "apu_fuel_shutoff_valve_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_apu_fuel_shutoff_valve_pos_ind"
@@ -5987,12 +6290,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "apu_fuel_shutoff_valve_pos_ind"
 bus = "apu_fuel_shutoff_valve_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # CREW OXYGEN SHUTOFF VALVE POSITION IND, ATA 35
 [[electrical.bus]]
 id = "crew_o2_shutoff_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_crew_o2_shutoff_pos_ind"
@@ -6002,12 +6306,13 @@ rating = "1 A"
 [[electrical.load]]
 id = "crew_o2_shutoff_pos_ind"
 bus = "crew_o2_shutoff_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 
 # FWD CARGO DOOR POSITION IND, ATA 52
 [[electrical.bus]]
 id = "cargo_door_fwd_actuator_ctl_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cargo_door_fwd_actuator_ctl_pos_ind"
@@ -6017,13 +6322,14 @@ rating = "1 A"
 [[electrical.load]]
 id = "cargo_door_fwd_actuator_ctl_pos_ind"
 bus = "cargo_door_fwd_actuator_ctl_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 on_when = "false"
 
 # AFT CARGO DOOR POSITION IND, ATA 52
 [[electrical.bus]]
 id = "cargo_door_aft_actuator_ctl_pos_ind_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cargo_door_aft_actuator_ctl_pos_ind"
@@ -6033,13 +6339,14 @@ rating = "1 A"
 [[electrical.load]]
 id = "cargo_door_aft_actuator_ctl_pos_ind"
 bus = "cargo_door_aft_actuator_ctl_pos_ind_bus"
-power = "5 W"
+power = "22 W"
 on_when = "false"
 
 # FWS 1, ATA 31
 [[electrical.bus]]
 id = "fws_1_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fws_1_normal"
@@ -6049,12 +6356,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fws_1_normal"
 bus = "fws_1_normal_bus"
-power = "30 W"
+power = "112 W"
 
 # FWS 1 2ND, ATA 31
 [[electrical.bus]]
 id = "fws_1_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fws_1_2nd"
@@ -6064,12 +6372,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fws_1_2nd"
 bus = "fws_1_2nd_bus"
-power = "30 W"
+power = "112 W"
 
 # FWS 2, ATA 31
 [[electrical.bus]]
 id = "fws_2_normal_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fws_2_normal"
@@ -6079,12 +6388,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fws_2_normal"
 bus = "fws_2_normal_bus"
-power = "30 W"
+power = "112 W"
 
 # FWS 2 2ND, ATA 31
 [[electrical.bus]]
 id = "fws_2_2nd_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_fws_2_2nd"
@@ -6094,12 +6404,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "fws_2_2nd"
 bus = "fws_2_2nd_bus"
-power = "30 W"
+power = "112 W"
 
 # ISIS, ATA 34
 [[electrical.bus]]
 id = "isis_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_isis"
@@ -6109,12 +6420,13 @@ rating = "3 A"
 [[electrical.load]]
 id = "isis"
 bus = "isis_bus"
-power = "20 W"
+power = "67 W"
 
 # MMR 1, ATA 34
 [[electrical.bus]]
 id = "mmr_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_mmr_1"
@@ -6124,12 +6436,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "mmr_1"
 bus = "mmr_1_bus"
-power = "30 W"
+power = "112 W"
 
 # MMR 2, ATA 34
 [[electrical.bus]]
 id = "mmr_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_mmr_2"
@@ -6139,12 +6452,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "mmr_2"
 bus = "mmr_2_bus"
-power = "30 W"
+power = "112 W"
 
 # MMR 3, ATA 34
 [[electrical.bus]]
 id = "mmr_3_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_mmr_3"
@@ -6154,12 +6468,13 @@ rating = "5 A"
 [[electrical.load]]
 id = "mmr_3"
 bus = "mmr_3_bus"
-power = "30 W"
+power = "112 W"
 
 # CDS DU 1, ATA 31
 [[electrical.bus]]
 id = "cds_du_1_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_1"
@@ -6169,12 +6484,13 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_1"
 bus = "cds_du_1_bus"
-power = "50 W"
+power = "168 W"
 
 # CDS DU 2, ATA 31
 [[electrical.bus]]
 id = "cds_du_2_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_2"
@@ -6184,12 +6500,13 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_2"
 bus = "cds_du_2_bus"
-power = "50 W"
+power = "168 W"
 
 # CDS DU 3, ATA 31
 [[electrical.bus]]
 id = "cds_du_3_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_3"
@@ -6199,12 +6516,13 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_3"
 bus = "cds_du_3_bus"
-power = "50 W"
+power = "168 W"
 
 # CDS DU 4, ATA 31
 [[electrical.bus]]
 id = "cds_du_4_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_4"
@@ -6214,12 +6532,13 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_4"
 bus = "cds_du_4_bus"
-power = "50 W"
+power = "168 W"
 
 # CDS DU 5, ATA 31
 [[electrical.bus]]
 id = "cds_du_5_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_5"
@@ -6229,12 +6548,13 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_5"
 bus = "cds_du_5_bus"
-power = "50 W"
+power = "168 W"
 
 # CDS DU 6, ATA 31
 [[electrical.bus]]
 id = "cds_du_6_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_6"
@@ -6244,12 +6564,13 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_6"
 bus = "cds_du_6_bus"
-power = "50 W"
+power = "168 W"
 
 # CDS DU 7, ATA 31
 [[electrical.bus]]
 id = "cds_du_7_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_7"
@@ -6259,12 +6580,13 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_7"
 bus = "cds_du_7_bus"
-power = "50 W"
+power = "168 W"
 
 # CDS DU 8, ATA 31
 [[electrical.bus]]
 id = "cds_du_8_bus"
 nominal = "28 V"
+powered_at = 0.643
 
 [[electrical.breaker]]
 id = "cb_cds_du_8"
@@ -6274,4 +6596,4 @@ rating = "7.5 A"
 [[electrical.load]]
 id = "cds_du_8"
 bus = "cds_du_8_bus"
-power = "50 W"
+power = "168 W"
