@@ -122,12 +122,16 @@ fn an_iced_pitot_freezes_the_airspeed_and_heat_clears_it() {
     run(&mut a, 4.0);
     let before = a.get("adc.ias").unwrap();
     a.set("air.icing", 1.0);
-    run(&mut a, 0.1);
+    run(&mut a, 10.0);
+    assert_eq!(a.get("pitot.iced"), Some(0.0), "the probe has to cool below freezing and ice over first");
+    run(&mut a, 60.0);
+    assert_eq!(a.get("pitot.iced"), Some(1.0));
     a.set("air.airspeed", 150.0);
     run(&mut a, 1.0);
     assert!((a.get("adc.ias").unwrap() - before).abs() < 0.5, "blocked: ias stays at {before:.1}");
     a.set("pitot_heat.on", 1.0);
-    run(&mut a, 1.0);
+    run(&mut a, 30.0);
+    assert!(a.get("pitot.temperature").unwrap() > 273.15, "the heater takes the probe above freezing");
     assert!(a.get("adc.ias").unwrap() > before + 40.0);
 }
 
