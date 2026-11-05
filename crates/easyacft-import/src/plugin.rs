@@ -549,12 +549,12 @@ pub fn consts(text: &str) -> HashMap<String, f64> {
 const AVIONICS_ATA: [u32; 12] = [22, 23, 27, 28, 31, 32, 34, 42, 44, 45, 46, 73];
 
 /// Engines, FADECs, APU, hydraulics, gear, computers and their cockpit inputs for the plugin's A380.
-pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: bool) -> Vec<(String, String)> {
+pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: &[Option<String>]) -> Vec<(String, String)> {
     let e = |k: &str, dflt: f64| d.engine.get(k).copied().unwrap_or(dflt);
     let mut eng = head.to_owned();
     writeln!(eng, "# Four three-spool turbofans from the plugin's engine model (src/physics/engine/params.rs): BPR {}, OPR {}.\n", e("BYPASS_RATIO", 8.41), e("OPR_DESIGN", 38.68)).unwrap();
     for n in 1..=4 {
-        let fuel = if feeds { format!("eng{n}_feed.flow") } else { format!("fadec{n}.fuel_command") };
+        let fuel = match feeds.get(n - 1).cloned().flatten() { Some(f) => format!("{f}.flow"), None => format!("fadec{n}.fuel_command") };
         writeln!(
             eng,
             "[[engine.gas_turbine]]\nid = \"eng{n}\"\nair = \"air\"\nfuel_flow = \"{fuel}\"\ndesign_thrust = \"{:.0} N\"\nairflow = \"{:.0} kg/s\"\nbypass_ratio = {}\nspools = 3\nfan_pr = {}\nipc_pr = {}\nhpc_pr = {}\nfan_efficiency = {}\nipc_efficiency = {}\nhpc_efficiency = {}\nhpt_efficiency = {}\nipt_efficiency = {}\nlpt_efficiency = {}\nlp_rpm = \"{:.0} rpm\"\nip_rpm = \"{:.0} rpm\"\nhp_rpm = \"{:.0} rpm\"\nlp_inertia = 900\nip_inertia = 40\nhp_inertia = 20\nstarter_torque = \"if(fadec{n}.starter, 1800 N*m, 0 N*m)\"\nofftake = \"vfg{n}.load / 0.9\"\nreverser = \"fadec{n}.reverser\"\n",

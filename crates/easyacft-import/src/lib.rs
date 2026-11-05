@@ -394,7 +394,7 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
     files.push(("systems/cockpit.toml".to_owned(), ck));
     files.push(("systems/electrical.toml".to_owned(), el));
     if let Some(g) = &s.fuel_graph {
-        files.push(("systems/fuel.toml".to_owned(), msfs_fuel::write(g, &head, s.engines.len())));
+        files.push(("systems/fuel.toml".to_owned(), msfs_fuel::write(g, &head, s.engines.len(), s.deep.is_some() && s.engines.len() == 4)));
         inc.push("systems/fuel.toml");
         let mut w = head.clone();
         writeln!(w, "[[weight.station]]\nid = \"empty\"\nmass = \"{:.0} kg\"\narm = \"{:.2} m\"\n", s.empty_kg.max(1.0), s.empty_arm_m).unwrap();
@@ -452,8 +452,8 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
         files.push(("systems/engines.toml".to_owned(), eng));
     }
     if let Some(d) = s.deep.as_ref().filter(|_| s.engines.len() == 4) {
-        let feeds = s.fuel_graph.is_none() && !s.tanks.is_empty();
-        let mut made = plugin::systems(d, &head, &units, feeds);
+        let feeds: Vec<Option<String>> = (1..=4).map(|n| match &s.fuel_graph { Some(g) => g.feeds.iter().find(|f| f.2 == Some(n)).map(|f| f.0.clone()), None => (!s.tanks.is_empty()).then(|| format!("eng{n}_feed")) }).collect();
+        let mut made = plugin::systems(d, &head, &units, &feeds);
         if s.retracting_gear.is_none() {
             made[1].1 += "[[cockpit.switch]]\nid = \"gear_lever\"\ninitial = true\n";
         }
@@ -542,6 +542,16 @@ pub fn import_with(source: &Path, out: &Path, code: Option<&Path>, catalogue: Op
         let text = std::fs::read_to_string(&json).map_err(|e| format!("cannot read `{}`: {e}", json.display()))?;
         d.catalogue = Some(catalogue::read(&text).map_err(|e| format!("`{}`: {e}", json.display()))?);
         spec.deep = Some(d);
+        // The plugin compiles in FlyByWire's flight_model.cfg: its [FUEL_SYSTEM] is the aircraft's whole fuel graph.
+        let tree = [r.join("fbw").join("xplane"), r.join("..").join("fbw-aircraft")].into_iter().find(|t| t.join("fbw-a380x").is_dir());
+        let cfg = tree.map(|t| t.join("fbw-a380x/src/base/flybywire-aircraft-a380-842/SimObjects/AirPlanes/FlyByWire_A380X/common/config/flight_model.cfg"));
+        if let Some(fm) = cfg.and_then(|p| std::fs::read_to_string(p).ok()).map(|t| ini(&t)) {
+            if let Some(g) = msfs_fuel::read(&fm.get("FUEL_SYSTEM").cloned().unwrap_or_default(), 0.803) {
+                spec.tanks = g.tanks.iter().map(|(_, title, kg, arm, _)| Tank { name: title.clone(), capacity_kg: *kg, arm_m: *arm, lateral_m: 0.0 }).collect();
+                spec.notes.push(format!("fuel: FlyByWire's [FUEL_SYSTEM] graph the plugin builds in, {} tanks, {} pumps, {} valves", g.tanks.len(), g.pumps.len(), g.valves.len()));
+                spec.fuel_graph = Some(g);
+            }
+        }
     } else if let Some(c) = code {
         return Err(format!("no `src/deep` under `{}`", c.display()));
     }

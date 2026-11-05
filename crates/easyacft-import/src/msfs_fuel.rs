@@ -151,7 +151,7 @@ pub fn read(sys: &HashMap<String, String>, density: f64) -> Option<Graph> {
 }
 
 /// The fuel file for a graph.
-pub fn write(g: &Graph, head: &str, engines: usize) -> String {
+pub fn write(g: &Graph, head: &str, engines: usize, fadec: bool) -> String {
     let mut f = head.to_owned();
     for (tid, title, kg, arm, unusable) in &g.tanks {
         writeln!(f, "# {title}\n[[fuel.tank]]\nid = \"{tid}\"\ncapacity = \"{:.0} kg\"\nquantity = \"{:.0} kg\"\narm = \"{arm:.2} m\"\nunusable = \"{unusable:.0} kg\"\n", kg.max(1.0), kg * 0.5).unwrap();
@@ -170,7 +170,9 @@ pub fn write(g: &Graph, head: &str, engines: usize) -> String {
     }
     for (fid, line, idx) in &g.feeds {
         let demand = match idx {
+            Some(i) if fadec && *i >= 1 && *i <= engines => format!("fadec{i}.fuel_command"),
             Some(i) if *i >= 1 && *i <= engines => format!("eng{i}_fuel_flow.value * 1 kg/s"),
+            None if fadec && fid.contains("apu") => "apu.fuel_flow".to_owned(),
             _ => "0 kg/s".to_owned(),
         };
         writeln!(f, "[[fuel.feed]]\nid = \"{fid}\"\nline = \"{line}\"\ndemand = \"{demand}\"\nminimum = \"0.01 psi\"\n").unwrap();

@@ -47,6 +47,7 @@ pub struct App {
     search: String,
     pub plots: Vec<(String, Vec<[f64; 2]>)>,
     pinned: HashMap<String, (f32, f32)>,
+    fold: bool,
     dragging: Option<usize>,
     offset: Vec2,
     pub edits: HashMap<String, String>,
@@ -234,6 +235,7 @@ impl App {
             search: String::new(),
             plots: Vec::new(),
             pinned: HashMap::new(),
+            fold: false,
             dragging: None,
             offset: Vec2::ZERO,
             edits: HashMap::new(),
@@ -457,7 +459,7 @@ impl App {
             return;
         };
         let domain = DOMAINS[self.domain];
-        let d: Diagram = diagram::build(&a.checked, domain, &self.pinned);
+        let d: Diagram = diagram::build(&a.checked, domain, &self.pinned, self.fold);
         let (resp, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
         if !self.zoomed && self.fit_size != resp.rect.size() {
             self.fit = true;
@@ -471,7 +473,7 @@ impl App {
             }
             if x0 <= x1 {
                 let pad = 20.0;
-                self.zoom = ((resp.rect.width() - 2.0 * pad) / (x1 - x0)).min((resp.rect.height() - 2.0 * pad) / (y1 - y0)).clamp(0.3, 1.5);
+                self.zoom = ((resp.rect.width() - 2.0 * pad) / (x1 - x0)).min((resp.rect.height() - 2.0 * pad) / (y1 - y0)).clamp(0.02, 1.5);
                 self.offset = Vec2::new(pad - x0 * self.zoom, pad - y0 * self.zoom);
             }
             self.fit = false;
@@ -480,7 +482,7 @@ impl App {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll != 0.0 {
                 let old = self.zoom;
-                self.zoom = (self.zoom * (1.0 + scroll * 0.002)).clamp(0.2, 3.0);
+                self.zoom = (self.zoom * (1.0 + scroll * 0.002)).clamp(0.02, 3.0);
                 self.zoomed = true;
                 let anchor = h - resp.rect.min - self.offset;
                 self.offset -= anchor * (self.zoom / old - 1.0);
@@ -1450,6 +1452,9 @@ impl eframe::App for App {
                     if ui.button("Fit").clicked() {
                         self.fit = true;
                         self.zoomed = false;
+                    }
+                    if ui.checkbox(&mut self.fold, "Fold breakers").changed() {
+                        self.fit = true;
                     }
                 }
                 if self.timeline.len() > 1 {
