@@ -202,6 +202,16 @@ fn tables(text: &str) -> HashMap<String, Vec<Vec<String>>> {
         let Some(colon) = rest.find(':') else { break };
         let name = rest[..colon].trim().to_owned();
         let Some(eq) = rest.find("] = [") else { break };
+        // A plain list of names, `const IDS: [&str; 3] = ["a", "b", "c"];`: one single-field row each.
+        if rest[colon..eq].contains("[&str") && !rest[colon..eq].contains('\n') {
+            let body = &rest[eq + 5..];
+            let list = &body[..body.find("];").unwrap_or(body.len())];
+            let rows: Vec<Vec<String>> = list.split(',').map(|s| s.trim()).filter(|s| s.starts_with('"')).map(|s| vec![s.to_owned()]).collect();
+            if !rows.is_empty() {
+                out.insert(name, rows);
+            }
+            continue;
+        }
         if !rest[colon..eq].contains("[(") {
             continue;
         }
@@ -282,6 +292,37 @@ pub fn loads(text: &str) -> (Vec<Load>, usize) {
         spans.push((body_start, end, vars, tname));
         at = start + 5;
     }
+    // `for id in IDS {` over a plain list of names.
+    let mut at = 0;
+    while let Some(i) = text[at..].find("for ") {
+        let start = at + i;
+        at = start + 4;
+        let rest = &text[start + 4..];
+        let var: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        let Some(after) = rest[var.len()..].strip_prefix(" in ") else { continue };
+        let tname: String = after.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if var.is_empty() || tname.is_empty() || !tabs.contains_key(&tname) {
+            continue;
+        }
+        let Some(brace) = after.find('{') else { continue };
+        let body_start = start + 4 + var.len() + 4 + brace + 1;
+        let mut depth = 1;
+        let mut end = body_start;
+        for (k, c) in text[body_start..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = body_start + k;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        spans.push((body_start, end, vec![var], tname));
+    }
     let mut out = Vec::new();
     let mut estimated = 0;
     let kinds = [("frequency_sensitive_motor_spec(", "induction_motor"), ("motor_spec(", "motor"), ("resistive_spec(", "resistive"), ("avionics_spec(", "constant_power")];
@@ -323,7 +364,10 @@ pub fn loads(text: &str) -> (Vec<Load>, usize) {
             }
             let pf = if kind == "motor" || kind == "induction_motor" { a.get(5).and_then(|p| value(p, &vars)).unwrap_or(0.85) } else { 1.0 };
             let second = seconds.iter().filter_map(|s| bus_of(s, &vars)).collect();
-            out.push(Load { id: unquote(&get(0)), name: unquote(&get(1)), ata: get(2).trim().parse().unwrap_or(0), bus, watts: watts.unwrap_or(100.0), pf, kind, second });
+            let id = unquote(&get(0));
+            // A name built at run time from the id, as `Box::leak(id.replace(..).to_uppercase())`.
+            let name = if get(1).starts_with('"') { unquote(&get(1)) } else { id.replace('-', " ").to_uppercase() };
+            out.push(Load { id, name, ata: get(2).trim().parse().unwrap_or(0), bus, watts: watts.unwrap_or(100.0), pf, kind, second });
         }
     }
     let mut seen = BTreeSet::new();
@@ -416,7 +460,12 @@ pub fn electrical(d: &Deep, head: &str, engines: usize) -> (String, Vec<Unit>) {
         writeln!(f, "[[electrical.bus]]\nid = \"vfg{n}_out\"\nnominal = \"115 V\"\n\n[[electrical.generator]]\nid = \"vfg{n}\"\nbus = \"vfg{n}_out\"\nvoltage = \"115 V\"\nfrequency = \"400 Hz\"\nrating = \"150 kVA\"\nvariable_frequency = true\ndriven_when = \"{eng}\"\n\n[[electrical.contactor]]\nid = \"glc{n}\"\nbetween = [\"vfg{n}_out\", \"ac{n}\"]\nclose_when = \"vfg{n}.ready\"\n").unwrap();
     }
     for (g, bus, vfg) in [("a", "ac2", "glc2"), ("b", "ac3", "glc3")] {
-        writeln!(f, "[[electrical.bus]]\nid = \"apu_gen_{g}_out\"\nnominal = \"115 V\"\n\n[[electrical.generator]]\nid = \"apu_gen_{g}\"\nbus = \"apu_gen_{g}_out\"\nvoltage = \"115 V\"\nfrequency = \"400 Hz\"\nrating = \"120 kVA\"\ndriven_when = \"apu.available\"\n\n[[electrical.contactor]]\nid = \"apu_glc_{g}\"\nbetween = [\"apu_gen_{g}_out\", \"{bus}\"]\nclose_when = \"apu_gen_{g}.ready && !{vfg}.closed\"\n").unwrap();
+        let n = &bus[2..];
+        writeln!(f, "[[electrical.bus]]\nid = \"apu_gen_{g}_out\"\nnominal = \"115 V\"\n\n[[electrical.generator]]\nid = \"apu_gen_{g}\"\nbus = \"apu_gen_{g}_out\"\nvoltage = \"115 V\"\nfrequency = \"400 Hz\"\nrating = \"120 kVA\"\ndriven_when = \"apu.available\"\n\n[[electrical.contactor]]\nid = \"apu_glc_{g}\"\nbetween = [\"apu_gen_{g}_out\", \"{bus}\"]\nclose_when = \"apu_gen_{g}.ready && !{vfg}.closed && !epc{n}.closed\"\n").unwrap();
+    }
+    f += "# External power: four 90 kVA receptacles, one per AC bus, taken only while that side's own generator is off line.\n";
+    for n in 1..=4 {
+        writeln!(f, "[[cockpit.switch]]\nid = \"ext_pwr_{n}\"\n\n[[electrical.bus]]\nid = \"ext{n}_out\"\nnominal = \"115 V\"\n\n[[electrical.ext_power]]\nid = \"ext{n}\"\nbus = \"ext{n}_out\"\nvoltage = \"115 V\"\nfrequency = \"400 Hz\"\nrating = \"90 kVA\"\nconnected_when = \"ext_pwr_{n}.on\"\n\n[[electrical.contactor]]\nid = \"epc{n}\"\nbetween = [\"ext{n}_out\", \"ac{n}\"]\nclose_when = \"ext{n}.available && !glc{n}.closed\"\n").unwrap();
     }
     let feed = |f: &mut String, id: &str, from: &str, to: &str| {
         if buses.contains_key(to) && from != to {
@@ -440,15 +489,20 @@ pub fn electrical(d: &Deep, head: &str, engines: usize) -> (String, Vec<Unit>) {
     feed(&mut f, "dc_ess_shed_c", "DcEss", "DcEssShed");
     feed(&mut f, "dc_gnd_flt_c", "Dc1", "DcGndFltSvc");
     feed(&mut f, "dc_eha_c", "Dc2", "DcEha");
-    feed(&mut f, "dc_bat_c", "Dc1", "DcBat");
     feed(&mut f, "ess_bat_c", "DcBat", "DcEss");
     for (id, bus) in [("bat1", "DcHot1"), ("bat2", "DcHot2"), ("ess_bat", "DcBat"), ("apu_bat", "DcApu")] {
         if buses.contains_key(bus) {
             writeln!(f, "[[electrical.battery]]\nid = \"{id}\"\nbus = \"{}\"\nvoltage = \"24 V\"\ncapacity = \"50 Ah\"\n", bus_id(bus)).unwrap();
         }
     }
-    feed(&mut f, "dc_hot1_c", "DcHot1", "Dc1");
-    feed(&mut f, "dc_hot2_c", "DcHot2", "Dc2");
+    // DC 1 and DC 2 take their batteries only while their own BCRU runs, to charge them; on batteries alone only the hot buses and DC ESS live.
+    for (id, a, b, tr) in [("dc_bat_c", "dc1", "dc_bat", "bcru1"), ("dc_hot1_c", "dc_hot1", "dc1", "bcru1"), ("dc_hot2_c", "dc_hot2", "dc2", "bcru2")] {
+        writeln!(f, "[[electrical.contactor]]
+id = \"{id}\"
+between = [\"{a}\", \"{b}\"]
+close_when = \"{tr}.active\"
+").unwrap();
+    }
     let mut covered = BTreeSet::new();
     if let Some(c) = cat {
         let pids = param_ids(c);
@@ -477,7 +531,8 @@ pub fn electrical(d: &Deep, head: &str, engines: usize) -> (String, Vec<Unit>) {
             let v = if ac { 115.0 } else { 28.0 };
             let name = load.map(|l| l.name.clone()).unwrap_or_else(|| one_line(&bs[0].name));
             writeln!(f, "# {name} (ATA {})\n[[electrical.bus]]\nid = \"{lb}\"\nnominal = \"{}\"\n", bs[0].ata, if ac { "115 V" } else { "28 V" }).unwrap();
-            let mut primary = false;
+            // A unit fed from two buses of its kind takes each through its own diode, so neither feeds the other.
+            let mut primary = bs.iter().filter(|b| is_ac(&b.bus) == ac).count() > 1;
             for (k, b) in bs.iter().enumerate() {
                 let to = if !primary && is_ac(&b.bus) == ac {
                     primary = true;
@@ -528,7 +583,8 @@ pub fn electrical(d: &Deep, head: &str, engines: usize) -> (String, Vec<Unit>) {
         writeln!(f, "[[electrical.load]]\nid = \"{}_load\"\nbus = \"{lb}\"\npower = \"{:.0} W\"\ntype = \"{kind}\"\n{pf}{rated}", super::msfs_fuel::id(&l.id), l.watts).unwrap();
         units.push((super::msfs_fuel::id(&l.id), lb.clone(), kind, l.ata, l.name.clone()));
     }
-    (f, units)
+    // A 28 V bus stays powered down to 18 V, the DC drop-out; at the 80 % default a battery-fed bus dips out and back each step.
+    (f.replace("nominal = \"28 V\"\n", "nominal = \"28 V\"\npowered_at = 0.643\n"), units)
 }
 
 /// `pub const NAME: f64 = expr;` lines whose expression is a product of numbers.

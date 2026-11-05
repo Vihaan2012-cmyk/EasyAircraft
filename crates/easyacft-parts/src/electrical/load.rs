@@ -161,6 +161,8 @@ pub struct Load {
     pub wanted: bool,
     on: bool,
     y: Abc,
+    /// Last step's admittance, for damping a constant-power load against a weak source.
+    y_last: Abc,
     interrupted: f64,
     pub drawn: f64,
     energy: f64,
@@ -232,6 +234,7 @@ impl Load {
             wanted: false,
             on: false,
             y: ZERO3,
+            y_last: ZERO3,
             interrupted: 0.0,
             drawn: 0.0,
             energy: 0.0,
@@ -315,6 +318,15 @@ impl Load {
         if self.kind == LoadType::Motor {
             self.started += dt;
         }
+        // P / V^2 from the last voltage overshoots on a weak source and flips step to step; average it with the last one.
+        if matches!(self.kind, LoadType::Power | LoadType::Electronic | LoadType::Motor) {
+            for k in 0..3 {
+                if self.y_last[k] != ZERO {
+                    self.y[k] = (self.y[k] + self.y_last[k]).scale(0.5);
+                }
+            }
+        }
+        self.y_last = self.y;
         self.sh.diag(g, &self.y);
     }
 

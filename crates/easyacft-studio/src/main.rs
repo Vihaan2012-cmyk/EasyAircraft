@@ -1187,39 +1187,86 @@ impl App {
 
     fn computers_tab(&mut self, ui: &mut egui::Ui) {
         let Some(a) = &self.aircraft else { return };
-        let rows: Vec<(usize, String, &'static str, &'static str)> = a.checked.parts.iter().enumerate().filter(|(_, p)| matches!(p.domain, "computer" | "data" | "sensor")).map(|(i, p)| (i, p.id.clone(), p.domain, p.kind)).collect();
+        let parts = &a.checked.parts;
+        let rows: Vec<usize> = (0..parts.len()).filter(|&i| matches!(parts[i].domain, "computer" | "data" | "sensor")).collect();
         if rows.is_empty() {
             ui.label("No computers, data links or sensors in this aircraft.");
             return;
         }
-        let mut pick = None;
-        egui::Grid::new("computers").striped(true).show(ui, |ui| {
-            ui.strong("part");
-            ui.strong("kind");
-            ui.strong("state");
-            ui.end_row();
-            for (i, id, d, k) in rows {
-                if ui.link(&id).clicked() {
-                    pick = Some(i);
+        // The main bus behind a unit's own bus: through its breaker or SSPC, or through a diode and the breaker before it.
+        let feeder = |bus: usize| -> Vec<usize> {
+            let into = |b: usize| parts.iter().filter(move |q| q.domain == "electrical" && q.parts("between").get(1) == Some(&b));
+            let mut out = Vec::new();
+            for q in into(bus) {
+                let Some(&from) = q.parts("between").first() else { continue };
+                if q.kind == "diode" {
+                    out.extend(into(from).filter(|r| r.kind != "diode").filter_map(|r| r.parts("between").first().copied()));
+                } else if matches!(q.kind, "breaker" | "sspc" | "contactor") {
+                    out.push(from);
                 }
-                ui.label(format!("{d}.{k}"));
-                let g = |n: &str| self.get(&format!("{id}.{n}"));
-                let on = |n: &str| g(n).is_some_and(|v| v != 0.0);
-                let state = if on("failed") {
-                    "failed".to_owned()
-                } else {
-                    match (d, k) {
-                        ("computer", "unit") if on("booting") => "booting".into(),
-                        ("computer", "unit") if on("running") => format!("running, channel {:.0}{}", g("channel").unwrap_or(0.0), if on("bad_data") { ", bad data" } else if on("frozen") { ", frozen" } else { "" }),
-                        ("computer", "unit") => if on("powered") { "powered".into() } else { "off".into() },
-                        ("data", "link") => format!("{} {:.3}, status {:.0}, age {:.2} s", if on("valid") { "valid" } else { "stale" }, g("value").unwrap_or(0.0), g("status").unwrap_or(0.0), g("age").unwrap_or(0.0)),
-                        ("computer", "air_data") => format!("{} {:.0} kt {:.0} ft", if on("valid") { "valid" } else { "invalid" }, g("ias").unwrap_or(0.0) * 1.943_844, g("altitude").unwrap_or(0.0) / 0.3048),
-                        ("computer", "inertial") => if on("aligning") { "aligning".into() } else if on("aligned") { format!("aligned, drift {:.0} m", g("position_error").unwrap_or(0.0)) } else { "off".into() },
-                        _ => String::new(),
+            }
+            out
+        };
+        let mut groups: Vec<(String, Vec<(usize, String)>)> = Vec::new();
+        for i in rows {
+            let p = &parts[i];
+            let (group, also) = match (p.domain, p.kind) {
+                ("computer", "unit") => {
+                    let feeds: Vec<usize> = p.parts("power").iter().flat_map(|&b| feeder(b)).collect();
+                    match feeds.first() {
+                        Some(&m) => (style::label(&parts[m].id), feeds.iter().skip(1).map(|&f| style::label(&parts[f].id)).collect::<Vec<_>>().join(", ")),
+                        None => ("Not powered from a bus".to_owned(), String::new()),
                     }
-                };
-                ui.label(state);
-                ui.end_row();
+                }
+                ("computer", "air_data" | "inertial") => ("Air data and inertial references".to_owned(), String::new()),
+                ("data", _) => ("Data links".to_owned(), String::new()),
+                _ => ("Sensors".to_owned(), String::new()),
+            };
+            match groups.iter_mut().find(|g| g.0 == group) {
+                Some(g) => g.1.push((i, also)),
+                None => groups.push((group, vec![(i, also)])),
+            }
+        }
+        // Buses first, then the other groups.
+        let kinds = ["Air data and inertial references", "Data links", "Sensors", "Not powered from a bus"];
+        groups.sort_by_key(|g| (kinds.iter().position(|k| *k == g.0).unwrap_or(0), g.0.clone()));
+        let state = |id: &str, d: &str, k: &str| -> (String, bool) {
+            let g = |n: &str| self.get(&format!("{id}.{n}"));
+            let on = |n: &str| g(n).is_some_and(|v| v != 0.0);
+            if on("failed") {
+                return ("failed".into(), false);
+            }
+            let t = match (d, k) {
+                ("computer", "unit") if on("booting") => "booting".into(),
+                ("computer", "unit") if on("running") => format!("running, channel {:.0}{}", g("channel").unwrap_or(0.0), if on("bad_data") { ", bad data" } else if on("frozen") { ", frozen" } else { "" }),
+                ("computer", "unit") => if on("powered") { "powered".into() } else { "off".into() },
+                ("data", "link") => format!("{} {:.3}, status {:.0}, age {:.2} s", if on("valid") { "valid" } else { "stale" }, g("value").unwrap_or(0.0), g("status").unwrap_or(0.0), g("age").unwrap_or(0.0)),
+                ("computer", "air_data") => format!("{} {:.0} kt {:.0} ft", if on("valid") { "valid" } else { "invalid" }, g("ias").unwrap_or(0.0) * 1.943_844, g("altitude").unwrap_or(0.0) / 0.3048),
+                ("computer", "inertial") => if on("aligning") { "aligning".into() } else if on("aligned") { format!("aligned, drift {:.0} m", g("position_error").unwrap_or(0.0)) } else { "off".into() },
+                _ => String::new(),
+            };
+            let good = on("running") || on("valid") || on("aligned") || on("aligning") || on("booting");
+            (t, good)
+        };
+        let mut pick = None;
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for (gi, (group, list)) in groups.iter().enumerate() {
+                let up = list.iter().filter(|(i, _)| state(&parts[*i].id, parts[*i].domain, parts[*i].kind).1).count();
+                egui::CollapsingHeader::new(format!("{group}   {up} of {} working", list.len())).id_salt(("cg", gi)).default_open(true).show(ui, |ui| {
+                    egui::Grid::new(("computers", gi)).striped(true).min_col_width(120.0).show(ui, |ui| {
+                        for (i, also) in list {
+                            let p = &parts[*i];
+                            if ui.link(&p.id).clicked() {
+                                pick = Some(*i);
+                            }
+                            ui.label(format!("{}.{}", p.domain, p.kind));
+                            let (t, good) = state(&p.id, p.domain, p.kind);
+                            ui.colored_label(if good { style::GREEN } else { style::GREY_TEXT }, t);
+                            ui.label(if also.is_empty() { String::new() } else { format!("also {also}") });
+                            ui.end_row();
+                        }
+                    });
+                });
             }
         });
         if pick.is_some() {
@@ -1621,9 +1668,7 @@ impl eframe::App for App {
                 egui::ScrollArea::vertical().show(ui, |ui| self.tables_tab(ui));
             }
             Tab::Fit => self.fit_tab(ui),
-            Tab::Computers => {
-                egui::ScrollArea::vertical().show(ui, |ui| self.computers_tab(ui));
-            }
+            Tab::Computers => self.computers_tab(ui),
             Tab::Compare => self.compare_tab(ui),
         });
         ctx.request_repaint_after(std::time::Duration::from_millis(33));

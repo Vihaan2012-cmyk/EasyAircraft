@@ -65,6 +65,8 @@ pub static SPECS: &[PartSpec] = &[
 ];
 
 const UNSHED_MARGIN: f64 = 0.9;
+/// Most times a step re-solves for diodes switching on its own voltages.
+const DIODE_PASSES: usize = 8;
 /// Steps between rollback checkpoints.
 const CHECKPOINT_EVERY: u32 = 50;
 
@@ -672,6 +674,21 @@ impl Domain for Electrical {
         self.shed(slots, dt);
         self.stamp(slots, dt, true);
         let mut ok = self.solve();
+        // Diodes switch on this step's own voltages, not the last step's, or a network of them chatters step to step.
+        for _ in 0..DIODE_PASSES {
+            if !ok {
+                break;
+            }
+            let mut switched = false;
+            for x in &mut self.diodes {
+                switched |= x.settle(&self.grid);
+            }
+            if !switched {
+                break;
+            }
+            self.stamp(slots, dt, false);
+            ok = self.solve();
+        }
         if ok {
             // A power controller in current limit runs linear: solve again with it holding its limit.
             let mut limited = false;

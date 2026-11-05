@@ -543,12 +543,15 @@ pub struct Diode {
     drop: f64,
     conducting: bool,
     leak: [Shunt; 2],
+    /// Failed, open or shorted this step: its state is not the bias's to decide.
+    held: bool,
+    shorted_now: bool,
 }
 
 impl Diode {
     pub fn new(p: &CheckedPart, path: Path, g: &mut Grid, buses: &[Bus]) -> Self {
         let leak = [Shunt::new(g, buses[path.a].term), Shunt::new(g, buses[path.b].term)];
-        Diode { path, base: p.slot, shorted: expr_of(p, "shorted_when"), open_e: expr_of(p, "open_when"), drop: p.num("forward_drop").max(0.0), conducting: false, leak }
+        Diode { path, base: p.slot, shorted: expr_of(p, "shorted_when"), open_e: expr_of(p, "open_when"), drop: p.num("forward_drop").max(0.0), conducting: false, leak, held: false, shorted_now: false }
     }
 
     pub fn update(&mut self, g: &Grid, slots: &mut [f64], dt: f64) {
@@ -559,6 +562,8 @@ impl Diode {
         let forward = va - vb;
         let ok = !failed && !open;
         self.conducting = ok && if self.conducting { self.path.i[0].re >= -1e-5 } else { forward > self.drop + 1e-3 };
+        self.held = short || !ok;
+        self.shorted_now = short;
         if short {
             self.path.set(1.0 / DIODE_OHM);
         } else if self.conducting {
@@ -577,11 +582,34 @@ impl Diode {
         self.path.stamp(g);
     }
 
+    /// Checks the diode against this step's own solution; true when it had to switch.
+    pub fn settle(&mut self, g: &Grid) -> bool {
+        if self.held {
+            return false;
+        }
+        let forward = self.path.ser.va(g)[0].re - self.path.ser.vb(g)[0].re;
+        if self.conducting {
+            self.path.read(g);
+            if self.path.i[0].re < -1e-5 {
+                self.conducting = false;
+                self.path.open();
+                return true;
+            }
+        } else if forward > self.drop + 1e-3 {
+            self.conducting = true;
+            self.path.set(1.0 / DIODE_OHM);
+            self.path.e[0] = C::real(self.drop);
+            return true;
+        }
+        false
+    }
+
     pub fn post(&mut self, g: &Grid, slots: &mut [f64]) {
         self.path.read(g);
         let i = self.path.amps();
         put(slots, self.base + dio::current, i);
         put(slots, self.base + dio::power, (i * self.path.across(g)).abs());
+        flag(slots, self.base + dio::conducting, self.conducting || self.shorted_now);
     }
 
     pub fn state(&self, v: &mut Vec<f64>) {
