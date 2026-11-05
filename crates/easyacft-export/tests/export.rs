@@ -12,7 +12,7 @@ fn the_twin_jet_exports_as_a_standalone_crate() {
     let lib = std::fs::read_to_string(out.join("src/lib.rs")).unwrap();
     assert!(lib.contains("pub fn build() -> Aircraft") && lib.contains("pub const DC1_VOLTAGE: usize"));
     assert!(lib.contains("delay(&mut st[0], b(s[v::GEN1_READY]), 1.0, dt)"), "expressions become Rust");
-    for f in ["runtime/core/src/network.rs", "runtime/parts/src/electrical.rs", "runtime/lang/src/expr.rs", "LICENSE-EXPORT.md", "tests/cold_start.rs"] {
+    for f in ["runtime/core/src/network.rs", "runtime/parts/src/electrical/machine.rs", "runtime/parts/src/actuation/ode.rs", "runtime/parts/src/aircon/mod.rs", "runtime/lang/src/expr.rs", "LICENSE-EXPORT.md", "tests/cold_start.rs"] {
         assert!(out.join(f).exists(), "{f}");
     }
     assert!(!out.join("runtime/lang/src/loader.rs").exists() && !out.join("runtime/parts/src/scenario.rs").exists());
