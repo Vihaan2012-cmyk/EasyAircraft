@@ -49,7 +49,7 @@ pub static SPECS: &[PartSpec] = &[
             opt("heat_exchanger", Kind::Number, "0", "heat exchanger conductance, W per K; 0 sizes it from the reservoir"),
             opt("overheat_temperature", Kind::Quantity(Dim::TEMPERATURE), "368.15 K", "fluid overheat warning"),
         ],
-        outputs: &[("pressure", P), ("fluid", VOL), ("temperature", T), ("available", B), ("low", B), ("low_level", B), ("overheat", B), ("failed", B)],
+        outputs: &[("pressure", P), ("fluid", VOL), ("temperature", T), ("available", B), ("low", B), ("low_level", B), ("overheat", B), ("return_pressure", P), ("failed", B)],
     },
     PartSpec {
         domain: "hydraulic",
@@ -196,7 +196,15 @@ struct Ptu {
     s: Slots,
 }
 
+/// Flow a part outside this domain draws from a circuit through a `<field>_flow` output, and the fluid it holds.
+struct Draw {
+    circuit: usize,
+    flow: usize,
+    held: Option<usize>,
+}
+
 pub struct Hydraulic {
+    draws: Vec<Draw>,
     net: Network,
     ports: crate::ports::Ports,
     circuits: Vec<Circuit>,
@@ -221,7 +229,7 @@ impl Hydraulic {
         }
         let mut net = Network::new();
         let mut of: HashMap<usize, usize> = HashMap::new();
-        let mut h = Hydraulic { net: Network::new(), ports: Default::default(), circuits: vec![], pumps: vec![], accumulators: vec![], consumers: vec![], ptus: vec![] };
+        let mut h = Hydraulic { draws: vec![], net: Network::new(), ports: Default::default(), circuits: vec![], pumps: vec![], accumulators: vec![], consumers: vec![], ptus: vec![] };
         for &(i, p) in parts.iter().filter(|(_, p)| p.kind == "circuit") {
             let cap = p.num("compliance").max(0.0);
             let nominal = p.num("nominal").max(1.0);
@@ -251,7 +259,7 @@ impl Hydraulic {
                 overheat: p.num("overheat_temperature"),
                 temp: f64::NAN,
                 heat: 0.0,
-                s: Slots::of(p, &["pressure", "fluid", "temperature", "available", "low", "low_level", "overheat", "failed"]),
+                s: Slots::of(p, &["pressure", "fluid", "temperature", "available", "low", "low_level", "overheat", "return_pressure", "failed"]),
             });
         }
         let circ = |p: &easyacft_lang::CheckedPart| p.part("circuit").and_then(|x| of.get(&x).copied());
@@ -325,6 +333,20 @@ impl Hydraulic {
                     });
                 }
                 _ => {}
+            }
+        }
+        for p in c.parts.iter().filter(|p| p.domain != "hydraulic") {
+            let Some(spec) = crate::catalog::find(p.domain, p.kind) else { continue };
+            for f in spec.fields {
+                let easyacft_lang::schema::Kind::Ref(kinds) = f.kind else { continue };
+                if !kinds.contains(&"hydraulic.circuit") {
+                    continue;
+                }
+                let Some(ci) = p.part(f.key).and_then(|x| of.get(&x).copied()) else { continue };
+                let out = |o: String| spec.outputs.iter().position(|(n, _)| *n == o).map(|k| p.slot + k);
+                if let Some(flow) = out(format!("{}_flow", f.key)) {
+                    h.draws.push(Draw { circuit: ci, flow, held: out(format!("{}_held", f.key)) });
+                }
             }
         }
         h.ports = crate::ports::Ports::new(c, "hydraulic", &mut net, |i| of.get(&i).map(|&ci| h.circuits[ci].node));
@@ -413,6 +435,15 @@ impl Domain for Hydraulic {
                 self.net.stamp(self.circuits[t.hi].node, t.out_power / t.eff / (p_hi * p_hi), 0.0);
             }
         }
+        // Actuators, motors and brakes: last step's flow as a conductance at the pressure it was drawn at.
+        for d in &self.draws {
+            let c = &self.circuits[d.circuit];
+            let q = slots[d.flow];
+            if q.is_finite() && q > 0.0 {
+                let p = c.s.get(slots, "pressure").max(0.05 * c.nominal);
+                self.net.stamp(c.node, q / p, 0.0);
+            }
+        }
         self.ports.stamp(&mut self.net, slots);
         self.net.step(dt);
         self.ports.read(&self.net, slots);
@@ -453,7 +484,18 @@ impl Domain for Hydraulic {
         for (k, c) in self.circuits.iter_mut().enumerate() {
             let p = self.net.potential(c.node).max(0.0);
             let in_accumulators: f64 = self.accumulators.iter().filter(|a| a.circuit == k).map(|a| a.fluid).sum();
-            c.level = (c.fluid - in_accumulators - c.compliance * p).max(0.0);
+            let mut in_users = 0.0;
+            for d in self.draws.iter().filter(|d| d.circuit == k) {
+                let q = slots[d.flow];
+                if q.is_finite() && q > 0.0 {
+                    c.heat += q * p;
+                }
+                if let Some(h) = d.held {
+                    in_users += if slots[h].is_finite() { slots[h] } else { 0.0 };
+                }
+            }
+            c.level = (c.fluid - in_accumulators - in_users - c.compliance * p).max(0.0);
+            c.s.put(slots, "return_pressure", c.inlet);
             c.s.put(slots, "pressure", p);
             c.s.put(slots, "fluid", c.level);
             c.s.put(slots, "temperature", c.temp);

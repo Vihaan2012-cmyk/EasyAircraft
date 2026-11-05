@@ -1,5 +1,6 @@
 //! EasyAcft part catalogue and the aircraft runtime.
 
+pub mod actuation;
 pub mod aircon;
 pub mod apu;
 pub mod avionics;
@@ -167,6 +168,9 @@ impl Aircraft {
         }
         if let Some(d) = systems::Systems::new(&checked) {
             domains.push((rate_for(rates, "systems", 0.02), Box::new(d)));
+        }
+        if let Some(d) = actuation::Actuation::new(&checked) {
+            domains.push((rate_for(rates, "actuation", 0.005), Box::new(d)));
         }
         if let Some(d) = aircon::AirCon::new(&checked) {
             domains.push((rate_for(rates, "aircon", 0.02), Box::new(d)));

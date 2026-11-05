@@ -163,6 +163,8 @@ const UNITS: &[Unit] = &[
     u("kN", 1e3, Dim::FORCE),
     u("lbf", 4.448_221_615_260_5, Dim::FORCE),
     u("L", 1e-3, Dim::VOLUME),
+    u("mL", 1e-6, Dim::VOLUME),
+    u("cc", 1e-6, Dim::VOLUME),
     u("gal", 3.785_411_784e-3, Dim::VOLUME),
     u("kt", 1852.0 / 3600.0, Dim::SPEED),
     u("deg", std::f64::consts::PI / 180.0, Dim::NONE),
