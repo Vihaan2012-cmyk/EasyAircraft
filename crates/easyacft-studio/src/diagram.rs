@@ -43,6 +43,8 @@ pub struct Row {
     pub feeds: Vec<usize>,
     pub bus: usize,
     pub users: Vec<usize>,
+    /// A tie or second feed to another bus, instead of users.
+    pub to: Option<usize>,
 }
 
 /// A main bus's block of rows, below the network.
@@ -168,11 +170,8 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         .collect();
     let attached_to = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r != Role::Hub && c.parts[i].part(f) == Some(h)));
     d.major = hubs.iter().copied().filter(|h| !feeders.contains(h) && (domain != "fuel" || c.parts[*h].kind == "tank" || attached_to(*h))).collect();
-    // Showing everything on an electrical network: the network folded on top, every breaker-fed user in panels below it.
-    let panel = !fold && domain == "electrical";
-    let folding = fold || panel;
+    let folding = fold;
     let candidate: HashSet<usize> = if folding { feeders.clone() } else { HashSet::new() };
-    let all_ends = ends.clone();
     let mut feeder_of: HashMap<usize, usize> = HashMap::new();
     for &h in &candidate {
         let parent = ends.iter().filter(|(_, a, b)| *a == h || *b == h).map(|&(_, a, b)| if a == h { b } else { a }).find(|n| !candidate.contains(n));
@@ -220,11 +219,10 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
             attached.entry((h, r == Role::Source)).or_default().push(i);
         }
     }
-    let mut overflow: Vec<(usize, Vec<usize>)> = Vec::new();
     for ((h, src), list) in attached.iter_mut() {
         if folding && !*src && list.len() > MAX_SINKS {
             d.folded.entry(*h).or_default().1 += list.len();
-            overflow.push((*h, std::mem::take(list)));
+            list.clear();
         }
     }
 
@@ -357,17 +355,20 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     let mut y = 110.0f32;
     let mut line_no = 0;
     for l in (0..levels).rev() {
-        let k = (span(&rows[l]) / max_w).ceil().max(1.0) as usize;
-        place(&rows[l], &mut x);
-        let lines: Vec<Vec<usize>> = (0..k).map(|j| rows[l].iter().copied().skip(j).step_by(k).collect()).collect();
-        for line in lines {
-            let mut right = f32::MIN;
-            for &n in &line {
-                let half = nodes[n].w / 2.0;
-                let want = 40.0 + (x[n] - half - 40.0) / k as f32 + half;
-                x[n] = want.max(right + half + if right == f32::MIN { 0.0 } else { gap });
-                right = x[n] + half;
+        // A row too long for the page wraps in contiguous runs, so siblings stay together under their parent.
+        let mut lines: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut acc = 0.0f32;
+        for &n in &rows[l] {
+            let w = nodes[n].w + if nodes[n].hub.is_some() { gap } else { 14.0 };
+            if acc + w > max_w && lines.last().is_some_and(|l| !l.is_empty()) {
+                lines.push(Vec::new());
+                acc = 0.0;
             }
+            lines.last_mut().unwrap().push(n);
+            acc += w;
+        }
+        for line in lines {
+            place(&line, &mut x);
             for &n in &line {
                 node_y[n] = y;
                 node_line[n] = line_no;
@@ -513,81 +514,7 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
             cx += w + 12.0;
         }
     }
-    if panel {
-        panels(c, domain, &mut d, &parts, &all_ends, &feeder_of, overflow);
-    }
     d
-}
-
-fn panels(c: &Checked, domain: &str, d: &mut Diagram, parts: &[usize], ends: &[(usize, usize, usize)], feeder_of: &HashMap<usize, usize>, overflow: Vec<(usize, Vec<usize>)>) {
-    let sinks_on = |h: usize| -> Vec<usize> { parts.iter().copied().filter(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r == Role::Sink && c.parts[i].part(f) == Some(h))).collect() };
-    let touching = |h: usize| -> Vec<(usize, usize)> { ends.iter().filter(|(_, a, b)| *a == h || *b == h).map(|&(e, a, b)| (e, if a == h { b } else { a })).collect() };
-    let top = |h: usize| {
-        let mut t = feeder_of[&h];
-        while let Some(&u) = feeder_of.get(&t) {
-            t = u;
-        }
-        t
-    };
-    let mut groups: Vec<(usize, Vec<Row>)> = Vec::new();
-    let mut fs: Vec<usize> = feeder_of.keys().copied().collect();
-    fs.sort_by(|a, b| c.parts[*a].id.cmp(&c.parts[*b].id));
-    for f in fs {
-        let users = sinks_on(f);
-        if users.is_empty() {
-            continue;
-        }
-        let mut feeds = Vec::new();
-        for (e, other) in touching(f) {
-            if c.parts[e].kind == "diode" {
-                feeds.extend(touching(other).into_iter().filter(|&(x, _)| x != e).map(|(x, _)| x));
-            } else {
-                feeds.push(e);
-            }
-        }
-        let t = top(f);
-        let row = Row { pos: (0.0, 0.0), w: 0.0, feeds, bus: f, users };
-        match groups.iter_mut().find(|g| g.0 == t) {
-            Some(g) => g.1.push(row),
-            None => groups.push((t, vec![row])),
-        }
-    }
-    for (h, list) in overflow {
-        let rows = list.into_iter().map(|u| Row { pos: (0.0, 0.0), w: 0.0, feeds: Vec::new(), bus: h, users: vec![u] });
-        match groups.iter_mut().find(|g| g.0 == h) {
-            Some(g) => g.1.extend(rows),
-            None => groups.push((h, rows.collect())),
-        }
-    }
-    let x_of: HashMap<usize, f32> = d.items.iter().map(|i| (i.part, i.pos.0)).collect();
-    groups.sort_by(|a, b| x_of.get(&a.0).unwrap_or(&0.0).total_cmp(x_of.get(&b.0).unwrap_or(&0.0)));
-    let bottom = d.items.iter().map(|i| i.bottom()).fold(0.0, f32::max) + 120.0;
-    let (col_w, per_col, head) = (330.0f32, 20usize, 40.0f32);
-    // Pack the panels to the width that keeps network and panels together about 1.2 times as wide as tall.
-    let area: f32 = groups.iter().map(|g| g.1.len().div_ceil(per_col).max(1) as f32 * col_w * (head + g.1.len().min(per_col) as f32 * ROW_H + 62.0)).sum();
-    let net_w = d.items.iter().map(|i| i.pos.0 + i.size.0 / 2.0).fold(0.0, f32::max);
-    let net_h = bottom;
-    let right = net_w.max(((area + net_w * net_h) * 1.2).sqrt()).max(1600.0);
-    let (mut x, mut y, mut line_h) = (40.0f32, bottom, 0.0f32);
-    for (h, rows) in groups {
-        let cols = rows.len().div_ceil(per_col).max(1);
-        let w = cols as f32 * col_w;
-        let hgt = head + rows.len().min(per_col) as f32 * ROW_H + 12.0;
-        if x + w > right && x > 40.0 {
-            x = 40.0;
-            y += line_h + 50.0;
-            line_h = 0.0;
-        }
-        d.panels.push(Panel { hub: h, pos: (x, y), size: (w, hgt) });
-        for (k, mut row) in rows.into_iter().enumerate() {
-            let (col, r) = (k / per_col, k % per_col);
-            row.pos = (x + col as f32 * col_w + 10.0, y + head + r as f32 * ROW_H + ROW_H / 2.0);
-            row.w = col_w - 20.0;
-            d.rows.push(row);
-        }
-        x += w + 30.0;
-        line_h = line_h.max(hgt);
-    }
 }
 
 /// Every part of a domain without a diagram, as a list.

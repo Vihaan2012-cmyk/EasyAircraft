@@ -467,7 +467,7 @@ impl App {
         if self.fit {
             self.fit_size = resp.rect.size();
             let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-            let pts = d.items.iter().flat_map(|it| [(it.pos.0 - it.size.0 / 2.0, it.pos.1 - it.size.1 / 2.0 - 16.0), (it.pos.0 + it.size.0 / 2.0, it.pos.1 + it.size.1 / 2.0 + 16.0)]).chain(d.edges.iter().flat_map(|e| e.path.iter().copied())).chain(d.panels.iter().flat_map(|p| [p.pos, (p.pos.0 + p.size.0, p.pos.1 + p.size.1)]));
+            let pts = d.items.iter().flat_map(|it| [(it.pos.0 - it.size.0 / 2.0, it.pos.1 - it.size.1 / 2.0 - 16.0), (it.pos.0 + it.size.0 / 2.0, it.pos.1 + it.size.1 / 2.0 + 16.0)]).chain(d.edges.iter().flat_map(|e| e.path.iter().copied())).chain(d.panels.iter().flat_map(|p| [p.pos, (p.pos.0 + p.size.0, p.pos.1 + p.size.1)])).chain(d.rows.iter().flat_map(|r| [(r.pos.0, r.pos.1 - diagram::ROW_H / 2.0), (r.pos.0 + r.w, r.pos.1 + diagram::ROW_H / 2.0)]));
             for (px, py) in pts {
                 (x0, y0, x1, y1) = (x0.min(px), y0.min(py), x1.max(px), y1.max(py));
             }
@@ -548,18 +548,26 @@ impl App {
             let st = state_of(live, failed, &text);
             let rad = 5.0 * z;
             painter.circle(left + Vec2::new(rad, 0.0), rad, if st == State::Fail { style::RED } else { style::FILL }, Stroke::new(1.5f32 * z.max(0.6), style::colour_of(st)));
-            let feed = row.feeds.iter().map(|&f| format!("{} {:.0}A", style::label(&a.checked.parts[f].id).trim_start_matches("CB "), a.checked.parts[f].num("rating"))).collect::<Vec<_>>().join(" + ");
+            let names: Vec<String> = row.feeds.iter().map(|&f| style::label(&a.checked.parts[f].id).trim_start_matches("CB ").to_owned()).collect();
+            let feed = row.feeds.iter().zip(&names).map(|(&f, n)| if a.checked.parts[f].kind == "contactor" || a.checked.parts[f].kind == "tru" { n.clone() } else { format!("{n} {:.0}A", a.checked.parts[f].num("rating")) }).collect::<Vec<_>>().join(" + ");
             let users = row.users.iter().map(|&u| {
                 let (_, _, t) = self.part_state(&a.checked.parts[u]);
-                format!("{} {t}", style::label(&a.checked.parts[u].id))
+                let n = style::label(&a.checked.parts[u].id);
+                let base = n.trim_end_matches(" LOAD");
+                // A load named after its own breaker only needs its reading.
+                if names.iter().any(|f| f.trim_end_matches(" NORMAL BKR").trim_end_matches(" 2ND BKR") == base) { t } else { format!("{base} {t}") }
             }).collect::<Vec<_>>().join(", ");
-            let line = if feed.is_empty() { users } else { format!("{feed}  ->  {users}") };
+            let line = match row.to {
+                Some(b) => format!("{feed}  tie to {}", style::label(&a.checked.parts[b].id)),
+                None if feed.is_empty() => users,
+                None => format!("{feed}   {users}"),
+            };
             if let Some(g) = fit(&line, 10.0 * z, (row.w - 16.0) * z, style::text_of(st)) {
                 painter.galley(Pos2::new(left.x + 2.0 * rad + 5.0 * z, left.y - g.size().y / 2.0), g, style::text_of(st));
             }
             let hit_r = Rect::from_min_size(Pos2::new(left.x, left.y - diagram::ROW_H * z / 2.0), Vec2::new(row.w * z, diagram::ROW_H * z));
             if resp.hover_pos().is_some_and(|h| hit_r.contains(h)) {
-                hit = Some(row.feeds.first().copied().unwrap_or(row.users[0]));
+                hit = row.feeds.first().copied().or_else(|| row.users.first().copied());
             }
         }
         let mut crisp_rects: Vec<Rect> = Vec::new();
@@ -569,10 +577,9 @@ impl App {
             let (live, failed, text) = self.part_state(part);
             let st = state_of(live, failed, &text);
             let sel = self.selected == Some(it.part);
-            let major = d.major.contains(&it.part);
             let name = style::label(&part.id);
             // A structural hub keeps a crisp label at any zoom; its box grows around it.
-            let mut crisp = if major && it.role == Role::Hub && 12.5 * z < 11.0 { Some(painter.layout_no_wrap(name.clone(), FontId::monospace(11.0), style::text_of(st))) } else { None };
+            let mut crisp: Option<std::sync::Arc<egui::Galley>> = None;
             let mut rect = box_of(it);
             if let Some(g) = &crisp {
                 let grown = Rect::from_center_size(rect.center(), Vec2::new(rect.width().max(g.size().x + 12.0), rect.height().max(g.size().y + 8.0)));
