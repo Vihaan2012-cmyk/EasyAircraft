@@ -4,6 +4,11 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
+mod catalogue;
+mod code;
+mod msfs_fuel;
+pub mod plugin;
+
 const LB: f64 = 0.453_592_37;
 const FT: f64 = 0.3048;
 const LBF: f64 = 4.448_221_6;
@@ -54,6 +59,12 @@ pub struct Spec {
     pub retracting_gear: Option<f64>,
     pub hydraulic_psi: Option<f64>,
     pub notes: Vec<String>,
+    /// A version 5 MSFS fuel system, imported as its whole graph.
+    pub fuel_graph: Option<msfs_fuel::Graph>,
+    /// What the aircraft's own systems code holds, found but not converted.
+    pub code: Vec<String>,
+    /// The A380 for X-Plane 12 plugin's deep systems, when its source was found.
+    pub deep: Option<plugin::Deep>,
 }
 
 fn num(map: &HashMap<String, String>, k: &str) -> Option<f64> {
@@ -158,13 +169,61 @@ fn fields(v: &str) -> HashMap<String, String> {
     v.split('#').filter_map(|f| f.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_owned())).collect()
 }
 
-/// Reads an MSFS aircraft folder (`flight_model.cfg`, `engines.cfg`, `systems.cfg`).
+/// Merges `over` onto `base`, section by section, key by key.
+fn merge(mut base: Ini, over: Ini) -> Ini {
+    for (sec, keys) in over {
+        if sec == "MODULAR_MERGE" {
+            continue;
+        }
+        base.entry(sec).or_default().extend(keys);
+    }
+    base
+}
+
+/// The shared `common/config/<name>` a modular preset merges onto, looking up from `from`.
+fn common_cfg(from: &Path, name: &str) -> Option<PathBuf> {
+    let mut at = from.parent();
+    for _ in 0..6 {
+        let d = at?;
+        let c = d.join("common").join("config").join(name);
+        if c.is_file() {
+            return Some(c);
+        }
+        at = d.parent();
+    }
+    None
+}
+
+/// A cfg file, merged onto its shared base when it is a `[MODULAR_MERGE]` preset.
+fn read_cfg(dir: &Path, name: &str, notes: &mut Vec<String>) -> Option<Ini> {
+    let found = find_cfg(dir, name, 4);
+    let own = found.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| ini(&t));
+    let modular = own.as_ref().is_none_or(|i| i.contains_key("MODULAR_MERGE"));
+    let base = if modular { common_cfg(found.as_deref().unwrap_or(&dir.join(name)), name).or_else(|| common_cfg(&dir.join(name), name)) } else { None };
+    match (own, base.and_then(|b| std::fs::read_to_string(&b).ok().map(|t| (b, ini(&t))))) {
+        (Some(o), Some((b, bi))) => {
+            notes.push(format!("{name}: merged onto {}", b.display().to_string().replace('\\', "/")));
+            Some(merge(bi, o))
+        }
+        (None, Some((b, bi))) => {
+            notes.push(format!("{name}: read from {}", b.display().to_string().replace('\\', "/")));
+            Some(bi)
+        }
+        (o, None) => o,
+    }
+}
+
+/// Reads an MSFS aircraft folder's cfg files, following modular presets to their shared files.
 pub fn from_msfs(dir: &Path) -> Result<Spec, String> {
-    let read = |n: &str| find_cfg(dir, n, 4).and_then(|p| std::fs::read_to_string(p).ok()).map(|t| ini(&t));
+    let mut merge_notes = Vec::new();
+    let mut read = |n: &str| read_cfg(dir, n, &mut merge_notes);
     let fm = read("flight_model.cfg").ok_or_else(|| format!("no flight_model.cfg under `{}`", dir.display()))?;
     let en = read("engines.cfg").unwrap_or_default();
     let sy = read("systems.cfg").unwrap_or_default();
-    let mut s = Spec { name: dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), source: dir.display().to_string(), ..Default::default() };
+    let ac = read("aircraft.cfg").unwrap_or_default();
+    let title = ac.get("FLTSIM.0").and_then(|f| f.get("title")).map(|t| t.trim_matches('"').to_owned());
+    let mut s = Spec { name: title.unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), source: dir.display().to_string(), ..Default::default() };
+    s.notes.append(&mut merge_notes);
     let sec = |c: &Ini, n: &str| c.get(n).cloned().unwrap_or_default();
     let wb = sec(&fm, "WEIGHT_AND_BALANCE");
     s.empty_kg = num(&wb, "empty_weight").unwrap_or(0.0) * LB;
@@ -186,11 +245,19 @@ pub fn from_msfs(dir: &Path) -> Result<Spec, String> {
         s.engines.push(Engine { kind, thrust_n: thrust, power_w: power, rpm, prop_diameter_m: dia });
     }
     let density = if kind == EngineKind::Piston { 0.72 } else { 0.803 };
+    s.fuel_graph = msfs_fuel::read(&sec(&fm, "FUEL_SYSTEM"), density);
+    if let Some(g) = &s.fuel_graph {
+        for (tid, title, kg, arm, _) in &g.tanks {
+            let _ = tid;
+            s.tanks.push(Tank { name: title.clone(), capacity_kg: *kg, arm_m: *arm, lateral_m: 0.0 });
+        }
+        s.notes.extend(g.skipped.iter().cloned());
+    }
     let mut fuel = sec(&fm, "FUEL");
     fuel.extend(sec(&fm, "FUEL_SYSTEM").into_iter().filter(|(k, _)| k.starts_with("tank.")));
     let mut keys: Vec<&String> = fuel.keys().collect();
     keys.sort();
-    for k in keys {
+    for k in keys.into_iter().filter(|_| s.fuel_graph.is_none()) {
         let v = &fuel[k];
         if k.starts_with("tank.") {
             let f = fields(v);
@@ -226,7 +293,12 @@ pub fn from_msfs(dir: &Path) -> Result<Spec, String> {
     });
     s.retracting_gear = retract.fold(None, |a: Option<f64>, t| Some(a.map_or(t, |x| x.max(t))));
     s.hydraulic_psi = num(&sec(&sy, "HYDRAULIC_SYSTEM"), "normal_pressure").filter(|p| *p > 100.0);
-    s.notes.push("MSFS electrical circuits and logic are not converted; the files give a starting electrical system to refine".into());
+    s.code = code::scan(dir);
+    if el.is_empty() {
+        s.notes.push("systems.cfg has no electrical system: this aircraft runs its own systems code, listed below; the electrical, hydraulic and other systems here are a starting point".into());
+    } else {
+        s.notes.push("MSFS electrical circuits and logic are not converted; the files give a starting electrical system to refine".into());
+    }
     Ok(s)
 }
 
@@ -309,10 +381,25 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
     for i in 1..=s.inverters {
         writeln!(el, "[[electrical.bus]]\nid = \"ac{i}\"\nnominal = \"115 V\"\n\n[[electrical.inverter]]\nid = \"inv{i}\"\ninput = \"bus1\"\noutput = \"ac{i}\"\nvoltage = \"115 V\"\nrating = \"1000 W\"\n").unwrap();
     }
+    if let Some(d) = s.deep.as_ref().filter(|d| !d.loads.is_empty() || d.catalogue.is_some()) {
+        el = plugin::electrical(d, &head, s.engines.len());
+    }
+    if let Some(c) = s.deep.as_ref().and_then(|d| d.catalogue.as_ref()) {
+        files.extend(plugin::catalogue_files(c, &head));
+        inc.extend(["systems/failures.toml", "systems/components.toml", "systems/ecam.toml"]);
+    }
     files.push(("systems/environment.toml".to_owned(), env));
     files.push(("systems/cockpit.toml".to_owned(), ck));
     files.push(("systems/electrical.toml".to_owned(), el));
-    if !s.tanks.is_empty() {
+    if let Some(g) = &s.fuel_graph {
+        files.push(("systems/fuel.toml".to_owned(), msfs_fuel::write(g, &head, s.engines.len())));
+        inc.push("systems/fuel.toml");
+        let mut w = head.clone();
+        writeln!(w, "[[weight.station]]\nid = \"empty\"\nmass = \"{:.0} kg\"\narm = \"{:.2} m\"\n", s.empty_kg.max(1.0), s.empty_arm_m).unwrap();
+        writeln!(w, "[[weight.balance]]\nid = \"wb\"\nstations = [\"empty\", {}]\n", g.tanks.iter().map(|t| format!("\"{}\"", t.0)).collect::<Vec<_>>().join(", ")).unwrap();
+        files.push(("systems/weight.toml".to_owned(), w));
+        inc.push("systems/weight.toml");
+    } else if !s.tanks.is_empty() {
         let mut f = head.clone();
         let mut ids = Vec::new();
         for t in &s.tanks {
@@ -381,6 +468,19 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
     if let Some(p) = s.hydraulic_psi {
         writeln!(rep, "- hydraulics at {p:.0} psi").unwrap();
     }
+    if let Some(g) = &s.fuel_graph {
+        writeln!(rep, "- fuel system graph: {} tanks, {} pumps, {} valves, {} pipes and {} junction, pump and valve nodes from {} lines, {} engine and APU feeds", g.tanks.len(), g.pumps.len(), g.valves.len(), g.pipes.len(), g.nodes.len(), g.lines, g.feeds.len()).unwrap();
+    }
+    if !s.code.is_empty() {
+        rep += "\n## In the aircraft's systems code\n\nFound by reading its source; the behaviour is compiled code and is not converted.\n\n";
+        for c in &s.code {
+            writeln!(rep, "- {c}").unwrap();
+        }
+    }
+    if let Some(d) = &s.deep {
+        rep += &plugin::report(d);
+        files.push(("DEEP.md".to_owned(), plugin::appendix(d)));
+    }
     rep += "\n## To do\n\n";
     rep += "- X-Plane still flies the engines. `systems/engines.toml` has EasyAcft models for them; add it to `include`, wire each FADEC or throttle, and add `output.force` parts to let them make the thrust.\n";
     rep += "- Bus layout, ties and loads are a starting point; compare with the aircraft's documentation.\n";
@@ -392,7 +492,30 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
 
 /// Imports `source` (a .acf file or an MSFS aircraft folder) into `out`.
 pub fn import(source: &Path, out: &Path) -> Result<String, String> {
-    let spec = if source.extension().is_some_and(|e| e.eq_ignore_ascii_case("acf")) { from_acf(source)? } else { from_msfs(source)? };
+    import_with(source, out, None, None)
+}
+
+/// Imports `source` with the plugin source at `code` (or found above `source`) and its catalogue, exported when not given.
+pub fn import_with(source: &Path, out: &Path, code: Option<&Path>, catalogue: Option<&Path>) -> Result<String, String> {
+    let mut spec = if source.extension().is_some_and(|e| e.eq_ignore_ascii_case("acf")) { from_acf(source)? } else { from_msfs(source)? };
+    let root = code.and_then(plugin::find).or_else(|| plugin::find(source));
+    if let Some(r) = root {
+        let mut d = plugin::scan(&r);
+        let json = match catalogue {
+            Some(c) => c.to_path_buf(),
+            None => {
+                std::fs::create_dir_all(out).map_err(|e| format!("cannot create `{}`: {e}", out.display()))?;
+                let j = std::path::absolute(out.join("plugin-catalogue.json")).unwrap_or_else(|_| out.join("plugin-catalogue.json"));
+                plugin::export_catalogue(&r, &j)?;
+                j
+            }
+        };
+        let text = std::fs::read_to_string(&json).map_err(|e| format!("cannot read `{}`: {e}", json.display()))?;
+        d.catalogue = Some(catalogue::read(&text).map_err(|e| format!("`{}`: {e}", json.display()))?);
+        spec.deep = Some(d);
+    } else if let Some(c) = code {
+        return Err(format!("no `src/deep` under `{}`", c.display()));
+    }
     let (files, report) = files(&spec);
     for (rel, text) in &files {
         let p = out.join(rel);

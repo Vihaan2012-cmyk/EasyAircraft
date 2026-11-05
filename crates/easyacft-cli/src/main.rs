@@ -28,7 +28,7 @@ const CODES: &[(&str, &str)] = &[
 fn usage() -> ExitCode {
     eprintln!("usage:\n  easyacft check <aircraft dir>\n  easyacft sim <aircraft dir> [--for 10s] [--every 1s] [--set name=value]... [--print name,name]\n  easyacft names <aircraft dir>\n  easyacft kinds\n  easyacft explain <code>
   easyacft fit <aircraft dir> <engine id> <points.toml> [--tune name,name]
-  easyacft import <file.acf | MSFS aircraft folder> <new folder>
+  easyacft import <file.acf | MSFS aircraft folder> <new folder> [--code <plugin source>] [--catalogue <exported json>]
   easyacft export <aircraft dir> <new folder> [--name crate-name]
   easyacft test <aircraft dir> [scenario.toml]...   (default: every file in <dir>/tests)
   easyacft profile <aircraft dir> [--for 60s] [--scenario file.toml] [--budget 1ms]");
@@ -106,13 +106,15 @@ values: {}", s.outputs.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", "));
             }
         },
         Some("fit") if args.len() >= 4 => fit(&args[1..]),
-        Some("import") if args.len() == 3 => {
+        Some("import") if args.len() >= 3 && args.len() % 2 == 1 && args[3..].chunks(2).all(|c| c[0] == "--code" || c[0] == "--catalogue") => {
             let out = PathBuf::from(&args[2]);
+            let flag = |n: &str| args[3..].chunks(2).find(|c| c[0] == n).map(|c| PathBuf::from(&c[1]));
+            let (code, catalogue) = (flag("--code"), flag("--catalogue"));
             if out.join("aircraft.toml").exists() {
                 eprintln!("`{}` already has an aircraft.toml", out.display());
                 return ExitCode::FAILURE;
             }
-            match easyacft_import::import(&PathBuf::from(&args[1]), &out) {
+            match easyacft_import::import_with(&PathBuf::from(&args[1]), &out, code.as_deref(), catalogue.as_deref()) {
                 Ok(report) => {
                     print!("{report}");
                     match load(&args[2]) {
