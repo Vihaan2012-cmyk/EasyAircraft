@@ -1,5 +1,16 @@
 //! EasyAcft part catalogue and the aircraft runtime.
 
+/// An output list for a part spec and a module of each output's index in it.
+macro_rules! outputs {
+    ($list:ident, $m:ident { $($o:ident : $t:expr),* $(,)? }) => {
+        pub const $list: &[(&str, easyacft_lang::Type)] = &[$((stringify!($o), $t)),*];
+        #[allow(non_upper_case_globals, dead_code)]
+        pub mod $m { outputs!(@idx 0usize; $($o)*); }
+    };
+    (@idx $n:expr; $first:ident $($rest:ident)*) => { pub const $first: usize = $n; outputs!(@idx $n + 1usize; $($rest)*); };
+    (@idx $n:expr;) => {};
+}
+
 pub mod actuation;
 pub mod aircon;
 pub mod apu;

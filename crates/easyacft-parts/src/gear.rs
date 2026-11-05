@@ -203,6 +203,12 @@ impl Leg {
                 self.doors = (self.doors - door_rate * dt).max(0.0);
             }
         }
+        // Travel ends on the locks, not a rounding error short of them.
+        if self.pos < 1e-9 {
+            self.pos = 0.0;
+        } else if self.pos > 1.0 - 1e-9 {
+            self.pos = 1.0;
+        }
         let wow = self.ground.is_some_and(|g| slots[g] != 0.0) && self.pos >= 1.0;
         let demand = if powered && !free { (self.pos - before).abs() / dt.max(1e-9) * self.swept } else { 0.0 };
         let s = &self.s;

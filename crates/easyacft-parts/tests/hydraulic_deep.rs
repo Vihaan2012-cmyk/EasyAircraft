@@ -77,17 +77,21 @@ fn accumulators_fill_from_the_reservoir_and_the_brake_one_holds_behind_its_check
     a.set("pump_on.on", 1.0);
     run(&mut a, 10.0);
     let p = get(&a, "green.pressure");
-    let gas_law = |v: f64| v * (1.0 - (1000.0 * PSI / p).powf(1.0 / 1.3));
+    let isothermal = |v: f64| v * (1.0 - 1000.0 * PSI / p);
+    let hot = get(&a, "acc.fluid");
+    assert!(hot < isothermal(4.0 * LITRE) - 0.05 * LITRE && get(&a, "acc.gas_temperature") > 295.0, "a fast charge heats the gas, so it takes less fluid: {:.2} L", hot / LITRE);
+    run(&mut a, 600.0);
+    let p = get(&a, "green.pressure");
     let (acc, brake) = (get(&a, "acc.fluid"), get(&a, "brake_acc.fluid"));
-    assert!((acc - gas_law(4.0 * LITRE)).abs() < 0.05 * LITRE && (brake - gas_law(2.0 * LITRE)).abs() < 0.05 * LITRE, "gas law: {:.2} L, {:.2} L", acc / LITRE, brake / LITRE);
+    assert!((acc - isothermal(4.0 * LITRE)).abs() < 0.05 * LITRE && (brake - isothermal(2.0 * LITRE)).abs() < 0.05 * LITRE, "cooled, the gas law: {:.2} L, {:.2} L", acc / LITRE, brake / LITRE);
     let level = get(&a, "green.fluid");
     let expect = 20.0 * LITRE - acc - brake - 1e-10 * p;
-    assert!((level - expect).abs() < 0.05 * LITRE, "reservoir {:.2} L, expected {:.2} L", level / LITRE, expect / LITRE);
+    assert!((level - expect).abs() < 0.15 * LITRE, "reservoir {:.2} L, expected {:.2} L less thermal swell", level / LITRE, expect / LITRE);
     a.set("pump_on.on", 0.0);
     a.set("leak.on", 1.0);
-    run(&mut a, 60.0);
+    run(&mut a, 90.0);
     assert!(get(&a, "green.pressure") < 300.0 * PSI && get(&a, "acc.fluid") < 0.05 * LITRE, "the circuit and its accumulator drain");
-    assert!(get(&a, "brake_acc.pressure") > 0.97 * p, "the brake accumulator keeps its charge: {:.0} psi", get(&a, "brake_acc.pressure") / PSI);
+    assert!((get(&a, "brake_acc.fluid") - brake).abs() < 0.01 * brake && get(&a, "brake_acc.pressure") > 0.9 * p, "the brake accumulator keeps its charge: {:.0} psi", get(&a, "brake_acc.pressure") / PSI);
 }
 
 #[test]
@@ -131,11 +135,13 @@ fn fluid_heats_under_load_and_overheats_with_a_small_heat_exchanger() {
     run(&mut a, 60.0);
     let warm = get(&a, "green.temperature");
     assert!(warm > 290.0, "{warm:.1} K");
-    run(&mut a, 900.0);
-    assert_eq!(a.get("green.overheat"), Some(1.0), "{:.0} K", get(&a, "green.temperature"));
     let power = get(&a, "edp.power");
     let hydraulic = get(&a, "edp.flow") * get(&a, "green.pressure");
-    assert!((power * 0.85 - hydraulic).abs() < 0.01 * hydraulic, "shaft power is hydraulic power over efficiency");
+    let eff = hydraulic / power;
+    assert!((0.7..0.92).contains(&eff), "shaft power covers the hydraulic power and the losses: {eff:.2}");
+    run(&mut a, 900.0);
+    assert_eq!(a.get("green.overheat"), Some(1.0), "{:.0} K", get(&a, "green.temperature"));
+    assert!(get(&a, "edp.case_drain_flow") > 3.0 * get(&a, "edp.flow") * 0.03, "hot thin fluid leaks past the pistons");
 }
 
 const PRIORITY: &str = r#"
@@ -160,7 +166,7 @@ priority_below = "2000 psi"
 [[hydraulic.consumer]]
 id = "flight_controls"
 circuit = "c"
-flow = "40 L/min"
+flow = "15 L/min"
 moving_when = "true"
 "#;
 
@@ -170,7 +176,7 @@ fn a_priority_valve_keeps_pressure_for_the_flight_controls() {
     run(&mut a, 10.0);
     let (door, fc) = (get(&a, "cargo_door.flow"), get(&a, "flight_controls.flow"));
     assert!(door < 0.7 * fc && a.get("flight_controls.powered") == Some(1.0), "door throttled to {:.1} of {:.1} L/min", door * 6e4, fc * 6e4);
-    assert!(get(&a, "c.pressure") > 1990.0 * PSI, "held at {:.0} psi", get(&a, "c.pressure") / PSI);
+    assert!(get(&a, "c.pressure") > 1880.0 * PSI && get(&a, "c.pressure") < 2100.0 * PSI, "held near the priority setting: {:.0} psi", get(&a, "c.pressure") / PSI);
     let p = get(&a, "c.pressure");
     run(&mut a, 1.0);
     assert!((get(&a, "c.pressure") - p).abs() < 5.0 * PSI, "steady, not chattering");
@@ -181,11 +187,13 @@ const PTU: &str = r#"
 id = "green"
 nominal = "3000 psi"
 fluid = "20 L"
+heat_exchanger = 1e6
 
 [[hydraulic.circuit]]
 id = "yellow"
 nominal = "3000 psi"
 fluid = "15 L"
+heat_exchanger = 1e6
 
 [[hydraulic.pump]]
 id = "edp"

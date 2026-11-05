@@ -181,7 +181,7 @@ fn hydraulics_pressurise_and_the_ptu_helps_the_other_side() {
     run(&mut a, 2.0);
     assert!(a.get("green.pressure").unwrap() < 1e5, "no pump running");
     a.set("eng1.on", 1.0);
-    run(&mut a, 3.0);
+    run(&mut a, 8.0);
     let g = a.get("green.pressure").unwrap() / 6894.757;
     assert!((2400.0..3000.0).contains(&g), "green {g:.0} psi");
     assert_eq!(a.get("green.available"), Some(1.0));

@@ -5,16 +5,6 @@
 //! feeders and transformers join the buses; loads draw by type and phase; shedding keeps each island inside
 //! its sources. A step whose solution is not finite is thrown away and the domain rolls back.
 
-macro_rules! outputs {
-    ($list:ident, $m:ident { $($o:ident : $t:expr),* $(,)? }) => {
-        pub const $list: &[(&str, easyacft_lang::Type)] = &[$((stringify!($o), $t)),*];
-        #[allow(non_upper_case_globals, dead_code)]
-        pub mod $m { outputs!(@idx 0usize; $($o)*); }
-    };
-    (@idx $n:expr; $first:ident $($rest:ident)*) => { pub const $first: usize = $n; outputs!(@idx $n + 1usize; $($rest)*); };
-    (@idx $n:expr;) => {};
-}
-
 mod battery;
 mod bus;
 pub mod complex;

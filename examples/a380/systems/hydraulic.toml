@@ -95,18 +95,21 @@ id = "brake_acc_g"
 circuit = "green"
 volume = "12 L"
 precharge = "2000 psi"
+check_valve = true
 
 [[hydraulic.accumulator]]
 id = "brake_acc_y"
 circuit = "yellow"
 volume = "12 L"
 precharge = "2000 psi"
+check_valve = true
 
 [[hydraulic.accumulator]]
 id = "cargo_door_acc"
 circuit = "yellow"
 volume = "2 L"
 precharge = "2000 psi"
+check_valve = true
 
 # Users. Surfaces move constantly in flight; slats and flaps, gear, steering when commanded.
 [[logic.flag]]
