@@ -218,3 +218,74 @@ fn a_flameout_brings_the_igniters_on() {
     assert_eq!(a.get("fadec.flameout"), Some(1.0));
     assert_eq!(a.get("fadec.ignition"), Some(1.0), "auto-relight");
 }
+
+fn fadec_rig(extra: &str) -> Aircraft {
+    fadec_rig_with(extra, &[])
+}
+
+fn fadec_rig_with(extra: &str, swap: &[(&str, &str)]) -> Aircraft {
+    let mut src = JET.replace("starter_cutout = 45\n", &format!("starter_cutout = 45\n{extra}\n"));
+    for (from, to) in swap {
+        src = src.replace(from, to);
+    }
+    let src = src + "\n[[cockpit.switch]]\nid = \"airborne\"\n\n[[cockpit.switch]]\nid = \"t_rev\"\n\n[[input.number]]\nid = \"n1_lost\"\n\n[[cockpit.switch]]\nid = \"a_off\"\n";
+    aircraft(&src)
+}
+
+fn started(extra: &str) -> Aircraft {
+    started_with(extra, &[])
+}
+
+fn started_with(extra: &str, swap: &[(&str, &str)]) -> Aircraft {
+    let mut a = fadec_rig_with(extra, swap);
+    a.set("master.on", 1.0);
+    a.set("start_sel.on", 1.0);
+    run(&mut a, 90.0);
+    a.set("start_sel.on", 0.0);
+    run(&mut a, 20.0);
+    assert_eq!(a.get("fadec.state"), Some(3.0), "running");
+    a
+}
+
+#[test]
+fn losing_both_n1_probes_drops_it_into_alternate_mode_on_the_core() {
+    let mut a = started("n1_sensor_failed = \"n1_lost.value\"");
+    a.set("lever.position", 80.0);
+    run(&mut a, 30.0);
+    let normal = a.get("eng.n1").unwrap();
+    a.set("n1_lost.value", 3.0);
+    run(&mut a, 30.0);
+    assert_eq!((a.get("fadec.mode"), a.get("fadec.fault")), (Some(1.0), Some(1.0)));
+    let alt = a.get("eng.n1").unwrap();
+    assert!((alt - normal).abs() < 8.0, "it holds thrust near where it was on the core: {normal:.1} then {alt:.1}");
+}
+
+#[test]
+fn the_reverser_stays_stowed_in_the_air() {
+    let mut b = started_with("on_ground = \"!airborne.on\"", &[("lever = \"lever.position / 100\"", "lever = \"if(t_rev.on, -1, lever.position / 100)\"")]);
+    b.set("airborne.on", 1.0);
+    b.set("t_rev.on", 1.0);
+    run(&mut b, 5.0);
+    assert!(b.get("fadec.reverser").unwrap() < 0.01, "interlocked in flight");
+    b.set("airborne.on", 0.0);
+    run(&mut b, 5.0);
+    assert!(b.get("fadec.reverser").unwrap() > 0.99, "deploys on the ground");
+}
+
+#[test]
+fn a_starter_cranked_too_long_must_cool_before_another_start() {
+    let mut a = fadec_rig_with("starter_limit = \"20 s\"\nhung_time = \"200 s\"", &[("fuel_on_at = 12", "fuel_on_at = 90")]);
+    a.set("master.on", 1.0);
+    a.set("start_sel.on", 1.0);
+    run(&mut a, 25.0);
+    assert_eq!((a.get("fadec.starter_overheat"), a.get("fadec.starter")), (Some(1.0), Some(0.0)), "past its duty cycle the starter is cut");
+}
+
+#[test]
+fn a_dead_channel_hands_over_to_the_other() {
+    let mut a = started("channel_a_failed = \"a_off.on\"");
+    assert_eq!(a.get("fadec.channel"), Some(1.0));
+    a.set("a_off.on", 1.0);
+    run(&mut a, 1.0);
+    assert_eq!((a.get("fadec.channel"), a.get("fadec.state")), (Some(2.0), Some(3.0)), "channel B carries on running the engine");
+}
