@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 mod catalogue;
 mod code;
+mod deep_parts;
 mod msfs_fuel;
 pub mod plugin;
 
@@ -381,8 +382,9 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
     for i in 1..=s.inverters {
         writeln!(el, "[[electrical.bus]]\nid = \"ac{i}\"\nnominal = \"115 V\"\n\n[[electrical.inverter]]\nid = \"inv{i}\"\ninput = \"bus1\"\noutput = \"ac{i}\"\nvoltage = \"115 V\"\nrating = \"1000 W\"\n").unwrap();
     }
+    let mut units = Vec::new();
     if let Some(d) = s.deep.as_ref().filter(|d| !d.loads.is_empty() || d.catalogue.is_some()) {
-        el = plugin::electrical(d, &head, s.engines.len());
+        (el, units) = plugin::electrical(d, &head, s.engines.len());
     }
     if let Some(c) = s.deep.as_ref().and_then(|d| d.catalogue.as_ref()) {
         files.extend(plugin::catalogue_files(c, &head));
@@ -409,7 +411,8 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
         }
         for e in 1..=s.engines.len() {
             let tank = &ids[(e - 1) % ids.len()];
-            writeln!(f, "[[fuel.line]]\nid = \"feed{e}\"\n\n[[fuel.valve]]\nid = \"feed{e}_gravity\"\nbetween = [\"{tank}\", \"feed{e}\"]\n\n[[fuel.feed]]\nid = \"eng{e}_feed\"\nline = \"feed{e}\"\ndemand = \"eng{e}_fuel_flow.value * 1 kg/s\"\nminimum = \"0.01 psi\"\n").unwrap();
+            let demand = if s.deep.is_some() { format!("fadec{e}.fuel_command") } else { format!("eng{e}_fuel_flow.value * 1 kg/s") };
+            writeln!(f, "[[fuel.line]]\nid = \"feed{e}\"\n\n[[fuel.valve]]\nid = \"feed{e}_gravity\"\nbetween = [\"{tank}\", \"feed{e}\"]\n\n[[fuel.feed]]\nid = \"eng{e}_feed\"\nline = \"feed{e}\"\ndemand = \"{demand}\"\nminimum = \"0.01 psi\"\n").unwrap();
         }
         files.push(("systems/fuel.toml".to_owned(), f));
         inc.push("systems/fuel.toml");
@@ -448,6 +451,28 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
     if !s.engines.is_empty() {
         files.push(("systems/engines.toml".to_owned(), eng));
     }
+    if let Some(d) = s.deep.as_ref().filter(|_| s.engines.len() == 4) {
+        let feeds = s.fuel_graph.is_none() && !s.tanks.is_empty();
+        let mut made = plugin::systems(d, &head, &units, feeds);
+        if s.retracting_gear.is_none() {
+            made[1].1 += "[[cockpit.switch]]\nid = \"gear_lever\"\ninitial = true\n";
+        }
+        files.retain(|(p, _)| !made.iter().any(|m| &m.0 == p) && p != "systems/gear.toml");
+        inc.retain(|i| *i != "systems/gear.toml" && *i != "systems/hydraulic.toml");
+        files.extend(made);
+        inc.extend(["systems/engines.toml", "systems/hydraulic.toml", "systems/computers.toml"]);
+        for (path, text) in deep_parts::files(d, &head, &units) {
+            inc.push(match path.as_str() {
+                "systems/avionics.toml" => "systems/avionics.toml",
+                "systems/protection.toml" => "systems/protection.toml",
+                "systems/oxygen.toml" => "systems/oxygen.toml",
+                "systems/pneumatic.toml" => "systems/pneumatic.toml",
+                "systems/brakes.toml" => "systems/brakes.toml",
+                _ => "systems/lights.toml",
+            });
+            files.push((path, text));
+        }
+    }
     let mut root = format!("{head}[aircraft]\nname = \"{}\"\neasyacft = \"1.0\"\ninclude = [{}]\n", s.name.replace('"', "'"), inc.iter().map(|i| format!("\"{i}\"")).collect::<Vec<_>>().join(", "));
     root += "\n[rates]\nelectrical = \"10 ms\"\n";
     files.insert(0, ("aircraft.toml".to_owned(), root));
@@ -482,7 +507,11 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
         files.push(("DEEP.md".to_owned(), plugin::appendix(d)));
     }
     rep += "\n## To do\n\n";
-    rep += "- X-Plane still flies the engines. `systems/engines.toml` has EasyAcft models for them; add it to `include`, wire each FADEC or throttle, and add `output.force` parts to let them make the thrust.\n";
+    if s.deep.is_some() && s.engines.len() == 4 {
+        rep += "- Engines, FADECs, APU, hydraulics, gear and computers come from the plugin; X-Plane still makes the thrust until `output.force` parts are added.\n";
+    } else {
+        rep += "- X-Plane still flies the engines. `systems/engines.toml` has EasyAcft models for them; add it to `include`, wire each FADEC or throttle, and add `output.force` parts to let them make the thrust.\n";
+    }
     rep += "- Bus layout, ties and loads are a starting point; compare with the aircraft's documentation.\n";
     for n in &s.notes {
         writeln!(rep, "- {}", n[..1].to_uppercase() + &n[1..]).unwrap();

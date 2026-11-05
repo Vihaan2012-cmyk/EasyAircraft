@@ -31,7 +31,12 @@ pub struct Deep {
     pub loads: Vec<Load>,
     pub estimated: usize,
     pub catalogue: Option<Catalogue>,
+    /// The plugin's engine model constants, from `src/physics/engine/params.rs`.
+    pub engine: HashMap<String, f64>,
 }
+
+/// A consumer the network was given: (load id, its bus, load type, ATA, name).
+pub type Unit = (String, String, &'static str, u32, String);
 
 use super::catalogue::{bus_name, Breaker, Catalogue};
 use super::msfs_fuel::id as ident;
@@ -339,6 +344,9 @@ pub fn scan(root: &Path) -> Deep {
             d.areas.push(Area { name: p.file_name().unwrap().to_string_lossy().into_owned(), files, lines, failures: f });
         }
     }
+    if let Ok(t) = std::fs::read_to_string(root.join("src").join("physics").join("engine").join("params.rs")) {
+        d.engine = consts(&t);
+    }
     if let Ok(t) = std::fs::read_to_string(deep_dir.join("electrical").join("loads.rs")) {
         let (l, e) = loads(&t);
         d.loads = l;
@@ -371,8 +379,9 @@ fn breaker_size(watts: f64, volts: f64, pf: f64) -> f64 {
 }
 
 /// The A380's sources and feed paths joined to every catalogue and load bus, each load behind its own breakers.
-pub fn electrical(d: &Deep, head: &str, engines: usize) -> String {
+pub fn electrical(d: &Deep, head: &str, engines: usize) -> (String, Vec<Unit>) {
     let mut f = head.to_owned();
+    let mut units: Vec<Unit> = Vec::new();
     f += "# Electrical network from the plugin's load catalogue: four 150 kVA VFGs on AC 1-4, BCRUs to DC 1, DC 2 and DC ESS,\n";
     f += "# AC ESS from AC 1, batteries on the hot buses. Feed paths follow the A380's public architecture; refine with the plugin's\n";
     f += "# own transfer logic.\n\n";
@@ -403,8 +412,11 @@ pub fn electrical(d: &Deep, head: &str, engines: usize) -> String {
         writeln!(f, "[[electrical.bus]]\nid = \"{}\"\nnominal = \"{}\"\n{short}", bus_id(b), if *ac { "115 V" } else { "28 V" }).unwrap();
     }
     for n in 1..=4 {
-        let eng = if engines == 0 { "false".to_owned() } else { format!("eng{}_running.on", (n - 1) % engines + 1) };
+        let eng = if engines == 0 { "false".to_owned() } else { format!("eng{}.running", (n - 1) % engines + 1) };
         writeln!(f, "[[electrical.bus]]\nid = \"vfg{n}_out\"\nnominal = \"115 V\"\n\n[[electrical.generator]]\nid = \"vfg{n}\"\nbus = \"vfg{n}_out\"\nvoltage = \"115 V\"\nfrequency = \"400 Hz\"\nrating = \"150 kVA\"\nvariable_frequency = true\ndriven_when = \"{eng}\"\n\n[[electrical.contactor]]\nid = \"glc{n}\"\nbetween = [\"vfg{n}_out\", \"ac{n}\"]\nclose_when = \"vfg{n}.ready\"\n").unwrap();
+    }
+    for (g, bus, vfg) in [("a", "ac2", "glc2"), ("b", "ac3", "glc3")] {
+        writeln!(f, "[[electrical.bus]]\nid = \"apu_gen_{g}_out\"\nnominal = \"115 V\"\n\n[[electrical.generator]]\nid = \"apu_gen_{g}\"\nbus = \"apu_gen_{g}_out\"\nvoltage = \"115 V\"\nfrequency = \"400 Hz\"\nrating = \"120 kVA\"\ndriven_when = \"apu.available\"\n\n[[electrical.contactor]]\nid = \"apu_glc_{g}\"\nbetween = [\"apu_gen_{g}_out\", \"{bus}\"]\nclose_when = \"apu_gen_{g}.ready && !{vfg}.closed\"\n").unwrap();
     }
     let feed = |f: &mut String, id: &str, from: &str, to: &str| {
         if buses.contains_key(to) && from != to {
@@ -496,7 +508,8 @@ pub fn electrical(d: &Deep, head: &str, engines: usize) -> String {
             };
             let pf = if (pf - 1.0).abs() > 1e-9 { format!("power_factor = {pf:.2}\n") } else { String::new() };
             let rated = if kind == "induction_motor" { format!("rated_power = \"{watts:.0} W\"\n") } else { String::new() };
-            writeln!(f, "[[electrical.load]]\nid = \"{lid}\"\nbus = \"{lb}\"\npower = \"{watts:.0} W\"\ntype = \"{kind}\"\n{pf}{rated}").unwrap();
+            writeln!(f, "[[electrical.load]]\nid = \"{lid}_load\"\nbus = \"{lb}\"\npower = \"{watts:.0} W\"\ntype = \"{kind}\"\n{pf}{rated}").unwrap();
+            units.push((lid.clone(), lb.clone(), kind, bs[0].ata, name.clone()));
         }
     }
     for l in d.loads.iter().filter(|l| !covered.contains(&l.id)) {
@@ -506,15 +519,116 @@ pub fn electrical(d: &Deep, head: &str, engines: usize) -> String {
         let rating = breaker_size(l.watts, if ac { 3.0 * v } else { v }, l.pf);
         writeln!(f, "# {} (ATA {})\n[[electrical.bus]]\nid = \"{lb}\"\nnominal = \"{}\"\n", l.name, l.ata, if ac { "115 V" } else { "28 V" }).unwrap();
         writeln!(f, "[[electrical.breaker]]\nid = \"cb_{}\"\nbetween = [\"{}\", \"{lb}\"]\nrating = \"{rating} A\"\n", super::msfs_fuel::id(&l.id), bus_id(&l.bus)).unwrap();
-        for (k, s) in l.second.iter().enumerate() {
+        for (k, s) in l.second.iter().enumerate().filter(|(_, s)| is_ac(s) == ac) {
             writeln!(f, "[[electrical.diode]]\nid = \"cb_{}_feed{}\"\nbetween = [\"{}\", \"{lb}\"]\n", super::msfs_fuel::id(&l.id), k + 2, bus_id(s)).unwrap();
         }
         let pf = if (l.pf - 1.0).abs() > 1e-9 { format!("power_factor = {:.2}\n", l.pf) } else { String::new() };
         let kind = if l.kind == "induction_motor" && !ac { "motor" } else { l.kind };
         let rated = if kind == "induction_motor" { format!("rated_power = \"{:.0} W\"\n", l.watts) } else { String::new() };
-        writeln!(f, "[[electrical.load]]\nid = \"{}\"\nbus = \"{lb}\"\npower = \"{:.0} W\"\ntype = \"{kind}\"\n{pf}{rated}", super::msfs_fuel::id(&l.id), l.watts).unwrap();
+        writeln!(f, "[[electrical.load]]\nid = \"{}_load\"\nbus = \"{lb}\"\npower = \"{:.0} W\"\ntype = \"{kind}\"\n{pf}{rated}", super::msfs_fuel::id(&l.id), l.watts).unwrap();
+        units.push((super::msfs_fuel::id(&l.id), lb.clone(), kind, l.ata, l.name.clone()));
     }
-    f
+    (f, units)
+}
+
+/// `pub const NAME: f64 = expr;` lines whose expression is a product of numbers.
+pub fn consts(text: &str) -> HashMap<String, f64> {
+    let mut out = HashMap::new();
+    for l in text.lines() {
+        let Some(rest) = l.trim().strip_prefix("pub const ") else { continue };
+        let Some((name, rest)) = rest.split_once(": f64 = ") else { continue };
+        let expr = rest.trim_end_matches(';').trim();
+        if let Some(v) = value(expr, &out.iter().map(|(k, v): (&String, &f64)| (k.clone(), v.to_string())).collect()) {
+            out.insert(name.trim().to_owned(), v);
+        }
+    }
+    out
+}
+
+/// ATA chapters whose constant-power consumers are computers or radios.
+const AVIONICS_ATA: [u32; 12] = [22, 23, 27, 28, 31, 32, 34, 42, 44, 45, 46, 73];
+
+/// Engines, FADECs, APU, hydraulics, gear, computers and their cockpit inputs for the plugin's A380.
+pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: bool) -> Vec<(String, String)> {
+    let e = |k: &str, dflt: f64| d.engine.get(k).copied().unwrap_or(dflt);
+    let mut eng = head.to_owned();
+    writeln!(eng, "# Four three-spool turbofans from the plugin's engine model (src/physics/engine/params.rs): BPR {}, OPR {}.\n", e("BYPASS_RATIO", 8.41), e("OPR_DESIGN", 38.68)).unwrap();
+    for n in 1..=4 {
+        let fuel = if feeds { format!("eng{n}_feed.flow") } else { format!("fadec{n}.fuel_command") };
+        writeln!(
+            eng,
+            "[[engine.gas_turbine]]\nid = \"eng{n}\"\nair = \"air\"\nfuel_flow = \"{fuel}\"\ndesign_thrust = \"{:.0} N\"\nairflow = \"{:.0} kg/s\"\nbypass_ratio = {}\nspools = 3\nfan_pr = {}\nipc_pr = {}\nhpc_pr = {}\nfan_efficiency = {}\nipc_efficiency = {}\nhpc_efficiency = {}\nhpt_efficiency = {}\nipt_efficiency = {}\nlpt_efficiency = {}\nlp_rpm = \"{:.0} rpm\"\nip_rpm = \"{:.0} rpm\"\nhp_rpm = \"{:.0} rpm\"\nlp_inertia = 900\nip_inertia = 40\nhp_inertia = 20\nstarter_torque = \"if(fadec{n}.starter, 1800 N*m, 0 N*m)\"\nofftake = \"vfg{n}.load / 0.9\"\nreverser = \"fadec{n}.reverser\"\n",
+            e("STATIC_THRUST_N", 356_805.0),
+            e("MDOT_TOTAL_DESIGN_KG_S", 1298.0),
+            e("BYPASS_RATIO", 8.41),
+            e("PR_FAN_DESIGN", 1.6),
+            e("PR_IPC_DESIGN", 4.0),
+            e("PR_HPC_DESIGN", 7.11),
+            e("ETA_FAN_DESIGN", 0.9),
+            e("ETA_IPC_DESIGN", 0.89),
+            e("ETA_HPC_DESIGN", 0.86),
+            e("ETA_HPT_DESIGN", 0.9),
+            e("ETA_IPT_DESIGN", 0.91),
+            e("ETA_LPT_DESIGN", 0.925),
+            e("N1_DESIGN_RPM", 2900.0),
+            e("N2_DESIGN_RPM", 8300.0),
+            e("N3_DESIGN_RPM", 12200.0),
+        )
+        .unwrap();
+        writeln!(eng, "[[fadec.controller]]\nid = \"fadec{n}\"\nengine = \"eng{n}\"\nlever = \"tla{n}.value\"\nmaster = \"eng{n}_master.on\"\nstart = \"eng_mode.value > 1.5\"\nidle = \"{}\"\nmax = \"100\"\nmax_reverse = \"{}\"\negt_limit = \"1173 K\"\nstart_egt_limit = \"1023 K\"\nfuel_on_at = 10\nstarter_cutout = 40\non_ground = \"air.on_ground\"\n", 20, if n == 2 || n == 3 { 70 } else { 0 }).unwrap();
+        writeln!(eng, "[[input.number]]\nid = \"tla{n}\"\n\n[[cockpit.switch]]\nid = \"eng{n}_master\"\n").unwrap();
+    }
+    eng += "# ENG MODE selector: 0 CRANK, 1 NORM, 2 IGN START\n[[input.number]]\nid = \"eng_mode\"\ninitial = 1\n\n";
+    eng += "[[apu.unit]]\nid = \"apu\"\nair = \"air\"\nmaster = \"apu_master.on\"\nstart = \"apu_start.on\"\nstart_time = \"60 s\"\ngenerator_load = \"apu_gen_a.load + apu_gen_b.load\"\ngenerator_rating = \"240 kW\"\nfuel_flow = \"0.07 kg/s\"\n\n";
+    eng += "[[cockpit.switch]]\nid = \"apu_master\"\n\n[[cockpit.switch]]\nid = \"apu_start\"\n\n";
+    eng += "[bindings]\n";
+    for n in 1..=4 {
+        writeln!(eng, "\"sim/cockpit2/engine/actuators/throttle_ratio[{}]\" = {{ to = \"tla{n}.value\" }}", n - 1).unwrap();
+    }
+
+    let mut h = head.to_owned();
+    h += "# Two 5000 psi systems: green from engines 1 and 2, yellow from 3 and 4, two engine pumps per engine and two AC motor pumps per system.\n\n";
+    for c in ["green", "yellow"] {
+        writeln!(h, "[[hydraulic.circuit]]\nid = \"{c}\"\nnominal = \"5000 psi\"\nfluid = \"125 L\"\nlow_pressure = \"3000 psi\"\ncompliance = 4e-11\nleak = \"6.8 L/min\"\n").unwrap();
+    }
+    for n in 1..=4 {
+        let c = if n <= 2 { "green" } else { "yellow" };
+        for x in ["a", "b"] {
+            writeln!(h, "[[hydraulic.pump]]\nid = \"edp{n}{x}\"\ncircuit = \"{c}\"\npressure = \"5000 psi\"\nflow = \"if(eng{n}.n3 > 30, min(1, eng{n}.n3 / 60) * 150 L/min, 0 L/min)\"\nrunning_when = \"eng{n}.n3 > 30\"\n").unwrap();
+        }
+    }
+    for (c, x, bus) in [("green", "a", "ac1"), ("green", "b", "ac2"), ("yellow", "a", "ac3"), ("yellow", "b", "ac4")] {
+        writeln!(h, "[[cockpit.switch]]\nid = \"{c}_epump_{x}_sw\"\n\n[[hydraulic.pump]]\nid = \"{c}_epump_{x}\"\ncircuit = \"{c}\"\npressure = \"5000 psi\"\nflow = \"16 L/min\"\nrunning_when = \"{c}_epump_{x}_sw.on && {bus}.powered\"\n").unwrap();
+    }
+    for (id, c, vol) in [("brake_acc_g", "green", "12 L"), ("brake_acc_y", "yellow", "12 L"), ("cargo_door_acc", "yellow", "2 L")] {
+        writeln!(h, "[[hydraulic.accumulator]]\nid = \"{id}\"\ncircuit = \"{c}\"\nvolume = \"{vol}\"\nprecharge = \"2000 psi\"\ncheck_valve = true\n").unwrap();
+    }
+    h += "[[logic.flag]]\nid = \"flying\"\nwhen = \"!air.on_ground\"\n\n";
+    for (id, flow) in [("ailerons", 40), ("elevators", 30), ("rudder", 15), ("ths", 20)] {
+        for (c, x) in [("green", "g"), ("yellow", "y")] {
+            writeln!(h, "[[hydraulic.consumer]]\nid = \"{id}_{x}\"\ncircuit = \"{c}\"\nflow = \"{flow} L/min\"\nmoving_when = \"flying.on\"\n").unwrap();
+        }
+    }
+    h += "[[input.number]]\nid = \"flap_lever\"\n\n[[logic.flag]]\nid = \"flaps_moving\"\nwhen = \"off_delay(rising(flap_lever.value > 0.5) || rising(flap_lever.value < 0.5), 40 s)\"\n\n";
+    h += "[[hydraulic.consumer]]\nid = \"flaps_motor_g\"\ncircuit = \"green\"\nflow = \"60 L/min\"\nmoving_when = \"flaps_moving.on\"\n\n[[hydraulic.consumer]]\nid = \"slats_motor_g\"\ncircuit = \"green\"\nflow = \"40 L/min\"\nmoving_when = \"flaps_moving.on\"\n\n";
+    h += "# Five legs; the body and wing gear on green, the nose on yellow.\n";
+    for (id, c, t) in [("nose_gear", "yellow", 10), ("wing_gear_l", "green", 14), ("wing_gear_r", "green", 14), ("body_gear_l", "green", 14), ("body_gear_r", "green", 14)] {
+        writeln!(h, "[[gear.leg]]\nid = \"{id}\"\ncircuit = \"{c}\"\ndown_when = \"gear_lever.on\"\ntime = \"{t} s\"\n").unwrap();
+    }
+
+    let mut c = head.to_owned();
+    c += "# Every constant-power avionics consumer in the catalogue, as a computer on its own breaker bus.\n\n";
+    let mut n = 0;
+    for (lid, lb, kind, ata, name) in units {
+        if *kind != "constant_power" || !AVIONICS_ATA.contains(ata) || ["pump", "valve", "heater", "fan", "light"].iter().any(|w| lid.contains(w)) {
+            continue;
+        }
+        let flight = ["prim", "sec", "fcdc"].iter().any(|k| lid.starts_with(k));
+        writeln!(c, "# {} (ATA {ata})\n[[computer.unit]]\nid = \"{lid}\"\npower = [\"{lb}\"]\nboot_time = \"{}\"\n{}", one_line(name), if flight { "15 s" } else { "5 s" }, if flight { "channels = 2\n" } else { "" }).unwrap();
+        n += 1;
+    }
+    let _ = n;
+    vec![("systems/engines.toml".into(), eng), ("systems/hydraulic.toml".into(), h), ("systems/computers.toml".into(), c)]
 }
 
 pub fn report(d: &Deep) -> String {
@@ -627,7 +741,7 @@ fn ata21(net: &mut Network, cat: &mut Catalog) {
         let b = |id: &str, bus: &str| Breaker { id: id.into(), name: id.into(), bus: bus.into(), rating: 3.0, sspc: true, consumer: String::new(), ata: 34 };
         let cat = Catalogue { breakers: vec![b("adirs-1-2nd-bkr", "DcEss"), b("adirs-1-normal-bkr", "AcEss"), b("prim-1-normal-bkr", "DcEss"), b("prim-1-2nd-bkr", "Dc1")], ..Default::default() };
         let d = Deep { catalogue: Some(cat), ..Default::default() };
-        let el = electrical(&d, "", 4);
+        let (el, _) = electrical(&d, "", 4);
         assert!(el.contains("between = [\"ac_ess\", \"adirs_1_bus\"]"), "{el}");
         assert!(!el.contains("id = \"adirs_1_bus_f2_d\""), "{el}");
         assert!(el.contains("between = [\"prim_1_bus_f2\", \"prim_1_bus\"]"), "{el}");

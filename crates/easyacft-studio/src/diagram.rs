@@ -1,7 +1,7 @@
 //! Automatic system diagrams: hubs in levels from their sources, attached parts around them.
 
 use easyacft_lang::{Checked, CheckedPart};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Role {
@@ -70,7 +70,7 @@ pub fn role(p: &CheckedPart) -> Option<(Role, &'static str)> {
 
 pub fn edge_ends(p: &CheckedPart) -> Option<(usize, usize)> {
     match (p.domain, p.kind) {
-        ("electrical", "contactor" | "breaker") | ("hydraulic", "ptu") | ("fuel", "valve") | ("pneumatic", "valve") => {
+        ("electrical", "contactor" | "breaker" | "sspc" | "diode") | ("hydraulic", "ptu") | ("fuel", "valve") | ("pneumatic", "valve") => {
             let e = p.parts("between");
             Some((*e.first()?, *e.get(1)?))
         }
@@ -131,13 +131,21 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>) ->
     let mut ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_in(domain, &c.parts[i]).map(|(a, b)| (i, a, b))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
     // A bus fed by one breaker and feeding only users is a distribution feeder: fold it into its parent.
     let sources_of = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r == Role::Source && c.parts[i].part(f) == Some(h)));
+    // Also a load's own bus behind SSPCs and diodes: its neighbour that is not itself such a feeder is its parent.
+    let protective = |e: usize| matches!(c.parts[e].kind, "breaker" | "sspc" | "diode");
+    let candidate: HashSet<usize> = hubs
+        .iter()
+        .copied()
+        .filter(|&h| {
+            let touching: Vec<&(usize, usize, usize)> = ends.iter().filter(|(_, a, b)| *a == h || *b == h).collect();
+            touching.iter().any(|(e, _, _)| c.parts[*e].kind != "diode") && touching.iter().all(|(e, _, _)| protective(*e)) && !sources_of(h)
+        })
+        .collect();
     let mut feeder_of: HashMap<usize, usize> = HashMap::new();
-    for &h in &hubs {
-        let touching: Vec<&(usize, usize, usize)> = ends.iter().filter(|(_, a, b)| *a == h || *b == h).collect();
-        if let [(e, a, b)] = touching[..] {
-            if c.parts[*e].kind == "breaker" && !sources_of(h) {
-                feeder_of.insert(h, if *a == h { *b } else { *a });
-            }
+    for &h in &candidate {
+        let parent = ends.iter().filter(|(_, a, b)| *a == h || *b == h).map(|&(_, a, b)| if a == h { b } else { a }).find(|n| !candidate.contains(n));
+        if let Some(p) = parent {
+            feeder_of.insert(h, p);
         }
     }
     hubs.retain(|h| !feeder_of.contains_key(h));
