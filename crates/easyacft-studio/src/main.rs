@@ -235,7 +235,7 @@ impl App {
             search: String::new(),
             plots: Vec::new(),
             pinned: HashMap::new(),
-            fold: false,
+            fold: true,
             dragging: None,
             offset: Vec2::ZERO,
             edits: HashMap::new(),
@@ -546,7 +546,7 @@ impl App {
                 style::squircle_with(&painter, rect.expand(3.0 * z), 11.0 * z, Color32::TRANSPARENT, Stroke::new(2.0f32, style::SELECT));
             }
             let name = style::label(&part.id);
-            let size = if it.role == Role::Hub { 12.5 * z } else { 10.0 * z };
+            let size = if it.role == Role::Hub { (12.5 * z).max(10.5) } else { (10.0 * z).max(9.0) };
             let inner = rect.width() - 10.0 * z;
             let mut sub: Vec<String> = Vec::new();
             if labels && !text.is_empty() {
@@ -555,7 +555,7 @@ impl App {
             if let Some(&(b, u)) = d.folded.get(&it.part) {
                 sub.push(if b == 0 { format!("{u} USERS") } else { format!("{b} CB  {u} USERS") });
             }
-            let sub_g = if sub.is_empty() { None } else { fit(&sub.join("  "), 9.0 * z, inner, faint) };
+            let sub_g = if sub.is_empty() { None } else { fit(&sub.join("  "), (9.0 * z).max(8.0), inner, faint) };
             let name_g = fit(&name, size, inner, style::text_of(st));
             match (name_g, sub_g) {
                 (Some(g), Some(sg)) => {
@@ -1453,7 +1453,9 @@ impl eframe::App for App {
                         self.fit = true;
                         self.zoomed = false;
                     }
-                    if ui.checkbox(&mut self.fold, "Fold breakers").changed() {
+                    let mut all = !self.fold;
+                    if ui.checkbox(&mut all, "Show every breaker").on_hover_text("Off: each bus lists its breakers and users when you click it").changed() {
+                        self.fold = !all;
                         self.fit = true;
                     }
                 }

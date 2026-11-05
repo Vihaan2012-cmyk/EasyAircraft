@@ -95,15 +95,18 @@ impl App {
                     continue;
                 }
                 let between = q.parts("between");
-                if q.kind == "breaker" && between.contains(&sel) {
+                if matches!(q.kind, "breaker" | "sspc") && between.first() == Some(&sel) {
                     let other = between.iter().copied().find(|&b| b != sel);
-                    let users: Vec<String> = a.checked.parts.iter().filter(|u| u.kind == "load" && other.is_some_and(|o| u.part("bus") == Some(o))).map(|u| {
+                    // A second feed reaches its load bus through a diode.
+                    let through: Vec<usize> = other.into_iter().chain(a.checked.parts.iter().filter(|d| d.kind == "diode" && d.parts("between").first().copied() == other).filter_map(|d| d.parts("between").get(1).copied())).collect();
+                    let users: Vec<String> = a.checked.parts.iter().filter(|u| u.kind == "load" && u.part("bus").is_some_and(|b| through.contains(&b))).map(|u| {
                         let w = self.get(&format!("{}.power", u.id)).unwrap_or(0.0);
                         format!("{} {}", u.id, unit(Type::Num(easyacft_core::Dim::POWER), w))
                     }).collect();
                     let st = if self.get(&format!("{}.tripped", q.id)) == Some(1.0) { "TRIPPED" } else if self.get(&format!("{}.closed", q.id)) == Some(1.0) { "in" } else { "out" };
                     let amps = self.get(&format!("{}.current", q.id)).unwrap_or(0.0);
-                    rows.push((k, format!("{}  {st}  {:.1} A  {}", q.id, amps.abs(), users.join(", "))));
+                    let rating = format!("  {:.0} A", q.num("rating"));
+                    rows.push((k, format!("{}{rating}  {st}  {:.1} A  {}", q.id, amps.abs(), users.join(", "))));
                 } else if q.kind == "load" && q.part("bus") == Some(sel) {
                     let w = self.get(&format!("{}.power", q.id)).unwrap_or(0.0);
                     rows.push((k, format!("{}  {}", q.id, unit(Type::Num(easyacft_core::Dim::POWER), w))));
@@ -111,7 +114,7 @@ impl App {
             }
             if !rows.is_empty() {
                 ui.separator();
-                egui::CollapsingHeader::new(format!("Breakers and users ({})", rows.len())).default_open(rows.len() <= 40).show(ui, |ui| {
+                egui::CollapsingHeader::new(format!("Breakers and users ({})", rows.len())).default_open(true).show(ui, |ui| {
                     egui::ScrollArea::vertical().max_height(320.0).id_salt("feeders").show(ui, |ui| {
                         for (k, t) in rows {
                             if ui.link(t).clicked() {

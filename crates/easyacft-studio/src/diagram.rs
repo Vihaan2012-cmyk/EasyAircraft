@@ -159,6 +159,28 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         e.0 += 1;
         e.1 += users;
     }
+    // A fuel line that only joins two pipes, pumps or valves is drawn as one run from end to end.
+    if fold && domain == "fuel" {
+        let attached_to = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r != Role::Hub && c.parts[i].part(f) == Some(h)));
+        loop {
+            let through = |h: usize| ends.iter().filter(|(_, a, b)| *a == h || *b == h).count() == 2;
+            let Some(h) = hubs.iter().copied().find(|&h| c.parts[h].kind == "line" && through(h) && !attached_to(h)) else { break };
+            let two: Vec<usize> = ends.iter().enumerate().filter(|(_, (_, a, b))| *a == h || *b == h).map(|(k, _)| k).collect();
+            let other = ends[two[1]];
+            let far = if other.1 == h { other.2 } else { other.1 };
+            hubs.retain(|&q| q != h);
+            ends.remove(two[1]);
+            let kept = &mut ends[two[0]];
+            if kept.1 == h {
+                kept.1 = far;
+            } else {
+                kept.2 = far;
+            }
+            if kept.1 == kept.2 {
+                ends.remove(two[0]);
+            }
+        }
+    }
     let mut attached: HashMap<(usize, bool), Vec<usize>> = HashMap::new();
     for &i in &parts {
         let Some((r, field)) = role_in(domain, &c.parts[i]) else { continue };
