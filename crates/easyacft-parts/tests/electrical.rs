@@ -111,6 +111,7 @@ id = "oven"
 bus = "oven_bus"
 power = "30 kW"
 on_when = "sw_oven.on"
+phase = "a"
 
 [[logic.flag]]
 id = "dc1_low"
@@ -174,7 +175,7 @@ fn an_overloaded_breaker_trips_and_resets_when_pulled() {
     assert_eq!(a.get("cb_oven.tripped"), Some(0.0));
     a.set("sw_oven.on", 1.0);
     run(&mut a, 0.5);
-    assert!(a.get("cb_oven.current").unwrap() > 200.0, "30 kW at 115 V is over the 100 A rating");
+    assert!(a.get("cb_oven.current").unwrap() > 200.0, "30 kW on one 115 V phase is over the 100 A rating");
     run(&mut a, 3.0);
     assert_eq!(a.get("cb_oven.tripped"), Some(1.0));
     assert_eq!(a.get("oven.powered"), Some(0.0));

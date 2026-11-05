@@ -180,7 +180,7 @@ id = "aft_gallery"
 [[logic.flag]]
 id = "feed_wants{n}"
 count = 4
-when = "transfer_auto_pb.pressed && feed{n}.quantity < 0.85 * 22050 kg"
+when = "transfer_auto_pb.pressed && latch(feed{n}.quantity < 0.85 * 22050 kg, feed{n}.quantity > 0.9 * 22050 kg)"
 
 [[logic.flag]]
 id = "any_feed_wants"

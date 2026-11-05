@@ -83,12 +83,17 @@ fn a_generator_excites_follows_its_drive_and_regulates_out_droop() {
     run(&mut a, 0.1);
     assert_eq!((a.get("gen.ready"), a.get("ac.frequency")), (Some(0.0), Some(0.0)), "under speed, off line");
     a.set("spd.value", 1.0);
-    a.set("demand.value", 80.0);
     run(&mut a, 0.5);
-    let sag = get(&a, "ac.voltage");
+    a.set("demand.value", 80.0);
+    let (mut low, mut high) = (f64::MAX, 0.0f64);
+    for _ in 0..25 {
+        run(&mut a, 0.02);
+        low = low.min(get(&a, "ac.voltage"));
+        high = high.max(get(&a, "ac.voltage"));
+    }
     run(&mut a, 4.0);
     let held = get(&a, "ac.voltage");
-    assert!(sag < 114.0 && (held - 115.0).abs() < 0.3, "droop {sag:.1} V trimmed back to {held:.1} V");
+    assert!(low < 114.5 && high < 126.5 && (held - 115.0).abs() < 0.3, "a 90 % load step dips to {low:.1} V, peaks {high:.1} V and settles at {held:.1} V");
 }
 
 #[test]
@@ -96,9 +101,13 @@ fn its_control_unit_trips_on_overspeed_overload_and_a_short() {
     let mut a = aircraft(GEN);
     a.set("drive.on", 1.0);
     run(&mut a, 0.5);
-    a.set("spd.value", 1.4);
-    run(&mut a, 0.5);
-    assert_eq!(a.get("gen.tripped"), Some(0.0), "not for half a second");
+    // Engines take time to spin up: 1.0 to 1.4 over 0.4 s, past the 1.2 limit halfway.
+    for k in 1..=20 {
+        a.set("spd.value", 1.0 + 0.02 * k as f64);
+        run(&mut a, 0.02);
+    }
+    run(&mut a, 0.3);
+    assert_eq!(a.get("gen.tripped"), Some(0.0), "not for half a second past the limit, and the regulator holds the voltage as it speeds up");
     run(&mut a, 1.0);
     assert_eq!((a.get("gen.tripped"), a.get("gen.fault"), a.get("gen.ready")), (Some(1.0), Some(3.0), Some(0.0)), "overfrequency");
     a.set("spd.value", 1.0);
