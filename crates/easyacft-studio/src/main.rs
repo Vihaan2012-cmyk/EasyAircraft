@@ -467,7 +467,7 @@ impl App {
         if self.fit {
             self.fit_size = resp.rect.size();
             let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-            let pts = d.items.iter().flat_map(|it| [(it.pos.0 - it.size.0 / 2.0, it.pos.1 - it.size.1 / 2.0 - 16.0), (it.pos.0 + it.size.0 / 2.0, it.pos.1 + it.size.1 / 2.0 + 16.0)]).chain(d.edges.iter().flat_map(|e| e.path.iter().copied()));
+            let pts = d.items.iter().flat_map(|it| [(it.pos.0 - it.size.0 / 2.0, it.pos.1 - it.size.1 / 2.0 - 16.0), (it.pos.0 + it.size.0 / 2.0, it.pos.1 + it.size.1 / 2.0 + 16.0)]).chain(d.edges.iter().flat_map(|e| e.path.iter().copied())).chain(d.panels.iter().flat_map(|p| [p.pos, (p.pos.0 + p.size.0, p.pos.1 + p.size.1)]));
             for (px, py) in pts {
                 (x0, y0, x1, y1) = (x0.min(px), y0.min(py), x1.max(px), y1.max(py));
             }
@@ -534,6 +534,34 @@ impl App {
                 hit = Some(e.part);
             }
         }
+        for p in &d.panels {
+            let r = Rect::from_min_size(at(p.pos), Vec2::new(p.size.0, p.size.1) * z);
+            painter.rect_filled(r, 8.0 * z, style::FILL);
+            painter.rect_stroke(r, 8.0 * z, Stroke::new(1.0f32, style::GREY_TEXT));
+            if let Some(g) = fit(&style::label(&a.checked.parts[p.hub].id), (13.0 * z).max(11.0), r.width() - 16.0 * z, ink) {
+                painter.galley(Pos2::new(r.left() + 10.0 * z, r.top() + 10.0 * z), g, ink);
+            }
+        }
+        for row in &d.rows {
+            let left = at((row.pos.0, row.pos.1));
+            let (live, failed, text) = row.feeds.first().map(|&f| self.part_state(&a.checked.parts[f])).unwrap_or_else(|| self.part_state(&a.checked.parts[row.bus]));
+            let st = state_of(live, failed, &text);
+            let rad = 5.0 * z;
+            painter.circle(left + Vec2::new(rad, 0.0), rad, if st == State::Fail { style::RED } else { style::FILL }, Stroke::new(1.5f32 * z.max(0.6), style::colour_of(st)));
+            let feed = row.feeds.iter().map(|&f| format!("{} {:.0}A", style::label(&a.checked.parts[f].id).trim_start_matches("CB "), a.checked.parts[f].num("rating"))).collect::<Vec<_>>().join(" + ");
+            let users = row.users.iter().map(|&u| {
+                let (_, _, t) = self.part_state(&a.checked.parts[u]);
+                format!("{} {t}", style::label(&a.checked.parts[u].id))
+            }).collect::<Vec<_>>().join(", ");
+            let line = if feed.is_empty() { users } else { format!("{feed}  ->  {users}") };
+            if let Some(g) = fit(&line, 10.0 * z, (row.w - 16.0) * z, style::text_of(st)) {
+                painter.galley(Pos2::new(left.x + 2.0 * rad + 5.0 * z, left.y - g.size().y / 2.0), g, style::text_of(st));
+            }
+            let hit_r = Rect::from_min_size(Pos2::new(left.x, left.y - diagram::ROW_H * z / 2.0), Vec2::new(row.w * z, diagram::ROW_H * z));
+            if resp.hover_pos().is_some_and(|h| hit_r.contains(h)) {
+                hit = Some(row.feeds.first().copied().unwrap_or(row.users[0]));
+            }
+        }
         let mut crisp_rects: Vec<Rect> = Vec::new();
         for it in &d.items {
             let p = at(it.pos);
@@ -548,7 +576,8 @@ impl App {
             let mut rect = box_of(it);
             if let Some(g) = &crisp {
                 let grown = Rect::from_center_size(rect.center(), Vec2::new(rect.width().max(g.size().x + 12.0), rect.height().max(g.size().y + 8.0)));
-                if crisp_rects.iter().any(|r| r.expand(2.0).intersects(grown)) {
+                let own = rect.expand(2.0);
+                if crisp_rects.iter().any(|r| r.expand(2.0).intersects(grown)) || occupied.iter().any(|o| *o != own && o.intersects(grown)) {
                     crisp = None;
                 } else {
                     crisp_rects.push(grown);
