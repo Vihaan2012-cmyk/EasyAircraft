@@ -41,13 +41,14 @@ pub static SPEC: PartSpec = PartSpec {
         opt("inertia", Kind::Number, "40", "wheels and collar about the steering axis, kg m2"),
         opt("towing_when", WHEN, "false", "towing: bypass valve open, wheels castor"),
         opt("jam_when", WHEN, "false", "steering seized"),
+        opt("centring_when", WHEN, "false", "the strut's centring cams engage, as it extends after lift-off"),
     ],
     outputs: &[("angle", N), ("rate", N), ("command", N), ("error", N), ("castoring", B), ("towing", B), ("overtow", B), ("scrub", Type::Num(Dim::TORQUE)), ("failed", B)],
 };
 
 pub struct Steering {
     pub rot: Rotary,
-    e: [Option<Expr>; 5],
+    e: [Option<Expr>; 6],
     air: [Option<usize>; 2],
     static_load: f64,
     contact: f64,
@@ -74,7 +75,7 @@ impl Steering {
             let positive = !opposed || n % 2 == 0;
             let (l, stroke) = Linkage::new(p.num("arm"), p.num("anchor"), -hi, hi, positive);
             if acts[k].act.stroke < 0.98 * stroke || acts[k].act.stroke > 1.5 * stroke {
-                acts[k].act = linear::Linear::from_part(&c.parts[r], acts[k].act.nominal, stroke);
+                acts[k].resize(&c.parts[r], stroke);
             }
             m_ref += acts[k].act.stall * l.r;
             links.push(l);
@@ -85,7 +86,7 @@ impl Steering {
         rot.init_actuators(acts, 101_325.0 + 50.0 * 6894.757);
         Steering {
             rot,
-            e: ["command", "load", "yaw_rate", "towing_when", "jam_when"].map(|k| expr_of(p, k)),
+            e: ["command", "load", "yaw_rate", "towing_when", "jam_when", "centring_when"].map(|k| expr_of(p, k)),
             air: [
                 p.part("air").and_then(|i| c.slots.index.get(&format!("{}.groundspeed", c.parts[i].id)).copied()),
                 p.part("air").and_then(|i| c.slots.index.get(&format!("{}.on_ground", c.parts[i].id)).copied()),
@@ -111,8 +112,9 @@ impl Steering {
         let yaw = ev(&mut self.e[2], slots);
         let towing = ev(&mut self.e[3], slots) != 0.0;
         let jam = ev(&mut self.e[4], slots) != 0.0 || self.s.on(slots, "failed");
+        let cams = ev(&mut self.e[5], slots) != 0.0;
         let gs = self.air[0].map_or(0.0, |i| slots[i]);
-        let on_ground = self.air[1].map_or(true, |i| slots[i] != 0.0);
+        let on_ground = self.air[1].is_none_or(|i| slots[i] != 0.0);
         let load = if self.e[1].is_some() && load_in > 0.0 { load_in } else if on_ground { self.static_load } else { 0.0 };
         let t = self.rot.angle();
         if towing && t.abs() > self.tow_limit - 0.5 * DEG {
@@ -123,7 +125,8 @@ impl Steering {
         } else if !jam {
             self.rot.seized = None;
         }
-        let bypass = towing || self.sheared;
+        let bypass = towing || self.sheared || cams;
+        let cam_k = if cams { 4.0 * self.rot.moment_ref } else { 0.0 };
         let mut ios: Vec<Io> = vec![];
         for k in 0..self.rot.acts.len() {
             let share = self.rot.command_for(acts, k, cmd);
@@ -149,7 +152,7 @@ impl Steering {
             let fy = (corner * load * slip).clamp(-0.8 * load, 0.8 * load);
             let align = fy * trail * (1.0 - roll) * gs.signum();
             let free = if sheared { 0.0 } else { 1.0 };
-            -(scrub + align) * free - 2.0 * w
+            -(scrub + align) * free - 2.0 * w - cam_k * t - 0.2 * cam_k * w
         };
         self.scrub = 0.8 * load * contact * (2.0 / 3.0) * (-v / 1.5).exp();
         self.rot.step(acts, &ios, dt, &loadf);

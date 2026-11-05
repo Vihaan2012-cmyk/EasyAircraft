@@ -5,6 +5,7 @@
 //! the frame rate; the hydraulic circuits see the flow each actuator draws and the fluid it holds.
 
 pub mod drive;
+pub mod feel;
 pub mod fluid;
 pub mod high_lift;
 pub mod leg;
@@ -12,6 +13,7 @@ pub mod linear;
 pub mod mechanism;
 pub mod motor;
 pub mod ode;
+pub mod sensors;
 pub mod stabilizer;
 pub mod steering;
 pub mod surface;
@@ -25,7 +27,7 @@ use linear::STATES;
 use ode::{Outcome, Stepper};
 use std::collections::HashMap;
 
-pub static SPECS: &[PartSpec] = &[linear::SPEC, motor::SPEC, surface::SPEC, stabilizer::SPEC, high_lift::SPEC, leg::LEG, leg::DOOR, steering::SPEC, wheel::SPEC];
+pub static SPECS: &[PartSpec] = &[linear::SPEC, motor::SPEC, surface::SPEC, stabilizer::SPEC, high_lift::SPEC, feel::SPEC, leg::LEG, leg::DOOR, leg::BOGIE, steering::SPEC, wheel::SPEC];
 
 /// Steps between kept healthy states, for rolling back after a blowup.
 const CHECKPOINT_EVERY: u32 = 50;
@@ -42,12 +44,14 @@ pub struct Actuation {
     acts: Vec<linear::Part>,
     motors: Vec<motor::Part>,
     doors: Vec<leg::Door>,
+    bogies: Vec<leg::Bogie>,
     legs: Vec<leg::Leg>,
     surfaces: Vec<surface::Surface>,
     stabilizers: Vec<stabilizer::Stabilizer>,
     high_lift: Vec<high_lift::HighLift>,
     steering: Vec<steering::Steering>,
     wheels: Vec<wheel::Wheel>,
+    feel: Vec<feel::Feel>,
     free: Vec<Free>,
     outputs: Vec<(usize, usize)>,
     checkpoint: Vec<f64>,
@@ -86,12 +90,14 @@ impl Actuation {
             acts,
             motors,
             doors: vec![],
+            bogies: vec![],
             legs: vec![],
             surfaces: vec![],
             stabilizers: vec![],
             high_lift: vec![],
             steering: vec![],
             wheels: vec![],
+            feel: vec![],
             free: vec![],
             outputs: vec![],
             checkpoint: vec![],
@@ -106,19 +112,27 @@ impl Actuation {
                 a.doors.push(leg::Door::new(c, p, &mut a.acts, &act_index));
             }
         }
+        let mut bogie_index = HashMap::new();
+        for (i, p) in c.parts.iter().enumerate() {
+            if (p.domain, p.kind) == ("landing_gear", "bogie") {
+                bogie_index.insert(i, a.bogies.len());
+                a.bogies.push(leg::Bogie::new(c, p, &mut a.acts, &act_index));
+            }
+        }
         for p in &c.parts {
             match (p.domain, p.kind) {
-                ("landing_gear", "leg") => a.legs.push(leg::Leg::new(c, p, &mut a.acts, &act_index, &door_index)),
+                ("landing_gear", "leg") => a.legs.push(leg::Leg::new(c, p, &mut a.acts, &act_index, &door_index, &bogie_index)),
                 ("flight_control", "surface") => a.surfaces.push(surface::Surface::new(c, p, &mut a.acts, &act_index)),
                 ("flight_control", "stabilizer") => a.stabilizers.push(stabilizer::Stabilizer::new(c, p, &a.motors, &motor_index)),
                 ("flight_control", "high_lift") => a.high_lift.push(high_lift::HighLift::new(c, p, &a.motors, &motor_index)),
                 ("steering", "unit") => a.steering.push(steering::Steering::new(c, p, &mut a.acts, &act_index)),
                 ("brakes", "wheel") => a.wheels.push(wheel::Wheel::new(c, p)),
+                ("flight_control", "feel") => a.feel.push(feel::Feel::new(c, p)),
                 _ => {}
             }
         }
         let mut used = vec![false; a.acts.len()];
-        for k in a.doors.iter().flat_map(|d| d.rot.acts.iter()).chain(a.legs.iter().flat_map(|l| l.rot.acts.iter())).chain(a.surfaces.iter().flat_map(|s| s.rot.acts.iter())).chain(a.steering.iter().flat_map(|s| s.rot.acts.iter())) {
+        for k in a.doors.iter().flat_map(|d| d.rot.acts.iter()).chain(a.legs.iter().flat_map(|l| l.rot.acts.iter())).chain(a.bogies.iter().flat_map(|b| b.rot.acts.iter())).chain(a.surfaces.iter().flat_map(|s| s.rot.acts.iter())).chain(a.steering.iter().flat_map(|s| s.rot.acts.iter())) {
             used[*k] = true;
         }
         for (k, u) in used.iter().enumerate() {
@@ -149,23 +163,21 @@ impl Actuation {
             let io = part.prepare(slots, dt, None);
             let load = part.ev(4, slots, dt, 0.0);
             let act = &part.act;
-            let (stroke, stall, rate, mass) = (act.stroke, act.stall, act.rate, act.mass);
+            let mass = act.mass;
             let jam = io.jammed;
             let rhs = |s: &[f64], d: &mut [f64]| {
                 let (x, v) = (s[0], s[1]);
                 let out = act.eval(&io, x, v, &s[2..], &mut d[2..]);
-                let mut force = out.force - load;
-                if x < 0.0 {
-                    force += -x * 50.0 * stall / stroke - v * 5.0 * stall / rate;
-                } else if x > stroke {
-                    force -= (x - stroke) * 50.0 * stall / stroke + v * 5.0 * stall / rate;
-                }
+                let force = out.force - load + act.stroke_stop(x, v, mass);
                 d[0] = if jam { 0.0 } else { v };
                 d[1] = if jam { -v * 100.0 } else { force / mass };
             };
             if f.stepper.step(&mut f.x, dt, &f.scale, 1.0, rhs) == Outcome::Restored {
                 self.recoveries += 1;
             }
+            let floor = act.fluid.vapour();
+            f.x[2] = f.x[2].max(floor);
+            f.x[3] = f.x[3].max(floor);
             let mut scratch = [0.0; STATES];
             let out = act.eval(&io, f.x[0], f.x[1], &f.x[2..], &mut scratch);
             let st = f.x[2..].to_vec();
@@ -178,12 +190,14 @@ impl Actuation {
         self.acts.iter().for_each(|a| a.state(&mut v));
         self.motors.iter().for_each(|m| v.push(m.valve));
         self.doors.iter().for_each(|d| d.state(&mut v));
+        self.bogies.iter().for_each(|b| b.state(&mut v));
         self.legs.iter().for_each(|l| l.state(&mut v));
         self.surfaces.iter().for_each(|s| s.state(&mut v));
         self.stabilizers.iter().for_each(|s| s.state(&mut v));
         self.high_lift.iter().for_each(|h| h.state(&mut v));
         self.steering.iter().for_each(|s| s.state(&mut v));
         self.wheels.iter().for_each(|w| w.state(&mut v));
+        self.feel.iter().for_each(|f| f.state(&mut v));
         for f in &self.free {
             v.extend_from_slice(&f.x);
         }
@@ -195,12 +209,14 @@ impl Actuation {
         self.acts.iter_mut().for_each(|a| a.restore(&mut it));
         self.motors.iter_mut().for_each(|m| m.valve = it.next().unwrap_or(0.0));
         self.doors.iter_mut().for_each(|d| d.restore(&mut it));
+        self.bogies.iter_mut().for_each(|b| b.restore(&mut it));
         self.legs.iter_mut().for_each(|l| l.restore(&mut it));
         self.surfaces.iter_mut().for_each(|x| x.restore(&mut it));
         self.stabilizers.iter_mut().for_each(|x| x.restore(&mut it));
         self.high_lift.iter_mut().for_each(|x| x.restore(&mut it));
         self.steering.iter_mut().for_each(|x| x.restore(&mut it));
         self.wheels.iter_mut().for_each(|x| x.restore(&mut it));
+        self.feel.iter_mut().for_each(|x| x.restore(&mut it));
         for f in &mut self.free {
             for v in &mut f.x {
                 *v = it.next().unwrap_or(*v);
@@ -213,6 +229,7 @@ impl Actuation {
             && self.surfaces.iter().all(|s| s.rot.healthy())
             && self.legs.iter().all(|l| l.rot.healthy())
             && self.doors.iter().all(|d| d.rot.healthy())
+            && self.bogies.iter().all(|b| b.rot.healthy())
             && self.steering.iter().all(|s| s.rot.healthy())
             && self.stabilizers.iter().all(|s| s.drive.healthy())
             && self.high_lift.iter().all(|h| h.drive.healthy())
@@ -228,8 +245,11 @@ impl Domain for Actuation {
         for d in &mut self.doors {
             d.step(&mut self.acts, slots, dt);
         }
+        for b in &mut self.bogies {
+            b.step(&mut self.acts, slots, dt);
+        }
         for l in &mut self.legs {
-            l.step(&mut self.acts, &mut self.doors, slots, dt);
+            l.step(&mut self.acts, &mut self.doors, &self.bogies, slots, dt);
         }
         for s in &mut self.surfaces {
             s.step(&mut self.acts, slots, dt);
@@ -246,6 +266,9 @@ impl Domain for Actuation {
         self.step_free(slots, dt);
         for w in &mut self.wheels {
             w.step(slots, dt);
+        }
+        for f in &mut self.feel {
+            f.step(slots, dt);
         }
         // Blowup guard: anything non-finite rolls back to the last healthy state, outputs and all.
         if self.healthy(slots) {

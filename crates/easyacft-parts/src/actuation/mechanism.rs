@@ -4,7 +4,26 @@
 //! chamber and valve states are stepped together by the implicit stepper.
 
 use super::linear::{self, Io, Out, STATES};
-use super::ode::{Outcome, Stepper};
+use super::ode::{soft_pos, Outcome, Stepper};
+
+/// A compliant attachment between each piston and its horn: rod and bearing stiffness, damping and the free play
+/// worn rod-end bearings open up. With it the pistons get their own mass and motion.
+#[derive(Clone, Copy, Debug)]
+pub struct Attach {
+    pub stiffness: f64,
+    pub damping: f64,
+    pub gap: f64,
+    pub piston_mass: f64,
+}
+
+impl Attach {
+    /// Force the piston puts on the horn with the piston `d` beyond where the horn is, closing at `dv`.
+    pub fn force(&self, d: f64, dv: f64) -> f64 {
+        let w = 0.1 * self.gap.max(1e-6);
+        let dz = soft_pos(d - self.gap, w) - soft_pos(-d - self.gap, w);
+        self.stiffness * dz + self.damping * dv * (dz.abs() / (dz.abs() + w)).max(0.05)
+    }
+}
 
 /// The triangle a linear actuator forms with a hinge: horn of radius `r` on the moving body, anchor `d` from the
 /// hinge on the structure. Extension follows the law of cosines.
@@ -95,6 +114,7 @@ pub struct Rotary {
     pub ios: Vec<Io>,
     pub outs: Vec<Out>,
     pub restored: u32,
+    pub attach: Option<Attach>,
 }
 
 impl Rotary {
@@ -106,16 +126,37 @@ impl Rotary {
         scale[0] = 2e-4;
         scale[1] = 5e-3;
         let k = acts.len();
-        Rotary { links, acts, x, scale, stepper: Stepper::new(n), inertia: inertia.max(1e-6), lo, hi, moment_ref: moment_ref.max(1.0), jam: vec![None; k], lock: None, seized: None, ios: vec![], outs: vec![Out::default(); k], restored: 0 }
+        Rotary { links, acts, x, scale, stepper: Stepper::new(n), inertia: inertia.max(1e-6), lo, hi, moment_ref: moment_ref.max(1.0), jam: vec![None; k], lock: None, seized: None, ios: vec![], outs: vec![Out::default(); k], restored: 0, attach: None }
+    }
+
+    /// States each actuator carries: its chambers and valves, and with a compliant attachment its piston.
+    pub fn per(&self) -> usize {
+        STATES + if self.attach.is_some() { 2 } else { 0 }
+    }
+
+    /// Gives every actuator a compliant attachment; call before `init_actuators`.
+    pub fn with_attachment(&mut self, a: Attach) {
+        self.attach = Some(a);
+        let n = 2 + self.per() * self.acts.len();
+        self.x.resize(n, 0.0);
+        self.scale.resize(n, 1.0);
+        self.stepper = Stepper::new(n);
     }
 
     /// Puts each actuator's chambers at rest at return pressure and records its state scales.
     pub fn init_actuators(&mut self, parts: &[linear::Part], pr: f64) {
+        let per = self.per();
         for (k, &ai) in self.acts.iter().enumerate() {
             let a = &parts[ai].act;
-            let o = 2 + STATES * k;
+            let o = 2 + per * k;
             a.initial(pr, &mut self.x[o..o + STATES]);
             a.scales(&mut self.scale[o..o + STATES]);
+            if self.attach.is_some() {
+                self.x[o + STATES] = self.links[k].extension(self.x[0]);
+                self.x[o + STATES + 1] = 0.0;
+                self.scale[o + STATES] = 1e-6 * a.stroke.max(1e-3);
+                self.scale[o + STATES + 1] = 1e-3 * a.rate;
+            }
         }
     }
 
@@ -137,34 +178,41 @@ impl Rotary {
         let c_stop = 2.0 * (k_stop * inertia).sqrt();
         let k_lock = 4000.0 * self.moment_ref;
         let c_lock = 2.0 * (k_lock * inertia).sqrt();
+        let attach = self.attach;
+        let per = self.per();
         let f = |s: &[f64], d: &mut [f64]| {
             let (t, w) = (s[0], s[1]);
             let mut m = load.moment(t, w);
             for (k, &ai) in acts.iter().enumerate() {
                 let a = &parts[ai].act;
                 let l = &links[k];
-                let x = l.extension(t);
+                let xl = l.extension(t);
                 let arm = l.arm(t);
-                let v = arm * w;
-                let o = 2 + STATES * k;
+                let vl = arm * w;
+                let o = 2 + per * k;
+                let (x, v) = if attach.is_some() { (s[o + STATES], s[o + STATES + 1]) } else { (xl, vl) };
                 let out = a.eval(&ios[k], x, v, &s[o..o + STATES], &mut d[o..o + STATES]);
-                let mut force = out.force;
-                // Piston stroke ends: the actuator bottoms out before the surface stops if it is too short.
-                if x < 0.0 {
-                    force += -x * 50.0 * a.stall / a.stroke.max(1e-3) - v * 5.0 * a.stall / a.rate;
-                } else if x > a.stroke {
-                    force -= (x - a.stroke) * 50.0 * a.stall / a.stroke.max(1e-3) + v * 5.0 * a.stall / a.rate;
-                }
+                // Piston stroke ends: the actuator bottoms out before the body stops if it is too short.
+                let m_eff = attach.map_or(inertia / (arm * arm).max(1e-6), |at| at.piston_mass);
+                let mut force = out.force + a.stroke_stop(x, v, m_eff);
                 if let Some(xj) = jam[k] {
-                    force -= (x - xj) * 200.0 * a.stall / a.stroke.max(1e-3) + v * 20.0 * a.stall / a.rate;
+                    let kj = 200.0 * a.stall / a.stroke.max(1e-3);
+                    force -= kj * (x - xj) + 1.4 * (kj * m_eff).sqrt() * v;
                 }
-                m += force * arm;
+                if let Some(at) = attach {
+                    // The piston drives the horn only through its attachment; its own mass sits between.
+                    let link = if ios[k].disconnected { 0.0 } else { at.force(x - xl, v - vl) };
+                    d[o + STATES] = v;
+                    d[o + STATES + 1] = (force - link) / at.piston_mass;
+                    m += link * arm;
+                } else {
+                    m += force * arm;
+                }
             }
-            if t > hi {
-                m -= k_stop * (t - hi) + c_stop * w;
-            } else if t < lo {
-                m -= k_stop * (t - lo) + c_stop * w;
-            }
+            let wd = 1e-4 * (hi - lo).abs().max(1e-3);
+            let over = soft_pos(t - hi, wd) - soft_pos(lo - t, wd);
+            let touch = super::ode::smooth_step(t - hi, 0.0, 2.0 * wd) + super::ode::smooth_step(lo - t, 0.0, 2.0 * wd);
+            m -= k_stop * over + c_stop * w * touch;
             if let Some(l) = lock.or(seized) {
                 m -= k_lock * (t - l) + c_lock * w;
             }
@@ -177,28 +225,38 @@ impl Rotary {
         }
         // Final outputs at the accepted state.
         let mut scratch = vec![0.0; STATES];
-        let t = self.x[0];
-        let w = self.x[1];
         for (k, &ai) in self.acts.iter().enumerate() {
-            let l = &self.links[k];
-            let o = 2 + STATES * k;
+            let o = 2 + per * k;
             for v in &mut self.x[o..o + 2] {
                 *v = v.max(parts[ai].act.fluid.vapour());
             }
-            self.outs[k] = parts[ai].act.eval(&ios[k], l.extension(t), l.arm(t) * w, &self.x[o..o + STATES], &mut scratch);
+            let (x, v) = self.actuator_motion(k);
+            self.outs[k] = parts[ai].act.eval(&ios[k], x, v, &self.x[o..o + STATES], &mut scratch);
         }
         self.ios = ios.to_vec();
     }
 
     /// Extension and velocity of actuator `k` now.
     pub fn actuator_motion(&self, k: usize) -> (f64, f64) {
+        if self.attach.is_some() {
+            let o = 2 + self.per() * k + STATES;
+            return (self.x[o], self.x[o + 1]);
+        }
         let l = &self.links[k];
         (l.extension(self.x[0]), l.arm(self.x[0]) * self.x[1])
     }
 
     pub fn actuator_state(&self, k: usize) -> &[f64] {
-        let o = 2 + STATES * k;
+        let o = 2 + self.per() * k;
         &self.x[o..o + STATES]
+    }
+
+    /// Piston beyond where its horn is, for free-play wear and load monitoring.
+    pub fn attachment_slack(&self, k: usize) -> f64 {
+        if self.attach.is_none() {
+            return 0.0;
+        }
+        self.actuator_motion(k).0 - self.links[k].extension(self.x[0])
     }
 
     /// Actuator share of stroke that puts the body at `angle`.
@@ -213,7 +271,7 @@ impl Rotary {
         for k in 0..self.acts.len() {
             let jammed = ios[k].jammed;
             if jammed && self.jam[k].is_none() {
-                self.jam[k] = Some(self.links[k].extension(self.x[0]));
+                self.jam[k] = Some(self.actuator_motion(k).0);
             } else if !jammed {
                 self.jam[k] = None;
             }

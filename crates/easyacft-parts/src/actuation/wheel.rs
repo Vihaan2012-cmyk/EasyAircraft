@@ -61,6 +61,22 @@ pub static SPEC: PartSpec = PartSpec {
         opt("burst_when", WHEN, "false", "tyre burst from debris"),
         opt("seized_when", WHEN, "false", "brake dragging: stack seized on"),
         opt("thermocouple_failed_when", WHEN, "false", "thermocouple reads open circuit"),
+        opt("tacho_failed_when", WHEN, "false", "wheel speed transducer reads nothing"),
+        opt("line_burst_when", WHEN, "false", "brake line burst downstream of the hydraulic fuse"),
+        opt("fuse_volume", Kind::Quantity(Dim::VOLUME), "0.15 L", "flow a hydraulic fuse lets through in one go before it shuts"),
+        opt("teeth", Kind::Number, "48", "wheel speed transducer exciter teeth"),
+        opt("water_depth", Kind::Expr(Type::Num(Dim::LENGTH)), "0 m", "standing water or slush on the runway"),
+        opt("tread", Kind::Number, "1", "tread left at start, share of a new tyre"),
+        opt("tread_energy", Kind::Quantity(Dim::ENERGY), "60 MJ", "slip energy that wears a new tread away"),
+        opt("bearing_failed_when", WHEN, "false", "wheel bearing breaking up: drag and heat into the hub"),
+        opt("electric", Kind::Bool, "false", "electric brake: electromechanical actuators clamp the stack, no hydraulics"),
+        opt("actuators", Kind::Number, "4", "electric brake actuators on the stack"),
+        opt("actuators_failed", Kind::Expr(N), "0", "electric brake actuators lost"),
+        opt("brake_powered_when", WHEN, "true", "electric brake controllers have power"),
+        opt("actuator_time", Kind::Quantity(Dim::TIME), "0.12 s", "electric actuator clamp time constant"),
+        opt("tpis_period", Kind::Quantity(Dim::TIME), "4 s", "tyre pressure indicating system sample period"),
+        opt("tpis_failed_when", WHEN, "false", "tyre pressure transmitter dead: holds its last reading"),
+        opt("pin_length", Kind::Quantity(Dim::LENGTH), "25 mm", "brake wear pin protrusion when new"),
     ],
     outputs: &[
         ("pressure", P),
@@ -87,6 +103,15 @@ pub static SPEC: PartSpec = PartSpec {
         ("burst", B),
         ("fire", B),
         ("parking", B),
+        ("tacho_speed", Type::Num(Dim::SPEED)),
+        ("hydroplaning", B),
+        ("tread", N),
+        ("applications", N),
+        ("electric_power", Type::Num(Dim::POWER)),
+        ("tpis_pressure", P),
+        ("wear_pin", Type::Num(Dim::LENGTH)),
+        ("tread_worn", B),
+        ("hydraulic_fuse", B),
         ("circuit_flow", Type::Num(Dim::VOLUME_FLOW)),
         ("circuit_held", Type::Num(Dim::VOLUME)),
         ("alternate_circuit_flow", Type::Num(Dim::VOLUME_FLOW)),
@@ -168,6 +193,24 @@ pub struct Wheel {
     parked: bool,
     park_p: f64,
     park_t: f64,
+    tacho: super::sensors::Tacho,
+    extra: [Option<Expr>; 3],
+    fuse_volume: f64,
+    fuse_passed: f64,
+    fuse_shut: bool,
+    leaked: f64,
+    housing_t0: f64,
+    tread: f64,
+    tread_energy: f64,
+    applications: f64,
+    more: [Option<Expr>; 3],
+    electric: bool,
+    n_ema: f64,
+    ema_t: f64,
+    e_power: f64,
+    tpis: (f64, f64, f64),
+    tpis_failed: Option<Expr>,
+    pin_length: f64,
     s: Slots,
 }
 
@@ -236,8 +279,26 @@ impl Wheel {
             parked: false,
             park_p: 0.0,
             park_t: 0.0,
+            tacho: super::sensors::Tacho::new(p.num("teeth"), 0.02),
+            extra: ["tacho_failed_when", "line_burst_when", "water_depth"].map(|k| expr_of(p, k)),
+            fuse_volume: p.num("fuse_volume").max(1e-5),
+            fuse_passed: 0.0,
+            fuse_shut: false,
+            leaked: 0.0,
+            housing_t0: f64::NAN,
+            tread: p.num("tread").clamp(0.0, 1.0),
+            tread_energy: p.num("tread_energy").max(1e3),
+            applications: 0.0,
+            more: ["bearing_failed_when", "actuators_failed", "brake_powered_when"].map(|k| expr_of(p, k)),
+            electric: p.flag("electric"),
+            n_ema: p.num("actuators").max(1.0),
+            ema_t: p.num("actuator_time").max(0.01),
+            e_power: 0.0,
+            tpis: (p.num("tpis_period").max(0.1), 0.0, p.num("tyre_pressure")),
+            tpis_failed: expr_of(p, "tpis_failed_when"),
+            pin_length: p.num("pin_length").max(0.0),
             s: Slots::of(p, &[
-                "pressure", "normal_pressure", "alternate_pressure", "torque", "force", "friction", "wheel_speed", "slip", "skidding", "locked", "temperature", "stack_temperature", "rim_temperature", "tyre_temperature", "hot", "energy", "wear", "tyre_pressure", "tyre_low", "fuse_melted", "flat_spot", "burst", "fire", "parking", "circuit_flow", "circuit_held", "alternate_circuit_flow", "alternate_circuit_held", "failed",
+                "pressure", "normal_pressure", "alternate_pressure", "torque", "force", "friction", "wheel_speed", "slip", "skidding", "locked", "temperature", "stack_temperature", "rim_temperature", "tyre_temperature", "hot", "energy", "wear", "tyre_pressure", "tyre_low", "fuse_melted", "flat_spot", "burst", "fire", "parking", "tacho_speed", "hydroplaning", "tread", "applications", "electric_power", "tpis_pressure", "wear_pin", "tread_worn", "hydraulic_fuse", "circuit_flow", "circuit_held", "alternate_circuit_flow", "alternate_circuit_held", "failed",
             ]),
         }
     }
@@ -277,6 +338,11 @@ impl Wheel {
         let seized = ev(&mut self.e[11], slots, 0.0) != 0.0;
         let tc_failed = ev(&mut self.e[12], slots, 0.0) != 0.0;
         let failed = self.s.on(slots, "failed");
+        let tacho_failed = self.extra[0].as_mut().is_some_and(|x| x.yes(slots, dt));
+        let burst_line = self.extra[1].as_mut().is_some_and(|x| x.yes(slots, dt));
+        let bearing = self.more[0].as_mut().is_some_and(|x| x.yes(slots, dt));
+        let emas_lost = self.more[1].as_mut().map_or(0.0, |x| x.eval(slots, dt)).clamp(0.0, self.n_ema);
+        let ema_power = self.more[2].as_mut().is_none_or(|x| x.yes(slots, dt));
         let gs = self.air[0].map_or(0.0, |i| slots[i]).abs();
         let tas = self.air[1].map_or(0.0, |i| slots[i]).abs();
         let t_air = self.air[2].map_or(288.15, |i| slots[i]).max(150.0);
@@ -298,8 +364,23 @@ impl Wheel {
         if park {
             alt_in = 1.0;
         }
-        let n_open = n_on && self.circuits[0].is_some() && !failed;
-        let a_open = a_on && self.circuits[1].is_some() && !failed;
+        let electric = self.electric;
+        let n_open = !electric && n_on && self.circuits[0].is_some() && !failed && !self.fuse_shut;
+        let a_open = !electric && a_on && self.circuits[1].is_some() && !failed;
+        // Electric brakes: the actuators that still work clamp toward the larger input; parked, they latch.
+        let ema_share = (self.n_ema - emas_lost) / self.n_ema;
+        let ema_cmd = if !electric || failed {
+            0.0
+        } else if park {
+            ema_share
+        } else if ema_power {
+            normal_in.max(if a_on { alt_in } else { 0.0 }) * ema_share
+        } else {
+            -1.0
+        };
+        let v_target = |share: f64, me: &Wheel| if share <= 0.0 { 0.0 } else { me.take_up + share * (me.p_max - me.p_spring) * me.stack_c };
+        let ema_v = if ema_cmd < 0.0 { -1.0 } else { v_target(ema_cmd, self) };
+        let ema_tau = self.ema_t;
         let rho = self.fluid.density(t_n, 1e7);
         let mu_oil = self.fluid.dynamic(t_n, 1e7);
         let oil = Oil { rho, nu: mu_oil / rho };
@@ -326,12 +407,19 @@ impl Wheel {
         let t_gain = self.t_max * mu_pad / 0.32;
         let (r, inertia) = (self.radius * (1.0 - 0.02 * self.flat), self.inertia);
         let deflated = self.burst || self.fused;
-        let peak = mu_rwy * if deflated { 0.5 } else { 1.0 };
+        // Dynamic hydroplaning: above about 9 sqrt(tyre psi) knots on standing water the tyre rides on it.
+        let water = self.extra[2].as_mut().map_or(0.0, |x| x.eval(slots, dt)).max(0.0);
+        let vp = 9.0 * (self.tyre_pressure() / PSI).max(1.0).sqrt() * KT;
+        let depth = (water / 0.003).min(1.0);
+        let aqua = depth * ((gs - 0.85 * vp) / (0.3 * vp)).clamp(0.0, 1.0);
+        let peak = mu_rwy * if deflated { 0.5 } else { 1.0 } * (1.0 - 0.9 * aqua);
         let (normal, alternate) = (self.normal, self.alternate);
         let p_max = self.p_max;
+        let fuse_shut = self.fuse_shut;
         let mut stepper = std::mem::take(&mut self.stepper);
         let me = &*self;
         let rolling = 0.012 * load * r;
+        let bearing_drag = if bearing { 0.03 * self.t_max } else { 0.0005 * load * r };
         let f = |s: &[f64], d: &mut [f64]| {
             let (v_brake, pn, pa, w) = (s[0], s[1], s[2], s[3]);
             let p = me.housing_p(v_brake);
@@ -352,13 +440,23 @@ impl Wheel {
                 d[2] -= (pa - pr_a) / 0.2;
             }
             d[0] = into_brake_n + into_brake_a;
+            if electric {
+                // Unpowered actuators hold where they are; powered ones drive the clamp to their command.
+                d[0] = if ema_v < 0.0 { 0.0 } else { (ema_v - v_brake) / ema_tau };
+            }
+            // A burst line below the fuse dumps the normal line overboard until the fuse shuts it.
+            if burst_line && !fuse_shut {
+                let out = oil.q(4e-6, pn - P_ATM);
+                d[1] -= out / line_c;
+            }
             // Wheel: tyre grip from slip, brake torque against rotation, rolling resistance.
             let v = gs.max(0.0);
             let slip = (v - w * r) / v.max(2.0);
             let fx = tyre_mu(slip, peak) * load;
             let clamp = (p - me.p_spring).max(0.0) / p_max;
             let tb = if seized { 2.0 * me.t_max } else { t_gain * clamp };
-            d[3] = (fx * r - tb * soft_sign(w, 0.2) - rolling * soft_sign(w, 0.5)) / inertia;
+            let drag = rolling + bearing_drag;
+            d[3] = (fx * r - tb * soft_sign(w, 0.2) - drag * soft_sign(w, 0.5)) / inertia;
             if load <= 0.0 {
                 // In the air the wheel just spins down under its brake and bearing drag.
                 d[3] = (-tb * soft_sign(w, 0.2) - 0.5 * soft_sign(w, 0.5) - 0.02 * w) / inertia;
@@ -373,6 +471,16 @@ impl Wheel {
         }
         x[0] = x[0].max(0.0);
         x[1] = x[1].max(pr.min(P_ATM));
+        // Trapped parking pressure rises as the housing's fluid warms, until the thermal relief valve lets it go.
+        if parked {
+            if self.housing_t0.is_nan() {
+                self.housing_t0 = self.temp[1];
+            }
+            self.park_p = (self.park_p + 4.0 * PSI * (self.temp[1] - self.housing_t0)).min(1.15 * self.p_max + P_ATM);
+            self.housing_t0 = self.temp[1];
+        } else {
+            self.housing_t0 = f64::NAN;
+        }
         x[2] = if parked { self.park_p } else { x[2].max(pr.min(P_ATM)) };
         self.x = x;
         let p = self.housing_p(x[0]);
@@ -383,11 +491,23 @@ impl Wheel {
         let slip = if v > 0.5 { ((v - w * r) / v).clamp(-1.0, 1.0) } else { 0.0 };
         let power = tb * w.abs();
         // Flows the circuits supply: what fills the line, from whichever valve is metering.
-        let q_n = if n_open { normal.flow(normal.target(normal_in, x[1]), ps_n, pr_n, x[1], oil).1 } else { 0.0 };
+        let mut q_n = if n_open { normal.flow(normal.target(normal_in, x[1]), ps_n, pr_n, x[1], oil).1 } else { 0.0 };
+        if burst_line && !self.fuse_shut {
+            let out = oil.q(4e-6, x[1] - P_ATM).max(0.0);
+            self.fuse_passed += out * dt;
+            self.leaked += out * dt;
+            q_n += out;
+            if self.fuse_passed > self.fuse_volume {
+                self.fuse_shut = true;
+            }
+        } else if !burst_line {
+            self.fuse_passed = (self.fuse_passed - dt * 1e-6).max(0.0);
+        }
         let q_a = if a_open && !parked { alternate.flow(alternate.target(alt_in, x[2]), ps_a, pr_a, x[2], oil).1 } else { 0.0 };
         // Applications: each new squeeze wears carbon, more so cold.
         let pressing = p > 2.0 * self.p_spring;
         if pressing && !self.applied && w.abs() > 1.0 {
+            self.applications += 1.0;
             let cold = if self.temp[0] < 473.15 { 1.0 } else { 0.4 };
             self.wear -= 1.5e-5 * cold * if self.carbon { 1.0 } else { 0.5 };
         }
@@ -397,7 +517,13 @@ impl Wheel {
         // Moisture: dried by heat, picked up again slowly cold.
         let t0 = self.temp[0];
         self.moisture = (self.moisture + dt * if t0 > 373.15 { -(t0 - 373.15) / 3000.0 } else { 1.0 / 7200.0 }).clamp(0.0, 1.0);
-        self.heat(power, gs.max(tas), t_air, fans, load, w, dt);
+        let bearing_heat = if bearing { 0.03 * self.t_max * w.abs() } else { 0.0 };
+        self.heat(power, gs.max(tas), t_air, fans, load, w, bearing_heat, dt);
+        // Electric brake power: holding current on the clamp plus what moving it takes.
+        if electric {
+            let clamp_now = (self.housing_p(x[0]) - self.p_spring).max(0.0) / self.p_max;
+            self.e_power = if ema_cmd < 0.0 { 0.0 } else { 40.0 * (self.n_ema - emas_lost) + 400.0 * clamp_now * (self.n_ema - emas_lost) / self.n_ema };
+        }
         // Thermocouple: a 15 s lag on the stack.
         self.thermo += (self.temp[0] - self.thermo) * (dt / 15.0).min(1.0);
         if self.temp[2] > self.fuse {
@@ -410,12 +536,16 @@ impl Wheel {
             self.flat = (self.flat + dt * v / 40.0 / 3.0).min(1.0);
         }
         let tyre_p = self.tyre_pressure();
-        if burst_cmd || self.flat >= 1.0 || tyre_p > 4.0 * self.cold_p {
+        // A carcass cooked by underinflated rolling or brake soak lets go around 180 C.
+        if burst_cmd || self.flat >= 1.0 || tyre_p > 4.0 * self.cold_p || self.temp[3] > 453.15 {
             self.burst = true;
         }
         let deflate = if self.burst { dt / 0.5 } else if self.fused { dt / 30.0 } else { 0.02 / 86400.0 * dt };
         self.gas = (self.gas - deflate * self.gas.max(0.05)).max(0.0);
         let fire = leak && self.temp[0] > 750.0;
+        let slip_power = (tyre_mu(slip, peak) * load * (v - w * r)).abs();
+        self.tread = (self.tread - slip_power * dt / self.tread_energy).max(0.0);
+        let tacho = self.tacho.update(w, r, tacho_failed, dt);
         let s = &self.s;
         s.put(slots, "pressure", p - P_ATM.min(p));
         s.put(slots, "normal_pressure", x[1] - pr_n.min(x[1]));
@@ -441,8 +571,25 @@ impl Wheel {
         s.flag(slots, "burst", self.burst);
         s.flag(slots, "fire", fire);
         s.flag(slots, "parking", parked || park);
+        s.put(slots, "tacho_speed", tacho);
+        s.flag(slots, "hydroplaning", aqua > 0.5);
+        s.put(slots, "tread", self.tread);
+        s.put(slots, "applications", self.applications);
+        s.put(slots, "electric_power", self.e_power);
+        // The tyre transmitter wakes every few seconds; a dead one leaves the last value on the display.
+        let tpis_dead = self.tpis_failed.as_mut().is_some_and(|x| x.yes(slots, dt));
+        self.tpis.1 += dt;
+        if self.tpis.1 >= self.tpis.0 && !tpis_dead {
+            self.tpis.1 = 0.0;
+            self.tpis.2 = (tyre_p / (2.0 * PSI)).round() * 2.0 * PSI;
+        }
+        let s = &self.s;
+        s.put(slots, "tpis_pressure", self.tpis.2);
+        s.put(slots, "wear_pin", self.wear * self.pin_length);
+        s.flag(slots, "tread_worn", self.tread < 0.1);
+        s.flag(slots, "hydraulic_fuse", self.fuse_shut);
         s.put(slots, "circuit_flow", if self.circuits[0].is_some() { q_n } else { 0.0 });
-        s.put(slots, "circuit_held", if self.circuits[0].is_some() { x[0] * (1.0 - sh) } else { 0.0 });
+        s.put(slots, "circuit_held", if self.circuits[0].is_some() { x[0] * (1.0 - sh) + self.leaked } else { 0.0 });
         s.put(slots, "alternate_circuit_flow", if self.circuits[1].is_some() { q_a } else { 0.0 });
         s.put(slots, "alternate_circuit_held", if self.circuits[1].is_some() { x[0] * sh } else { 0.0 });
     }
@@ -453,7 +600,8 @@ impl Wheel {
     }
 
     /// Heat flows between the nodes and out to the air, with substeps where the fans make a node fast.
-    fn heat(&mut self, power: f64, airflow: f64, t_air: f64, fans: bool, load: f64, w: f64, dt: f64) {
+    #[allow(clippy::too_many_arguments)]
+    fn heat(&mut self, power: f64, airflow: f64, t_air: f64, fans: bool, load: f64, w: f64, bearing: f64, dt: f64) {
         let area = 0.05 * self.mass0.powf(2.0 / 3.0);
         let h_stack = 12.0 + 4.5 * airflow.sqrt() + if fans { 90.0 } else { 0.0 };
         let h_rim = 10.0 + 6.0 * airflow.sqrt() + if fans { 30.0 } else { 0.0 };
@@ -487,7 +635,7 @@ impl Wheel {
             let q = [
                 0.95 * power - g_sh * (t[0] - t[1]) - g_sr * (t[0] - t[2]) - h_stack * a[0] * (t[0] - t_air) - rad,
                 0.05 * power + g_sh * (t[0] - t[1]) - h_rim * a[1] * (t[1] - t_air),
-                g_sr * (t[0] - t[2]) - g_rt * (t[2] - t[3]) - g_rg * (t[2] - t[4]) - h_rim * a[2] * (t[2] - t_air),
+                bearing + g_sr * (t[0] - t[2]) - g_rt * (t[2] - t[3]) - g_rg * (t[2] - t[4]) - h_rim * a[2] * (t[2] - t_air),
                 rolling + g_rt * (t[2] - t[3]) - g_tg * (t[3] - t[4]) - h_tyre * a[3] * (t[3] - t_air),
                 g_tg * (t[3] - t[4]) + g_rg * (t[2] - t[4]),
             ];
@@ -507,7 +655,7 @@ impl Wheel {
     pub fn state(&self, v: &mut Vec<f64>) {
         v.extend(self.x);
         v.extend(self.temp);
-        v.extend([self.mass, self.energy, self.wear, self.moisture, self.thermo, self.fused as u8 as f64, self.burst as u8 as f64, self.flat, self.gas, self.shuttle.pos, self.parked as u8 as f64, self.park_p]);
+        v.extend([self.mass, self.energy, self.wear, self.moisture, self.thermo, self.fused as u8 as f64, self.burst as u8 as f64, self.flat, self.gas, self.shuttle.pos, self.parked as u8 as f64, self.park_p, self.fuse_passed, self.fuse_shut as u8 as f64, self.leaked, self.tread, self.applications]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
@@ -530,5 +678,10 @@ impl Wheel {
         self.shuttle.pos = n(0.0);
         self.parked = n(0.0) != 0.0;
         self.park_p = n(0.0);
+        self.fuse_passed = n(0.0);
+        self.fuse_shut = n(0.0) != 0.0;
+        self.leaked = n(0.0);
+        self.tread = n(1.0);
+        self.applications = n(0.0);
     }
 }

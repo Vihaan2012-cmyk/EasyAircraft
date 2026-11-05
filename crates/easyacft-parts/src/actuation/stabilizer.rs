@@ -41,6 +41,8 @@ pub static SPEC: PartSpec = PartSpec {
         opt("deadband", Kind::Quantity(Dim::NONE), "0.05 deg", "error below which the motor valves close"),
         opt("jam_when", WHEN, "false", "screw seized"),
         opt("no_back_failed_when", WHEN, "false", "no-back gone: aero load can back-drive the screw"),
+        opt("manual", Kind::Expr(N), "0", "pilots' trim wheels, -1 to 1: cables to the motors' control valves, overriding the electrical command"),
+        opt("wheel_ratio", Kind::Number, "6", "cockpit trim wheel turns per degree of stabiliser"),
     ],
     outputs: &[
         ("angle", N),
@@ -51,7 +53,11 @@ pub static SPEC: PartSpec = PartSpec {
         ("torque_limited", B),
         ("hydraulic_motors", N),
         ("electric_power", Type::Num(Dim::POWER)),
+        ("motor_temperature", Type::Num(Dim::TEMPERATURE)),
         ("runaway", B),
+        ("sensor_1", N),
+        ("sensor_2", N),
+        ("wheel_turns", N),
         ("failed", B),
     ],
 };
@@ -61,7 +67,7 @@ pub struct Stabilizer {
     pub motors: Vec<usize>,
     electric: Option<Electric>,
     q: Option<usize>,
-    e: [Option<Expr>; 5],
+    e: [Option<Expr>; 6],
     area: f64,
     chord: f64,
     cm: f64,
@@ -69,6 +75,10 @@ pub struct Stabilizer {
     deadband: f64,
     tripped: bool,
     power: f64,
+    motor_t: f64,
+    motor_out: bool,
+    rvdt: super::sensors::Dual,
+    wheel_ratio: f64,
     s: Slots,
 }
 
@@ -96,7 +106,7 @@ impl Stabilizer {
             motors: mi,
             electric,
             q: p.part("air").and_then(|i| c.slots.index.get(&format!("{}.dynamic_pressure", c.parts[i].id)).copied()),
-            e: ["command", "electric_when", "tail_alpha", "jam_when", "no_back_failed_when"].map(|k| expr_of(p, k)),
+            e: ["command", "electric_when", "tail_alpha", "jam_when", "no_back_failed_when", "manual"].map(|k| expr_of(p, k)),
             area,
             chord,
             cm: p.num("cm_alpha"),
@@ -104,7 +114,11 @@ impl Stabilizer {
             deadband: p.num("deadband").max(1e-5),
             tripped: false,
             power: 0.0,
-            s: Slots::of(p, &["angle", "rate", "command", "load", "jammed", "torque_limited", "hydraulic_motors", "electric_power", "runaway", "failed"]),
+            motor_t: f64::NAN,
+            motor_out: false,
+            rvdt: super::sensors::Dual::new(lo, hi, (p.slot as u64) ^ 0x2545_f491_4f6c_dd1d),
+            wheel_ratio: p.num("wheel_ratio"),
+            s: Slots::of(p, &["angle", "rate", "command", "load", "jammed", "torque_limited", "hydraulic_motors", "electric_power", "motor_temperature", "runaway", "sensor_1", "sensor_2", "wheel_turns", "failed"]),
         }
     }
 
@@ -115,10 +129,17 @@ impl Stabilizer {
         let alpha = ev(&mut self.e[2], slots);
         let jam = ev(&mut self.e[3], slots) != 0.0 || self.s.on(slots, "failed");
         let no_back_failed = ev(&mut self.e[4], slots) != 0.0;
+        let manual = ev(&mut self.e[5], slots).clamp(-1.0, 1.0);
         let t = self.drive.angle();
         let err = cmd - t;
         // Valves open fully beyond a few tenths of a degree of error and close inside the dead band.
-        let valve = if err.abs() < self.deadband { 0.0 } else { (err / (0.3 * DEG)).clamp(-1.0, 1.0) };
+        let valve = if manual.abs() > 0.05 {
+            manual
+        } else if err.abs() < self.deadband {
+            0.0
+        } else {
+            (err / (0.3 * DEG)).clamp(-1.0, 1.0)
+        };
         let mut inputs = [Input::Locked, Input::Locked];
         let mut hyd = 0.0;
         for (slot, &k) in self.motors.iter().enumerate() {
@@ -128,7 +149,7 @@ impl Stabilizer {
             }
             inputs[slot] = Input::Hydraulic(k, io);
         }
-        let e_cmd = if electric_on { valve } else { 0.0 };
+        let e_cmd = if electric_on && !self.motor_out { valve } else { 0.0 };
         if let Some(e) = self.electric {
             if self.motors.len() < 2 {
                 inputs[1] = Input::Electric(e, e_cmd, e_cmd.abs() < 1e-3);
@@ -163,8 +184,14 @@ impl Stabilizer {
             motors[k].finish(slots, &io, w, tq, qq);
         }
         self.power = self.electric.filter(|_| self.motors.len() < 2).map_or(0.0, |e| e.power(e_cmd, self.drive.x[2]));
+        self.motor_heat(dt);
         let rate = self.drive.rate();
+        let (r1, r2, _, _) = self.rvdt.read(self.drive.angle(), super::sensors::Fault::None, super::sensors::Fault::None, dt);
         let s = &self.s;
+        s.put(slots, "sensor_1", r1);
+        s.put(slots, "sensor_2", r2);
+        // The trim wheels are geared to the screw, so they turn with it whatever drives it.
+        s.put(slots, "wheel_turns", self.drive.angle() / DEG * self.wheel_ratio);
         s.put(slots, "angle", self.drive.angle());
         s.put(slots, "rate", rate);
         s.put(slots, "command", cmd);
@@ -173,16 +200,34 @@ impl Stabilizer {
         s.flag(slots, "torque_limited", self.tripped);
         s.put(slots, "hydraulic_motors", hyd);
         s.put(slots, "electric_power", self.power);
+        s.put(slots, "motor_temperature", self.motor_t);
         s.flag(slots, "runaway", rate.abs() > 0.1 * DEG && rate * err < 0.0 && err.abs() > 0.5 * DEG);
+    }
+
+    /// Motor windings warm with the losses of its duty and cut out at 160 C until they cool to 120 C.
+    fn motor_heat(&mut self, dt: f64) {
+        if !self.motor_t.is_finite() {
+            self.motor_t = 288.15;
+        }
+        let loss = self.electric.map_or(0.0, |e| self.power * (1.0 - e.eff));
+        let cap = 4000.0;
+        self.motor_t += (loss - cap / 900.0 * (self.motor_t - 288.15)) / cap * dt;
+        if self.motor_t > 433.15 {
+            self.motor_out = true;
+        } else if self.motor_t < 393.15 {
+            self.motor_out = false;
+        }
     }
 
     pub fn state(&self, v: &mut Vec<f64>) {
         self.drive.state(v);
-        v.push(self.tripped as u8 as f64);
+        v.extend([self.tripped as u8 as f64, self.motor_t, self.motor_out as u8 as f64]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
         self.drive.restore(it);
         self.tripped = it.next().unwrap_or(0.0) != 0.0;
+        self.motor_t = it.next().unwrap_or(f64::NAN);
+        self.motor_out = it.next().unwrap_or(0.0) != 0.0;
     }
 }

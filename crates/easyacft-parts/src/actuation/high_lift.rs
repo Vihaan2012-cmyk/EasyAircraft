@@ -40,6 +40,7 @@ pub static SPEC: PartSpec = PartSpec {
         opt("shaft_break_left_when", WHEN, "false", "left torque shaft broken outboard of the PCU"),
         opt("shaft_break_right_when", WHEN, "false", "right torque shaft broken"),
         opt("jam_when", WHEN, "false", "a panel actuator seized"),
+        opt("vfe", Kind::Expr(Type::Num(Dim::SPEED)), "0 kt", "placard speed for the present position, equivalent airspeed, for example a table(); 0 none"),
     ],
     outputs: &[
         ("position", N),
@@ -55,6 +56,14 @@ pub static SPEC: PartSpec = PartSpec {
         ("torque_limited", B),
         ("hydraulic_motors", N),
         ("electric_power", Type::Num(Dim::POWER)),
+        ("motor_temperature", Type::Num(Dim::TEMPERATURE)),
+        ("fppu", N),
+        ("appu_left", N),
+        ("appu_right", N),
+        ("overspeed", B),
+        ("uncommanded", B),
+        ("vfe_exceeded", B),
+        ("overstressed", B),
         ("failed", B),
     ],
 };
@@ -75,6 +84,15 @@ pub struct HighLift {
     tripped: bool,
     broken: [Option<f64>; 2],
     power: f64,
+    motor_t: f64,
+    motor_out: bool,
+    fppu: super::sensors::Lvdt,
+    appu: [super::sensors::Lvdt; 2],
+    rated: f64,
+    vfe: Option<Expr>,
+    eas: Option<usize>,
+    over_t: f64,
+    overstressed: bool,
     s: Slots,
 }
 
@@ -108,7 +126,16 @@ impl HighLift {
             tripped: false,
             broken: [None, None],
             power: 0.0,
-            s: Slots::of(p, &["position", "angle", "position_left", "position_right", "asymmetry", "rate", "command", "in_transit", "torque", "wtb_on", "torque_limited", "hydraulic_motors", "electric_power", "failed"]),
+            motor_t: f64::NAN,
+            motor_out: false,
+            fppu: super::sensors::Lvdt::new(0.0, 1.0, (p.slot as u64) ^ 0x1234_5678),
+            appu: [super::sensors::Lvdt::new(0.0, 1.0, (p.slot as u64) ^ 0x8765_4321), super::sensors::Lvdt::new(0.0, 1.0, (p.slot as u64) ^ 0x0f0f_0f0f)],
+            rated: rate,
+            vfe: expr_of(p, "vfe"),
+            eas: p.part("air").and_then(|i| c.slots.index.get(&format!("{}.eas", c.parts[i].id)).copied()),
+            over_t: 0.0,
+            overstressed: false,
+            s: Slots::of(p, &["position", "angle", "position_left", "position_right", "asymmetry", "rate", "command", "in_transit", "torque", "wtb_on", "torque_limited", "hydraulic_motors", "electric_power", "motor_temperature", "fppu", "appu_left", "appu_right", "overspeed", "uncommanded", "vfe_exceeded", "overstressed", "failed"]),
         }
     }
 
@@ -144,7 +171,7 @@ impl HighLift {
             }
             inputs[slot] = Input::Hydraulic(k, io);
         }
-        let e_cmd = if electric_on && !self.wtb { valve } else { 0.0 };
+        let e_cmd = if electric_on && !self.wtb && !self.motor_out { valve } else { 0.0 };
         if let (Some(e), true) = (self.electric, self.motors.len() < 2) {
             inputs[1] = Input::Electric(e, e_cmd, e_cmd.abs() < 1e-3);
         }
@@ -176,9 +203,35 @@ impl HighLift {
             motors[k].finish(slots, &io, w, tq, qq);
         }
         self.power = self.electric.filter(|_| self.motors.len() < 2).map_or(0.0, |e| e.power(e_cmd, self.drive.x[2]));
+        if !self.motor_t.is_finite() {
+            self.motor_t = 288.15;
+        }
+        let loss = self.electric.map_or(0.0, |e| self.power * (1.0 - e.eff));
+        self.motor_t += (loss - 4000.0 / 900.0 * (self.motor_t - 288.15)) / 4000.0 * dt;
+        self.motor_out = if self.motor_t > 433.15 { true } else if self.motor_t < 393.15 { false } else { self.motor_out };
         let left = self.broken[0].unwrap_or(pos);
         let right = self.broken[1].unwrap_or(pos);
+        use super::sensors::Fault;
+        let fppu = self.fppu.read(pos, Fault::None, dt);
+        let al = self.appu[0].read(left, Fault::None, dt);
+        let ar = self.appu[1].read(right, Fault::None, dt);
+        let rate = self.drive.rate();
         let s = &self.s;
+        s.put(slots, "fppu", fppu);
+        let vfe = self.vfe.as_mut().map_or(0.0, |x| x.eval(slots, dt));
+        let eas = self.eas.map_or(0.0, |i| slots[i]).abs();
+        let exceeded = vfe > 0.0 && pos > 0.01 && eas > vfe;
+        self.over_t = if exceeded && eas > 1.15 * vfe { self.over_t + dt } else { 0.0 };
+        if self.over_t > 3.0 {
+            self.overstressed = true;
+        }
+        let s = &self.s;
+        s.flag(slots, "vfe_exceeded", exceeded);
+        s.flag(slots, "overstressed", self.overstressed);
+        s.put(slots, "appu_left", al);
+        s.put(slots, "appu_right", ar);
+        s.flag(slots, "overspeed", rate.abs() > 1.3 * self.rated);
+        s.flag(slots, "uncommanded", rate.abs() > 0.05 * self.rated && (cmd - pos).abs() < self.deadband && valve == 0.0 || rate * (cmd - pos) < 0.0 && rate.abs() > 0.05 * self.rated);
         s.put(slots, "position", pos);
         s.put(slots, "angle", pos * self.travel);
         s.put(slots, "position_left", left);
@@ -192,11 +245,12 @@ impl HighLift {
         s.flag(slots, "torque_limited", self.tripped);
         s.put(slots, "hydraulic_motors", hyd);
         s.put(slots, "electric_power", self.power);
+        s.put(slots, "motor_temperature", self.motor_t);
     }
 
     pub fn state(&self, v: &mut Vec<f64>) {
         self.drive.state(v);
-        v.extend([self.wtb as u8 as f64, self.tripped as u8 as f64, self.broken[0].unwrap_or(f64::NAN), self.broken[1].unwrap_or(f64::NAN)]);
+        v.extend([self.wtb as u8 as f64, self.tripped as u8 as f64, self.broken[0].unwrap_or(f64::NAN), self.broken[1].unwrap_or(f64::NAN), self.motor_t, self.motor_out as u8 as f64, self.overstressed as u8 as f64]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
@@ -206,5 +260,8 @@ impl HighLift {
         for b in &mut self.broken {
             *b = it.next().filter(|x| x.is_finite());
         }
+        self.motor_t = it.next().unwrap_or(f64::NAN);
+        self.motor_out = it.next().unwrap_or(0.0) != 0.0;
+        self.overstressed = it.next().unwrap_or(0.0) != 0.0;
     }
 }

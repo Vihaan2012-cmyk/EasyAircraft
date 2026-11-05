@@ -59,6 +59,8 @@ initial = 0.8
 id = "green"
 nominal = "3000 psi"
 fluid = "60 L"
+cooling_temperature = "oil_t.value * 1 K"
+heat_exchanger = 20000
 
 [[hydraulic.pump]]
 id = "edp"
@@ -79,6 +81,7 @@ circuit = "green"
 force = "60 kN"
 rate = "0.08 m/s"
 active_when = "!act_off.on"
+oscillation_when = "ofc.on"
 
 [[actuator.linear]]
 id = "ail_b"
@@ -86,6 +89,43 @@ circuit = "green"
 force = "60 kN"
 rate = "0.08 m/s"
 active_when = "false"
+
+[[actuator.linear]]
+id = "aa_1"
+circuit = "green"
+force = "60 kN"
+rate = "0.08 m/s"
+
+[[actuator.linear]]
+id = "aa_2"
+circuit = "green"
+force = "60 kN"
+rate = "0.08 m/s"
+
+[[actuator.linear]]
+id = "ab_1"
+circuit = "green"
+force = "60 kN"
+rate = "0.08 m/s"
+
+[[actuator.linear]]
+id = "ab_2"
+circuit = "green"
+force = "60 kN"
+rate = "0.08 m/s"
+
+[[flight_control.surface]]
+id = "outboard"
+actuators = ["aa_1", "aa_2"]
+command = "ail_cmd.value"
+air = "air"
+force_equalization = true
+
+[[flight_control.surface]]
+id = "inboard"
+actuators = ["ab_1", "ab_2"]
+command = "ail_cmd.value"
+air = "air"
 
 [[flight_control.surface]]
 id = "aileron"
@@ -118,11 +158,14 @@ id = "rud_a"
 circuit = "green"
 force = "60 kN"
 rate = "0.08 m/s"
+line_length = "45 m"
+line_bore = "8 mm"
 active_when = "!act_off.on"
 
 [[flight_control.surface]]
 id = "rudder"
 actuators = ["rud_a"]
+command = "rud_cmd.value"
 air = "air"
 area = 3
 chord = "0.7 m"
@@ -157,7 +200,113 @@ actuator = "mlg_jack"
 doors = ["mlg_door"]
 down_when = "gear_down.on"
 free_fall_when = "free_fall.on"
+bogie = "mlg_bogie"
+load = "mlg_load.value * 1 N"
+blowdown_when = "blow.on"
+crank = "crank.value"
+release_turns = 3
+limit_speed = "250 kt"
 air = "air"
+
+[[input.number]]
+id = "crank"
+
+[[input.number]]
+id = "ema_lost"
+
+[[cockpit.switch]]
+id = "bearing"
+
+[[cockpit.switch]]
+id = "nose_down"
+initial = true
+
+[[brakes.wheel]]
+id = "w2"
+electric = true
+pedal = "pedal.value"
+actuators_failed = "ema_lost.value"
+bearing_failed_when = "bearing.on"
+air = "air"
+
+[[actuator.linear]]
+id = "nlg_jack"
+circuit = "green"
+control = "selector"
+force = "90 kN"
+rate = "0.15 m/s"
+rod = 0.4
+
+[[landing_gear.door]]
+id = "nlg_door"
+linked = true
+
+[[landing_gear.leg]]
+id = "nlg"
+actuator = "nlg_jack"
+doors = ["nlg_door"]
+down_when = "nose_down.on"
+retracts = "forward"
+mass = "250 kg"
+cg = "0.9 m"
+air = "air"
+
+[[cockpit.switch]]
+id = "blow"
+
+[[input.number]]
+id = "spoiler_cmd"
+
+[[actuator.linear]]
+id = "spl_a"
+circuit = "green"
+force = "40 kN"
+rate = "0.06 m/s"
+
+[[flight_control.surface]]
+id = "spoiler"
+actuators = ["spl_a"]
+command = "spoiler_cmd.value"
+air = "air"
+area = 2
+chord = "0.8 m"
+min = "0 deg"
+max = "50 deg"
+deflects = "up"
+ch0 = -0.1
+free_play = "0.5 mm"
+turbulence = "0.5"
+
+[[actuator.linear]]
+id = "trimmer"
+circuit = "green"
+force = "60 kN"
+rate = "0.05 m/s"
+
+[[landing_gear.bogie]]
+id = "mlg_bogie"
+actuator = "trimmer"
+on_ground_when = "mlg.compressed"
+jam_when = "bogie_jam.on"
+
+[[cockpit.switch]]
+id = "bogie_jam"
+
+[[cockpit.switch]]
+id = "ofc"
+
+[[input.number]]
+id = "mlg_load"
+
+[[input.number]]
+id = "water"
+
+[[input.number]]
+id = "rud_cmd"
+
+[[input.number]]
+id = "oil_t"
+initial = 323.15
 
 [[brakes.wheel]]
 id = "w1"
@@ -166,6 +315,8 @@ alternate_circuit = "green"
 pedal = "pedal.value"
 parking_when = "parking.on"
 runway_friction = "runway.value"
+line_burst_when = "burst.on"
+water_depth = "water.value * 1 m"
 air = "air"
 
 [[actuator.linear]]
@@ -184,6 +335,7 @@ rate = "0.1 m/s"
 id = "nws"
 actuators = ["nws_a", "nws_b"]
 command = "steer.value"
+centring_when = "cams.on"
 air = "air"
 
 [[actuator.motor]]
@@ -216,6 +368,7 @@ motors = ["flap_m1", "flap_m2"]
 command = "flap_cmd.value"
 air = "air"
 shaft_break_left_when = "shaft_break.on"
+vfe = "200 kt"
 
 [[actuator.linear]]
 id = "spare"
@@ -223,7 +376,52 @@ circuit = "green"
 force = "10 kN"
 rate = "0.05 m/s"
 stroke = "0.1 m"
-command = "0.9"
+command = "spare_cmd.value"
+lvdt_1_fault = "lvdt_fault.value"
+
+[[input.number]]
+id = "spare_cmd"
+initial = 0.9
+
+[[input.number]]
+id = "lvdt_fault"
+
+[[input.number]]
+id = "bus"
+initial = 540
+
+[[input.number]]
+id = "eha_cmd"
+initial = 0.5
+
+[[actuator.linear]]
+id = "eha"
+control = "eha"
+force = "80 kN"
+rate = "0.06 m/s"
+stroke = "0.08 m"
+command = "eha_cmd.value"
+voltage = "bus.value * 1 V"
+load = "30 kN"
+
+[[cockpit.switch]]
+id = "burst"
+
+[[cockpit.switch]]
+id = "cams"
+
+[[input.number]]
+id = "pilot"
+
+[[input.number]]
+id = "trim_sw"
+
+[[flight_control.feel]]
+id = "pitch_feel"
+pilot_force = "pilot.value * 1 N"
+trim = "trim_sw.value"
+air = "air"
+q_feel = true
 "#;
 
 fn rig() -> Aircraft {
@@ -431,7 +629,7 @@ fn steering_turns_against_scrub_and_castors_when_towed() {
     assert!((ang - 40.0).abs() < 1.5, "standstill steer {ang:.1} deg, scrub {:.0} N m", get(&a, "nws.scrub"));
     a.set("steer.value", 0.0);
     run(&mut a, 4.0);
-    assert!(get(&a, "nws.angle").abs() < 1.0 * DEG);
+    assert!(get(&a, "nws.angle").abs() < 1.0 * DEG, "back to {:.2} deg, error {:.2}", get(&a, "nws.angle") / DEG, get(&a, "nws.error") / DEG);
 }
 
 #[test]
@@ -516,4 +714,456 @@ fn abuse_never_blows_up() {
     }
     let bad: Vec<String> = a.names().filter(|n| a.get(n).is_some_and(|v| !v.is_finite())).map(|s| s.to_owned()).collect();
     assert!(bad.is_empty(), "non-finite: {bad:?}");
+}
+
+#[test]
+fn a_detached_transducer_core_runs_the_actuator_to_its_stop() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 3.0);
+    a.set("spare_cmd.value", 0.5);
+    run(&mut a, 3.0);
+    assert!((get(&a, "spare.position") - 0.5).abs() < 0.02);
+    a.set("lvdt_fault.value", 3.0);
+    a.set("spare_cmd.value", 0.6);
+    run(&mut a, 4.0);
+    let pos = get(&a, "spare.position");
+    assert!(pos > 0.97, "with its feedback frozen it drives to the stop: {pos:.2}");
+    assert!(get(&a, "spare.lvdt_disagree") != 0.0, "channels {:.3} {:.3}", get(&a, "spare.lvdt_1"), get(&a, "spare.lvdt_2"));
+    a.set("lvdt_fault.value", 1.0);
+    run(&mut a, 4.0);
+    assert!((get(&a, "spare.position") - 0.6).abs() < 0.03, "open coil: falls back on channel 2, at {:.2}", get(&a, "spare.position"));
+}
+
+#[test]
+fn eha_moves_on_its_own_pump_and_slows_on_a_sagging_bus() {
+    let mut a = rig();
+    ground(&mut a);
+    a.set("pump_on.on", 0.0);
+    run(&mut a, 2.0);
+    let start = get(&a, "eha.position");
+    a.set("eha_cmd.value", 0.9);
+    run(&mut a, 0.5);
+    let moved = get(&a, "eha.position") - start;
+    assert!(moved > 0.15, "EHA moved {moved:.3} of stroke in 0.5 s with no hydraulics");
+    assert!(get(&a, "eha.electric_power") > 100.0 && get(&a, "eha.current") > 0.1, "{:.0} W {:.1} A", get(&a, "eha.electric_power"), get(&a, "eha.current"));
+    assert!(get(&a, "eha.circuit_flow") == 0.0);
+    run(&mut a, 3.0);
+    assert!((get(&a, "eha.position") - 0.9).abs() < 0.02, "at {:.3}", get(&a, "eha.position"));
+    a.set("eha_cmd.value", 0.2);
+    a.set("bus.value", 200.0);
+    run(&mut a, 0.5);
+    let slow = 0.9 - get(&a, "eha.position");
+    assert!(slow < 0.7 * moved, "a sagging bus: {slow:.3} against {moved:.3}");
+    a.set("bus.value", 0.0);
+    let held = get(&a, "eha.position");
+    run(&mut a, 2.0);
+    assert!(get(&a, "eha.active") == 0.0 && get(&a, "eha.position") < held - 0.01, "unpowered it gives way to its load in damping: {held:.2} -> {:.2}", get(&a, "eha.position"));
+}
+
+#[test]
+fn a_burst_brake_line_trips_its_fuse_before_the_circuit_drains() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 3.0);
+    let fluid0 = get(&a, "green.fluid");
+    a.set("pedal.value", 0.5);
+    a.set("burst.on", 1.0);
+    run(&mut a, 5.0);
+    assert!(get(&a, "w1.hydraulic_fuse") != 0.0, "fuse open");
+    let lost = fluid0 - get(&a, "green.fluid");
+    assert!(lost > 0.05e-3 && lost < 2e-3, "lost {:.2} L", lost * 1e3);
+    assert!(get(&a, "green.pressure") > 2500.0 * PSI);
+}
+
+#[test]
+fn parked_brake_pressure_climbs_as_hot_brakes_soak_the_housing() {
+    let mut a = rig();
+    ground(&mut a);
+    a.set("air.groundspeed", 50.0);
+    a.set("air.airspeed", 50.0);
+    run(&mut a, 2.0);
+    a.set("pedal.value", 1.0);
+    let mut v: f64 = 50.0;
+    for _ in 0..2000 {
+        v = (v - get(&a, "w1.force") / 15_000.0 * 0.02).max(0.0);
+        a.set("air.groundspeed", v);
+        a.set("air.airspeed", v);
+        a.step(0.02);
+    }
+    a.set("parking.on", 1.0);
+    run(&mut a, 3.0);
+    a.set("pedal.value", 0.0);
+    let p0 = get(&a, "w1.pressure");
+    run(&mut a, 600.0);
+    let p1 = get(&a, "w1.pressure");
+    assert!(p1 > p0 + 20.0 * PSI, "trapped {:.0} -> {:.0} psi, housing {:.0} K", p0 / PSI, p1 / PSI, get(&a, "w1.stack_temperature"));
+    assert!(p1 < 1.2 * 3000.0 * PSI, "thermal relief caps it");
+}
+
+#[test]
+fn feel_force_follows_dynamic_pressure_and_trim_moves_the_neutral() {
+    let mut a = rig();
+    flying(&mut a, 120.0);
+    a.set("pilot.value", 150.0);
+    run(&mut a, 3.0);
+    let slow = get(&a, "pitch_feel.position");
+    flying(&mut a, 300.0);
+    run(&mut a, 3.0);
+    let fast = get(&a, "pitch_feel.position");
+    assert!(slow > 1.8 * fast && fast > 0.0, "same push: {slow:.3} slow, {fast:.3} fast");
+    a.set("pilot.value", 0.0);
+    a.set("trim_sw.value", 1.0);
+    run(&mut a, 4.0);
+    a.set("trim_sw.value", 0.0);
+    run(&mut a, 3.0);
+    let rest = get(&a, "pitch_feel.position");
+    assert!((rest - get(&a, "pitch_feel.neutral")).abs() < 0.05 && rest > 0.15, "hands off it rests at the trimmed neutral: {rest:.3}");
+}
+
+#[test]
+fn centring_cams_straighten_the_nosewheel_after_lift_off() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 3.0);
+    a.set("steer.value", 30.0 * DEG);
+    run(&mut a, 3.0);
+    assert!(get(&a, "nws.angle") > 25.0 * DEG);
+    a.set("air.on_ground", 0.0);
+    a.set("cams.on", 1.0);
+    run(&mut a, 3.0);
+    assert!(get(&a, "nws.angle").abs() < 1.0 * DEG, "centred to {:.1} deg", get(&a, "nws.angle") / DEG);
+}
+
+#[test]
+fn surface_transducers_follow_the_surface() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 3.0);
+    a.set("ail_cmd.value", -12.0 * DEG);
+    run(&mut a, 2.0);
+    let t = get(&a, "aileron.angle");
+    assert!((get(&a, "aileron.sensor_1") - t).abs() < 0.3 * DEG && (get(&a, "aileron.sensor_2") - t).abs() < 0.3 * DEG);
+    assert!(get(&a, "aileron.sensor_disagree") == 0.0);
+    assert!(get(&a, "flaps.fppu") >= -0.01 && get(&a, "ths.sensor_1").is_finite());
+}
+
+#[test]
+fn a_bogie_must_trail_before_its_leg_retracts() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 3.0);
+    assert!(get(&a, "mlg_bogie.level") != 0.0, "on the ground it lies level: {:.1} deg", get(&a, "mlg_bogie.angle") / DEG);
+    flying(&mut a, 160.0);
+    run(&mut a, 4.0);
+    assert!(get(&a, "mlg_bogie.trailed") != 0.0, "in the air it trails: {:.1} deg", get(&a, "mlg_bogie.angle") / DEG);
+    let mut b = rig();
+    ground(&mut b);
+    run(&mut b, 3.0);
+    b.set("bogie_jam.on", 1.0);
+    flying(&mut b, 160.0);
+    run(&mut b, 3.0);
+    b.set("gear_down.on", 0.0);
+    run(&mut b, 15.0);
+    assert!(get(&b, "mlg.down_locked") != 0.0 && get(&b, "mlg.retract_inhibited") != 0.0, "a level bogie holds the gear down");
+}
+
+#[test]
+fn a_firm_arrival_is_logged_as_a_hard_landing() {
+    let mut a = rig();
+    flying(&mut a, 140.0);
+    run(&mut a, 3.0);
+    assert!(get(&a, "mlg.strut_stroke") < 0.01);
+    a.set("air.on_ground", 1.0);
+    a.set("mlg_load.value", 300e3);
+    run(&mut a, 2.0);
+    assert!(get(&a, "mlg.hard_landing") == 0.0, "gentle: {:.2} m/s", get(&a, "mlg.strut_rate"));
+    a.set("mlg_load.value", 0.0);
+    a.set("air.on_ground", 0.0);
+    run(&mut a, 3.0);
+    a.set("air.on_ground", 1.0);
+    a.set("mlg_load.value", 2.5e6);
+    run(&mut a, 0.3);
+    a.set("mlg_load.value", 300e3);
+    run(&mut a, 2.0);
+    assert!(get(&a, "mlg.hard_landing") != 0.0, "peak {:.0} kN", get(&a, "mlg.peak_load") / 1e3);
+}
+
+#[test]
+fn tyres_hydroplane_on_standing_water_at_speed() {
+    let mut a = rig();
+    ground(&mut a);
+    a.set("water.value", 0.006);
+    a.set("air.groundspeed", 75.0);
+    a.set("air.airspeed", 75.0);
+    run(&mut a, 2.0);
+    assert!(get(&a, "w1.hydroplaning") != 0.0);
+    a.set("pedal.value", 0.6);
+    run(&mut a, 1.5);
+    assert!(get(&a, "w1.locked") != 0.0, "wheel at {:.1} m/s on the water", get(&a, "w1.wheel_speed"));
+    a.set("pedal.value", 0.0);
+    a.set("air.groundspeed", 35.0);
+    a.set("air.airspeed", 35.0);
+    run(&mut a, 2.0);
+    assert!(get(&a, "w1.hydroplaning") == 0.0);
+}
+
+#[test]
+fn an_oscillatory_servo_failure_shakes_the_surface() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 3.0);
+    let calm = get(&a, "aileron.oscillation");
+    a.set("ofc.on", 1.0);
+    run(&mut a, 3.0);
+    let shaking = get(&a, "aileron.oscillation");
+    assert!(shaking > 0.05 && shaking > 10.0 * calm.max(1e-4), "oscillation {calm:.4} -> {shaking:.4} rad/s");
+}
+
+#[test]
+fn a_cold_soaked_tail_line_slows_the_rudder() {
+    let time_to = |oil: f64| {
+        let mut a = rig();
+        ground(&mut a);
+        a.set("oil_t.value", oil);
+        run(&mut a, 60.0);
+        a.set("rud_cmd.value", 20.0 * DEG);
+        let mut t = 0.0;
+        while t < 10.0 && get(&a, "rudder.angle") < 18.0 * DEG {
+            a.step(0.02);
+            t += 0.02;
+        }
+        (t, get(&a, "rud_a.line_drop"), get(&a, "green.temperature"))
+    };
+    let (warm, warm_drop, wt) = time_to(323.15);
+    let (cold, cold_drop, ct) = time_to(238.15);
+    assert!(cold > 1.3 * warm, "rudder to 18 deg: {warm:.2} s at {wt:.0} K, {cold:.2} s at {ct:.0} K; line drop {:.0} vs {:.0} psi", warm_drop / PSI, cold_drop / PSI);
+}
+
+#[test]
+fn worn_rod_ends_let_the_surface_rattle_in_its_free_play() {
+    let mut a = rig();
+    flying(&mut a, 280.0);
+    run(&mut a, 2.0);
+    a.set("spoiler_cmd.value", 20.0 * DEG);
+    run(&mut a, 3.0);
+    let ang = get(&a, "spoiler.angle") / DEG;
+    assert!((ang - 20.0).abs() < 1.5, "spoiler at {ang:.1} deg");
+    let mut most: f64 = 0.0;
+    for _ in 0..200 {
+        a.step(0.02);
+        most = most.max(get(&a, "spoiler.slack").abs());
+    }
+    assert!(most > 0.2e-3 && most < 3e-3, "slack {:.2} mm", most * 1e3);
+    assert!(get(&a, "spl_a.position").is_finite());
+}
+
+#[test]
+fn a_nitrogen_bottle_blows_the_gear_down_without_hydraulics() {
+    let mut a = rig();
+    flying(&mut a, 180.0);
+    run(&mut a, 2.0);
+    a.set("gear_down.on", 0.0);
+    run(&mut a, 30.0);
+    assert!(get(&a, "mlg.up_locked") != 0.0);
+    a.set("pump_on.on", 0.0);
+    run(&mut a, 60.0);
+    let full = get(&a, "mlg.bottle_pressure");
+    a.set("blow.on", 1.0);
+    a.set("gear_down.on", 1.0);
+    let mut t = 0.0;
+    while t < 20.0 && get(&a, "mlg.down_locked") == 0.0 {
+        run(&mut a, 0.1);
+        t += 0.1;
+    }
+    assert!(get(&a, "mlg.down_locked") != 0.0, "blown down in {t:.1} s");
+    assert!(get(&a, "mlg.bottle_pressure") < 0.8 * full, "bottle {:.0} -> {:.0} psi", full / PSI, get(&a, "mlg.bottle_pressure") / PSI);
+}
+
+#[test]
+fn touchdown_spin_up_scrubs_tread_off() {
+    let mut a = rig();
+    flying(&mut a, 140.0);
+    run(&mut a, 30.0);
+    assert!(get(&a, "w1.wheel_speed") < 5.0, "spun down in the air: {:.1}", get(&a, "w1.wheel_speed"));
+    let before = get(&a, "w1.tread");
+    a.set("air.on_ground", 1.0);
+    a.set("air.altitude", 0.0);
+    run(&mut a, 2.0);
+    let after = get(&a, "w1.tread");
+    assert!((get(&a, "w1.wheel_speed") - 140.0 * KT).abs() < 2.0, "spun up to {:.1}", get(&a, "w1.wheel_speed"));
+    let worn = before - after;
+    assert!(worn > 1e-4 && worn < 1e-2, "one touchdown wore {:.4} of the tread", worn);
+}
+
+#[test]
+fn eha_windings_heat_with_duty() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 2.0);
+    for k in 0..60 {
+        a.set("eha_cmd.value", if k % 2 == 0 { 0.1 } else { 0.9 });
+        run(&mut a, 2.0);
+    }
+    let wind = get(&a, "eha.winding_temperature");
+    let body = get(&a, "eha.temperature");
+    assert!(wind > body + 1.0 && body > 288.5, "winding {wind:.1} K over body {body:.1} K");
+}
+
+#[test]
+fn the_gravity_crank_isolates_then_frees_the_doors_then_the_leg() {
+    let mut a = rig();
+    flying(&mut a, 180.0);
+    run(&mut a, 2.0);
+    a.set("gear_down.on", 0.0);
+    run(&mut a, 30.0);
+    a.set("pump_on.on", 0.0);
+    run(&mut a, 60.0);
+    a.set("gear_down.on", 1.0);
+    a.set("crank.value", 1.5);
+    run(&mut a, 4.0);
+    assert!(get(&a, "mlg.up_locked") != 0.0, "one and a half turns: still up");
+    a.set("crank.value", 2.2);
+    run(&mut a, 10.0);
+    assert!(get(&a, "mlg_door.locked") == 0.0 && get(&a, "mlg_door.position") > 0.05 && get(&a, "mlg.up_locked") != 0.0, "doors unlocked and hanging, leg held: door {:.2}", get(&a, "mlg_door.position"));
+    a.set("crank.value", 3.0);
+    let mut t = 0.0;
+    while t < 40.0 && get(&a, "mlg.down_locked") == 0.0 {
+        run(&mut a, 0.1);
+        t += 0.1;
+    }
+    assert!(get(&a, "mlg.down_locked") != 0.0, "three turns: down after {t:.1} s");
+}
+
+#[test]
+fn gear_and_flaps_out_too_fast_are_overstressed() {
+    let mut a = rig();
+    flying(&mut a, 240.0);
+    run(&mut a, 3.0);
+    assert!(get(&a, "mlg.overspeed") == 0.0);
+    flying(&mut a, 330.0);
+    run(&mut a, 1.0);
+    assert!(get(&a, "mlg.overspeed") != 0.0 && get(&a, "mlg.overstressed") == 0.0);
+    run(&mut a, 3.0);
+    assert!(get(&a, "mlg.overstressed") != 0.0, "VLE exceeded by a quarter for seconds");
+    let mut b = rig();
+    flying(&mut b, 180.0);
+    run(&mut b, 2.0);
+    b.set("flap_cmd.value", 0.3);
+    run(&mut b, 15.0);
+    assert!(get(&b, "flaps.vfe_exceeded") == 0.0);
+    flying(&mut b, 260.0);
+    run(&mut b, 5.0);
+    assert!(get(&b, "flaps.vfe_exceeded") != 0.0 && get(&b, "flaps.overstressed") != 0.0);
+}
+
+#[test]
+fn a_cold_soaked_strut_sits_lower() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 10.0);
+    let hot = get(&a, "mlg.strut_stroke");
+    let mut c = rig();
+    ground(&mut c);
+    // A cold-soaked aircraft: the standard atmosphere at 9 km gives -43 C.
+    c.set("air.altitude", 9000.0);
+    run(&mut c, 10.0);
+    let cold = get(&c, "mlg.strut_stroke");
+    assert!(cold > hot + 0.005, "strut {:.3} m at 15 C, {:.3} m at {:.0} K", hot, cold, get(&c, "air.temperature"));
+}
+
+#[test]
+fn electric_brakes_clamp_without_hydraulics_and_lose_torque_with_actuators() {
+    let mut a = rig();
+    ground(&mut a);
+    a.set("pump_on.on", 0.0);
+    a.set("air.groundspeed", 30.0);
+    a.set("air.airspeed", 30.0);
+    run(&mut a, 2.0);
+    a.set("pedal.value", 0.5);
+    run(&mut a, 1.0);
+    let full = get(&a, "w2.torque").abs();
+    assert!(full > 1000.0 && get(&a, "w2.electric_power") > 100.0, "{full:.0} N m at {:.0} W", get(&a, "w2.electric_power"));
+    assert!(get(&a, "w2.circuit_flow") == 0.0);
+    a.set("ema_lost.value", 2.0);
+    run(&mut a, 1.0);
+    let half = get(&a, "w2.torque").abs();
+    assert!((half / full - 0.5).abs() < 0.15, "two of four actuators: {half:.0} of {full:.0} N m");
+}
+
+#[test]
+fn a_linked_door_rides_on_its_leg() {
+    let mut a = rig();
+    flying(&mut a, 170.0);
+    run(&mut a, 2.0);
+    assert!(get(&a, "nlg_door.open") != 0.0, "down: door open on the leg");
+    a.set("nose_down.on", 0.0);
+    let mut t = 0.0;
+    while t < 30.0 && get(&a, "nlg.up_locked") == 0.0 {
+        run(&mut a, 0.1);
+        t += 0.1;
+        let leg = get(&a, "nlg.position");
+        if leg > 0.25 {
+            assert!(get(&a, "nlg_door.position") > 0.97, "leg at {leg:.2}, door {:.2}", get(&a, "nlg_door.position"));
+        }
+    }
+    run(&mut a, 0.1);
+    assert!(get(&a, "nlg.up_locked") != 0.0 && get(&a, "nlg_door.closed") != 0.0, "up in {t:.1} s, door {:.2}", get(&a, "nlg_door.position"));
+}
+
+#[test]
+fn a_failing_wheel_bearing_cooks_the_hub() {
+    let rim = |bad: bool| {
+        let mut a = rig();
+        ground(&mut a);
+        a.set("air.groundspeed", 15.0);
+        a.set("air.airspeed", 15.0);
+        a.set("bearing.on", bad as u8 as f64);
+        run(&mut a, 300.0);
+        get(&a, "w2.rim_temperature")
+    };
+    let good = rim(false);
+    let bad = rim(true);
+    assert!(bad > good + 40.0, "rim {good:.0} K healthy, {bad:.0} K with the bearing gone");
+}
+
+#[test]
+fn active_active_actuators_with_equalization_stop_fighting() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 3.0);
+    a.set("ail_cmd.value", 5.0 * DEG);
+    run(&mut a, 30.0);
+    let plain = get(&a, "inboard.force_fight");
+    let equalized = get(&a, "outboard.force_fight");
+    assert!(plain > 1000.0, "transducer offsets alone set two active actuators fighting: {plain:.0} N");
+    assert!(equalized < 0.3 * plain, "equalization takes the fight out: {plain:.0} -> {equalized:.0} N");
+}
+
+#[test]
+fn tyre_pressure_display_lags_by_its_sample_period() {
+    let mut a = rig();
+    ground(&mut a);
+    run(&mut a, 10.0);
+    let shown = get(&a, "w1.tpis_pressure");
+    assert!((shown - get(&a, "w1.tyre_pressure")).abs() < 3.0 * PSI, "{:.0} psi shown", shown / PSI);
+    assert!((get(&a, "w1.wear_pin") - 0.025).abs() < 1e-3);
+}
+
+#[test]
+#[ignore]
+fn time_rig() {
+    let mut a = rig();
+    flying(&mut a, 250.0);
+    a.start_profile();
+    let t = std::time::Instant::now();
+    for k in 0..3000 {
+        a.set("ail_cmd.value", 10.0 * DEG * ((k as f64) * 0.02).sin());
+        a.step(1.0 / 60.0);
+    }
+    let el = t.elapsed().as_secs_f64();
+    for d in a.profile() {
+        println!("{} {:.3} ms/frame", d.name, d.seconds / 3000.0 * 1e3);
+    }
+    println!("total {:.3} ms/frame", el / 3000.0 * 1e3);
 }

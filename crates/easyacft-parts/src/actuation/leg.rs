@@ -60,6 +60,14 @@ pub static LEG: PartSpec = PartSpec {
         opt("downlock_failed_when", WHEN, "false", "downlock brace does not lock"),
         opt("jam_when", WHEN, "false", "leg seized in its bay"),
         opt("strut_leak_when", WHEN, "false", "strut gas leaking: it sinks"),
+        opt("bogie", Kind::Ref(&["landing_gear.bogie"]), "", "bogie that must be trailed before the leg retracts"),
+        opt("hard_landing_rate", Kind::Quantity(Dim::SPEED), "3 m/s", "strut closing rate at touchdown that counts as a hard landing"),
+        opt("blowdown_when", WHEN, "false", "emergency extension from a nitrogen bottle: it vents the up side and blows the jack down"),
+        opt("bottle_pressure", Kind::Quantity(Dim::PRESSURE), "3000 psi", "nitrogen bottle charge"),
+        opt("bottle_volume", Kind::Quantity(Dim::VOLUME), "1.5 L", "nitrogen bottle volume"),
+        opt("crank", Kind::Expr(N), "0", "gravity extension crank turns so far"),
+        opt("release_turns", Kind::Number, "0", "turns for the crank to isolate the hydraulics (first third), release the doors (second) and the leg (all); 0 uses free_fall_when alone"),
+        opt("limit_speed", Kind::Quantity(Dim::SPEED), "0 kt", "gear extended speed limit (VLE), equivalent airspeed; 0 none"),
     ],
     outputs: &[
         ("position", N),
@@ -79,16 +87,145 @@ pub static LEG: PartSpec = PartSpec {
         ("wow_2", B),
         ("weight_on_wheels", B),
         ("selector", N),
+        ("strut_rate", Type::Num(Dim::SPEED)),
+        ("peak_load", Type::Num(Dim::FORCE)),
+        ("bottomed", B),
+        ("hard_landing", B),
+        ("retract_inhibited", B),
+        ("bottle_pressure", Type::Num(Dim::PRESSURE)),
+        ("overspeed", B),
+        ("overstressed", B),
         ("failed", B),
     ],
 };
+
+pub static BOGIE: PartSpec = PartSpec {
+    domain: "landing_gear",
+    kind: "bogie",
+    help: "A main gear bogie on its pivot: a trimmer actuator holds it at its trail angle once the wheels leave the ground, the ground levels it on landing, and its leg will not retract until it is trailed.",
+    fields: &[
+        req("actuator", Kind::Ref(&["actuator.linear"]), "the pitch trimmer actuator"),
+        opt("on_ground_when", WHEN, "false", "the wheels are on the ground, for example \"body_gear_l.compressed\""),
+        opt("trail", Kind::Quantity(Dim::NONE), "12 deg", "pitch the trimmer holds in the air, front wheels up"),
+        opt("range", Kind::Quantity(Dim::NONE), "20 deg", "pivot travel each way"),
+        opt("mass", Kind::Quantity(Dim::MASS), "900 kg", "bogie beam, wheels and brakes"),
+        opt("offset", Kind::Quantity(Dim::LENGTH), "0.1 m", "centre of gravity aft of the pivot"),
+        opt("wheelbase", Kind::Quantity(Dim::LENGTH), "1.7 m", "front to rear axle"),
+        opt("arm", Kind::Quantity(Dim::LENGTH), "0.25 m", "trimmer attachment radius"),
+        opt("anchor", Kind::Quantity(Dim::LENGTH), "0.9 m", "pivot to trimmer anchor on the leg"),
+        opt("ground_load", Kind::Quantity(Dim::FORCE), "400 kN", "load that flattens it on the ground"),
+        opt("jam_when", WHEN, "false", "pivot seized"),
+    ],
+    outputs: &[("angle", N), ("trailed", B), ("level", B), ("failed", B)],
+};
+
+/// A bogie beam pitching on its pivot.
+pub struct Bogie {
+    pub rot: Rotary,
+    e: [Option<Expr>; 2],
+    trail: f64,
+    mass: f64,
+    offset: f64,
+    wheelbase: f64,
+    ground_load: f64,
+    s: Slots,
+}
+
+impl Bogie {
+    pub fn new(c: &Checked, p: &CheckedPart, acts: &mut Vec<linear::Part>, act_index: &HashMap<usize, usize>) -> Self {
+        let range = p.num("range").max(1.0 * DEG);
+        let mut links = vec![];
+        let mut idx = vec![];
+        let mass = p.num("mass").max(1.0);
+        let wheelbase = p.num("wheelbase").max(0.2);
+        let mut m_ref = mass * G * wheelbase;
+        if let Some((r, &k)) = p.part("actuator").and_then(|r| act_index.get(&r).map(|k| (r, k))) {
+            let (l, stroke) = Linkage::new(p.num("arm"), p.num("anchor"), -range, range, true);
+            if acts[k].act.stroke < 0.98 * stroke || acts[k].act.stroke > 1.5 * stroke {
+                acts[k].resize(&c.parts[r], stroke);
+            }
+            m_ref += acts[k].act.stall * l.r;
+            links.push(l);
+            idx.push(k);
+        }
+        let inertia = mass * wheelbase * wheelbase / 12.0;
+        let mut rot = Rotary::new(links, idx, inertia, -range, range, 0.0, m_ref);
+        rot.init_actuators(acts, 101_325.0 + 50.0 * PSI);
+        Bogie {
+            rot,
+            e: ["on_ground_when", "jam_when"].map(|k| expr_of(p, k)),
+            trail: p.num("trail"),
+            mass,
+            offset: p.num("offset"),
+            wheelbase,
+            ground_load: p.num("ground_load").max(1.0),
+            s: Slots::of(p, &["angle", "trailed", "level", "failed"]),
+        }
+    }
+
+    pub fn trailed(&self) -> bool {
+        (self.rot.angle() - self.trail).abs() < 2.0 * DEG
+    }
+
+    pub fn step(&mut self, acts: &mut [linear::Part], slots: &mut [f64], dt: f64) {
+        let ground = self.e[0].as_mut().is_some_and(|x| x.yes(slots, dt));
+        let jam = self.e[1].as_mut().is_some_and(|x| x.yes(slots, dt)) || self.s.on(slots, "failed");
+        let t = self.rot.angle();
+        if jam && self.rot.seized.is_none() {
+            self.rot.seized = Some(t);
+        } else if !jam {
+            self.rot.seized = None;
+        }
+        let mut ios: Vec<Io> = vec![];
+        for k in 0..self.rot.acts.len() {
+            let share = self.rot.command_for(acts, k, self.trail);
+            let ai = self.rot.acts[k];
+            let mut io = acts[ai].prepare(slots, dt, Some(share));
+            // On the ground the trimmer is bypassed so the bogie follows the runway.
+            if ground {
+                io.mode = 0.0;
+            }
+            ios.push(io);
+        }
+        self.rot.update_jams(acts, &ios);
+        let (m, off, wb, gl) = (self.mass, self.offset, self.wheelbase, self.ground_load);
+        let load = move |t: f64, w: f64| {
+            let g = -m * G * off * t.cos();
+            // The runway pushes whichever axle is low back up, levelling the beam.
+            let flatten = if ground { -gl * 0.5 * wb * t.sin() - 0.2 * gl * wb * wb * w / 10.0 } else { 0.0 };
+            g + flatten - 0.05 * m * wb * wb * w
+        };
+        self.rot.step(acts, &ios, dt, &load);
+        for k in 0..self.rot.acts.len() {
+            let ai = self.rot.acts[k];
+            let (x, v) = self.rot.actuator_motion(k);
+            let st = self.rot.actuator_state(k).to_vec();
+            let out = self.rot.outs[k];
+            acts[ai].finish(slots, &ios[k], x, v, &st, &out, dt);
+        }
+        let a = self.rot.angle();
+        let s = &self.s;
+        s.put(slots, "angle", a);
+        s.flag(slots, "trailed", self.trailed());
+        s.flag(slots, "level", a.abs() < 1.5 * DEG);
+    }
+
+    pub fn state(&self, v: &mut Vec<f64>) {
+        self.rot.state(v);
+    }
+
+    pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
+        self.rot.restore(it);
+    }
+}
 
 pub static DOOR: PartSpec = PartSpec {
     domain: "landing_gear",
     kind: "door",
     help: "A gear door on its hinge: actuator, closed-position uplock, gravity and airload; a leg that lists it sequences it.",
     fields: &[
-        req("actuator", Kind::Ref(&["actuator.linear"]), "door actuator, a selector-valve actuator"),
+        opt("actuator", Kind::Ref(&["actuator.linear"]), "", "door actuator, a selector-valve actuator; none for a door linked to its leg"),
+        opt("linked", Kind::Bool, "false", "mechanically linked to the leg that lists it: opens as the leg leaves its uplock, rides on it down"),
         opt("open_when", WHEN, "false", "open, when no leg sequences it"),
         opt("air", Kind::Ref(AIR), "", "for dynamic pressure"),
         opt("travel", Kind::Quantity(Dim::NONE), "85 deg", "closed to open"),
@@ -103,8 +240,9 @@ pub static DOOR: PartSpec = PartSpec {
         opt("free_fall_release", Kind::Quantity(Dim::TIME), "1.5 s", "alternate release time"),
         opt("free_fall_when", WHEN, "false", "alternate release, when no leg sequences it"),
         opt("jam_when", WHEN, "false", "door seized"),
+        opt("limit_speed", Kind::Quantity(Dim::SPEED), "0 kt", "speed limit with the door open, equivalent airspeed; 0 none"),
     ],
-    outputs: &[("position", N), ("angle", N), ("closed", B), ("open", B), ("locked", B), ("in_transit", B), ("failed", B)],
+    outputs: &[("position", N), ("angle", N), ("closed", B), ("open", B), ("locked", B), ("in_transit", B), ("overstressed", B), ("failed", B)],
 };
 
 /// A hook or brace lock: engages by itself at its angle, releases after its unlock actuator has had pressure long
@@ -151,6 +289,13 @@ pub struct Door {
     alt_t: f64,
     /// Command a leg set for this step: Some(open) and whether in free fall.
     pub sequenced: Option<(bool, bool)>,
+    pub linked: bool,
+    /// Leg position a linked door follows this step.
+    pub follow: Option<f64>,
+    eas: Option<usize>,
+    limit: f64,
+    over_t: f64,
+    overstressed: bool,
     s: Slots,
 }
 
@@ -178,7 +323,7 @@ impl Door {
             let (l, stroke) = Linkage::new(p.num("arm"), p.num("anchor"), 0.0, travel, true);
             if acts[k].act.stroke < 0.98 * stroke || acts[k].act.stroke > 1.5 * stroke {
                 let r = p.part("actuator").unwrap_or(0);
-                acts[k].act = linear::Linear::from_part(&c.parts[r], acts[k].act.nominal, stroke);
+                acts[k].resize(&c.parts[r], stroke);
             }
             floated(acts, k);
             m_ref += acts[k].act.stall * l.r;
@@ -202,7 +347,13 @@ impl Door {
             unlock_t: p.num("unlock_time"),
             alt_t: p.num("free_fall_release"),
             sequenced: None,
-            s: Slots::of(p, &["position", "angle", "closed", "open", "locked", "in_transit", "failed"]),
+            linked: p.flag("linked"),
+            follow: None,
+            eas: slot(c, p, "air", "eas"),
+            limit: p.num("limit_speed").max(0.0),
+            over_t: 0.0,
+            overstressed: false,
+            s: Slots::of(p, &["position", "angle", "closed", "open", "locked", "in_transit", "overstressed", "failed"]),
         }
     }
 
@@ -215,6 +366,23 @@ impl Door {
         let own_ff = self.e[1].as_mut().is_some_and(|x| x.yes(slots, dt));
         let jam = self.e[2].as_mut().is_some_and(|x| x.yes(slots, dt)) || self.s.on(slots, "failed");
         let (open, ff) = self.sequenced.unwrap_or((own_open, own_ff));
+        if let (true, Some(leg)) = (self.linked, self.follow) {
+            // Linkage rods drive it: closed on the uplock, fully open a fifth of the way down.
+            let target = self.travel * (leg / 0.2).clamp(0.0, 1.0);
+            self.rot.x[0] = target;
+            self.rot.x[1] = 0.0;
+            self.lock.engaged = target < 0.5 * DEG;
+            self.rot.lock = self.lock.engaged.then_some(0.0);
+            let pos = self.position();
+            let s = &self.s;
+            s.put(slots, "position", pos);
+            s.put(slots, "angle", target);
+            s.flag(slots, "closed", self.lock.engaged);
+            s.flag(slots, "open", pos > 0.97);
+            s.flag(slots, "locked", self.lock.engaged);
+            s.flag(slots, "in_transit", !self.lock.engaged && pos <= 0.97);
+            return;
+        }
         let t = self.rot.angle();
         let mut ios: Vec<Io> = vec![];
         let mut pressing = 0.0;
@@ -264,17 +432,24 @@ impl Door {
         s.flag(slots, "open", pos > 0.97);
         s.flag(slots, "locked", self.lock.engaged);
         s.flag(slots, "in_transit", !self.lock.engaged && pos <= 0.97);
+        let eas = self.eas.map_or(0.0, |i| slots[i]).abs();
+        self.over_t = if self.limit > 0.0 && pos > 0.1 && eas > 1.25 * self.limit { self.over_t + dt } else { 0.0 };
+        if self.over_t > 2.0 {
+            self.overstressed = true;
+        }
+        s.flag(slots, "overstressed", self.overstressed);
     }
 
     pub fn state(&self, v: &mut Vec<f64>) {
         self.rot.state(v);
-        v.extend([self.lock.engaged as u8 as f64, self.lock.release]);
+        v.extend([self.lock.engaged as u8 as f64, self.lock.release, self.overstressed as u8 as f64]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
         self.rot.restore(it);
         self.lock.engaged = it.next().unwrap_or(1.0) != 0.0;
         self.lock.release = it.next().unwrap_or(0.0);
+        self.overstressed = it.next().unwrap_or(0.0) != 0.0;
     }
 }
 
@@ -292,6 +467,14 @@ pub struct Strut {
     pub x: [f64; 2],
     stepper: Stepper,
     pub gas: f64,
+    /// Largest strut force since the wheels last left the ground.
+    pub peak: f64,
+    /// Closing rate when the strut started to compress.
+    pub touchdown_rate: f64,
+    pub bottomed: bool,
+    airborne: bool,
+    /// Gas temperature share of its 15 C servicing temperature: cold struts sit low.
+    pub t_ratio: f64,
 }
 
 const GAS_N: f64 = 1.3;
@@ -309,13 +492,32 @@ impl Strut {
         let p0 = p_st / 4.0 + P_ATM;
         // Metering sized so a 3 m/s touchdown takes about the static load in damping.
         let c_comp = static_load.max(100.0) * 1.5 / 9.0;
-        Strut { area, stroke, p0, v0, c_comp, c_reb: 4.0 * c_comp, m_u: unsprung.max(10.0), x: [0.0, 0.0], stepper: Stepper::new(2), gas: 1.0 }
+        Strut { area, stroke, p0, v0, c_comp, c_reb: 4.0 * c_comp, m_u: unsprung.max(10.0), x: [0.0, 0.0], stepper: Stepper::new(2), gas: 1.0, peak: 0.0, touchdown_rate: 0.0, bottomed: false, airborne: true, t_ratio: 1.0 }
     }
 
     pub fn gas_force(&self, s: f64) -> f64 {
         let vol = (self.v0 - self.area * s.clamp(0.0, self.stroke)).max(0.02 * self.v0);
-        let p = self.p0 * self.gas * (self.v0 / vol).powf(GAS_N);
+        let p = self.p0 * self.gas * self.t_ratio * (self.v0 / vol).powf(GAS_N);
         (p - P_ATM) * self.area
+    }
+
+    /// Tracks touchdowns: closing rate as the strut leaves full extension, peak force, bottoming.
+    pub fn track(&mut self, before: [f64; 2]) {
+        let force = self.gas_force(self.x[0]);
+        if self.x[0] <= 0.002 {
+            if !self.airborne && self.x[1] <= 0.0 {
+                self.airborne = true;
+            }
+        } else if self.airborne && before[0] <= 0.002 {
+            self.airborne = false;
+            self.touchdown_rate = self.x[1].max(before[1]);
+            self.peak = 0.0;
+            self.bottomed = false;
+        }
+        self.peak = self.peak.max(force);
+        if self.x[0] > 0.98 * self.stroke && self.x[1] > 0.05 {
+            self.bottomed = true;
+        }
     }
 
     pub fn pressure(&self) -> f64 {
@@ -329,7 +531,9 @@ impl Strut {
         let f = |s: &[f64], d: &mut [f64]| {
             let (x, v) = (s[0], s[1]);
             let gas = me.gas_force(x);
-            let damp = if v > 0.0 { c1 * v * v.abs() } else { c2 * v * v.abs() } + 0.05 * c1 * v;
+            // Metering pin: its taper closes the orifice as the strut compresses, stiffening the damping.
+            let pin = 1.0 + 2.0 * (x / stroke).clamp(0.0, 1.0).powi(2);
+            let damp = if v > 0.0 { c1 * pin * v * v.abs() } else { c2 * v * v.abs() } + 0.05 * c1 * v;
             let fric = 0.01 * gas * super::ode::soft_sign(v, 0.01);
             let mut stop = 0.0;
             if x < 0.0 {
@@ -372,13 +576,26 @@ pub struct Leg {
     doors_stay: bool,
     extends_down: bool,
     selector: f64,
+    pub bogie: Option<usize>,
+    hard_rate: f64,
+    hard: bool,
+    blow: Option<Expr>,
+    bottle: (f64, f64),
+    fired_at: Option<f64>,
+    crank: Option<Expr>,
+    turns: f64,
+    vle: f64,
+    over_t: f64,
+    overstressed: bool,
+    temp: Option<usize>,
+    eas: Option<usize>,
     s: Slots,
 }
 
 pub const LEG_EXPRS: [&str; 10] = ["down_when", "free_fall_when", "neutral_when", "load", "sensor_1_failed_when", "sensor_2_failed_when", "uplock_jam_when", "downlock_failed_when", "jam_when", "strut_leak_when"];
 
 impl Leg {
-    pub fn new(c: &Checked, p: &CheckedPart, acts: &mut Vec<linear::Part>, act_index: &HashMap<usize, usize>, door_index: &HashMap<usize, usize>) -> Self {
+    pub fn new(c: &Checked, p: &CheckedPart, acts: &mut Vec<linear::Part>, act_index: &HashMap<usize, usize>, door_index: &HashMap<usize, usize>, bogie_index: &HashMap<usize, usize>) -> Self {
         let travel = p.num("travel").max(10.0 * DEG);
         let mass = p.num("mass").max(1.0);
         let cg = p.num("cg").max(0.05);
@@ -390,7 +607,7 @@ impl Leg {
             let (l, stroke) = Linkage::new(p.num("arm"), p.num("anchor"), 0.0, travel, extends_down);
             if acts[k].act.stroke < 0.98 * stroke || acts[k].act.stroke > 1.5 * stroke {
                 let r = p.part("actuator").unwrap_or(0);
-                acts[k].act = linear::Linear::from_part(&c.parts[r], acts[k].act.nominal, stroke);
+                acts[k].resize(&c.parts[r], stroke);
             }
             floated(acts, k);
             m_ref += acts[k].act.stall * l.r;
@@ -434,7 +651,20 @@ impl Leg {
             doors_stay: p.flag("doors_stay_open"),
             extends_down,
             selector: if down { 1.0 } else { -1.0 },
-            s: Slots::of(p, &["position", "angle", "down_locked", "up_locked", "downlock_engaged", "uplock_engaged", "in_transit", "disagree", "doors_closed", "doors_open", "strut_stroke", "strut_pressure", "compressed", "wow_1", "wow_2", "weight_on_wheels", "selector", "failed"]),
+            bogie: p.part("bogie").and_then(|r| bogie_index.get(&r).copied()),
+            hard_rate: p.num("hard_landing_rate").max(0.1),
+            hard: false,
+            blow: expr_of(p, "blowdown_when"),
+            bottle: (p.num("bottle_pressure").max(0.0), p.num("bottle_volume").max(1e-5)),
+            fired_at: None,
+            crank: expr_of(p, "crank"),
+            turns: p.num("release_turns").max(0.0),
+            vle: p.num("limit_speed").max(0.0),
+            over_t: 0.0,
+            overstressed: false,
+            temp: slot(c, p, "air", "temperature"),
+            eas: slot(c, p, "air", "eas"),
+            s: Slots::of(p, &["position", "angle", "down_locked", "up_locked", "downlock_engaged", "uplock_engaged", "in_transit", "disagree", "doors_closed", "doors_open", "strut_stroke", "strut_pressure", "compressed", "wow_1", "wow_2", "weight_on_wheels", "selector", "strut_rate", "peak_load", "bottomed", "hard_landing", "retract_inhibited", "bottle_pressure", "overspeed", "overstressed", "failed"]),
         }
     }
 
@@ -442,26 +672,51 @@ impl Leg {
         self.rot.angle() / self.travel
     }
 
-    pub fn step(&mut self, acts: &mut [linear::Part], doors: &mut [Door], slots: &mut [f64], dt: f64) {
+    pub fn step(&mut self, acts: &mut [linear::Part], doors: &mut [Door], bogies: &[Bogie], slots: &mut [f64], dt: f64) {
         let mut b = |k: usize| self.e[k].as_mut().is_some_and(|x| x.yes(slots, dt));
         let want_down = b(0);
-        let ff = b(1);
-        let neutral = b(2);
+        let ff_cmd = b(1);
+        let neutral_cmd = b(2);
         let (s1_bad, s2_bad, uplock_jam, downlock_bad, jam, strut_leak) = (b(4), b(5), b(6), b(7), b(8), b(9));
         let load_in = self.e[3].as_mut().map_or(0.0, |x| x.eval(slots, dt));
+        let blow = self.blow.as_mut().is_some_and(|x| x.yes(slots, dt));
+        if blow && self.fired_at.is_none() {
+            self.fired_at = Some(self.rot.actuator_motion(0).0);
+        }
+        let blown = self.fired_at.is_some();
+        // The crank works in stages: hydraulics isolated, then the doors released, then the leg.
+        let turns = self.crank.as_mut().map_or(0.0, |x| x.eval(slots, dt));
+        let staged = |share: f64| self.turns > 0.0 && turns >= share * self.turns;
+        let neutral = neutral_cmd || staged(1.0 / 3.0);
+        let doors_free = ff_cmd || staged(2.0 / 3.0);
+        let ff = ff_cmd || staged(1.0);
         let failed = self.s.on(slots, "failed");
         let up_locked = self.up_lock.engaged;
         let down_locked = self.down_lock.engaged;
         let target_reached = (want_down && down_locked) || (!want_down && up_locked);
         // Doors: open while the leg has somewhere to go, close once it is locked where it was sent.
-        let doors_open = self.doors.iter().all(|&d| doors[d].position() > 0.97);
+        let doors_open = self.doors.iter().all(|&d| doors[d].linked || doors[d].position() > 0.97);
         let doors_wanted = ff || !target_reached || (want_down && self.doors_stay);
         for &d in &self.doors {
-            doors[d].sequenced = Some((doors_wanted, ff));
+            doors[d].sequenced = Some((doors_wanted || doors_free, doors_free));
+            if doors[d].linked {
+                doors[d].follow = Some(self.position().clamp(0.0, 1.0));
+            }
         }
-        let may_move = self.doors.is_empty() || doors_open;
+        // A bogie still level, or a leg still on its strut's weight, keeps the downlock in.
+        let bogie_ok = self.bogie.is_none_or(|b| bogies[b].trailed());
+        let inhibited = !want_down && self.down_lock.engaged && !bogie_ok;
+        let may_move = (self.doors.is_empty() || doors_open) && !inhibited;
         let dir = if want_down { 1.0 } else { -1.0 };
-        let sel = if ff || neutral || (target_reached && !want_down) { 0.0 } else if may_move || target_reached { dir } else { 0.0 };
+        let sel = if blown {
+            if self.extends_down { 1.0 } else { -1.0 }
+        } else if ff || neutral || (target_reached && !want_down) {
+            0.0
+        } else if may_move || target_reached {
+            dir
+        } else {
+            0.0
+        };
         self.selector = sel;
         let act_cmd = if self.extends_down { sel } else { -sel };
         let mut ios: Vec<Io> = vec![];
@@ -470,8 +725,18 @@ impl Leg {
         for k in 0..self.rot.acts.len() {
             let ai = self.rot.acts[k];
             let mut io = acts[ai].prepare(slots, dt, Some(act_cmd));
-            if ff {
+            if ff || (neutral && self.turns > 0.0 && turns >= self.turns / 3.0) {
                 io.mode = 0.0;
+            }
+            if let Some(x0) = self.fired_at {
+                // Bottle gas expands into the extend side as the jack strokes; the other side vents overboard.
+                let a = &acts[ai].act;
+                let (x, _) = self.rot.actuator_motion(k);
+                let swept = if self.extends_down { a.area_a * (x - x0).max(0.0) } else { a.area_b * (x0 - x).max(0.0) };
+                let p = (self.bottle.0 + 101_325.0) * (self.bottle.1 / (self.bottle.1 + swept)).powf(1.4);
+                io.ps = p.max(101_325.0);
+                io.pr = 101_325.0;
+                io.mode = 1.0;
             }
             let p = ((io.ps - io.pr) / acts[ai].act.nominal).clamp(0.0, 1.0) * io.mode;
             if sel > 0.5 {
@@ -483,7 +748,8 @@ impl Leg {
         }
         // The uplock's unlock actuator is on the down line, the downlock's on the up line.
         let t = self.rot.angle();
-        self.up_lock.update(t < 0.5 * DEG, !want_down && !ff, if uplock_jam { 0.0 } else { down_line }, ff && !uplock_jam, self.unlock_t, self.alt_t, dt);
+        let alternate = (ff || blown) && !uplock_jam;
+        self.up_lock.update(t < 0.5 * DEG, !want_down && !ff && !blown, if uplock_jam { 0.0 } else { down_line }, alternate, self.unlock_t, if blown { 0.3 } else { self.alt_t }, dt);
         self.down_lock.update(t > self.travel - 0.5 * DEG, !downlock_bad, up_line, false, self.unlock_t, self.alt_t, dt);
         self.rot.lock = if self.up_lock.engaged {
             Some(0.0)
@@ -532,7 +798,13 @@ impl Leg {
         if strut_leak {
             self.strut.gas = (self.strut.gas - dt / 600.0).max(0.2);
         }
+        self.strut.t_ratio = self.temp.map_or(1.0, |i| (slots[i].max(180.0)) / 288.15);
+        let before = self.strut.x;
         self.strut.step(wheel, dt);
+        self.strut.track(before);
+        if self.strut.touchdown_rate > self.hard_rate {
+            self.hard = true;
+        }
         let compressed = self.strut.x[0] > self.wow_stroke;
         let wow1 = compressed && !s1_bad;
         let wow2 = compressed && !s2_bad;
@@ -556,13 +828,37 @@ impl Leg {
         s.flag(slots, "wow_2", wow2);
         s.flag(slots, "weight_on_wheels", wow1 || wow2);
         s.put(slots, "selector", self.selector);
+        s.put(slots, "strut_rate", self.strut.x[1]);
+        s.put(slots, "peak_load", self.strut.peak);
+        s.flag(slots, "bottomed", self.strut.bottomed);
+        s.flag(slots, "hard_landing", self.hard);
+        s.flag(slots, "retract_inhibited", inhibited);
+        let bottle = match (self.fired_at, self.rot.acts.first()) {
+            (Some(x0), Some(&ai)) => {
+                let a = &acts[ai].act;
+                let x = self.rot.actuator_motion(0).0;
+                let swept = if self.extends_down { a.area_a * (x - x0).max(0.0) } else { a.area_b * (x0 - x).max(0.0) };
+                (self.bottle.0 + 101_325.0) * (self.bottle.1 / (self.bottle.1 + swept)).powf(1.4) - 101_325.0
+            }
+            _ => self.bottle.0,
+        };
+        s.put(slots, "bottle_pressure", bottle);
+        let eas = self.eas.map_or(0.0, |i| slots[i]).abs();
+        let out = !self.up_lock.engaged;
+        let over = self.vle > 0.0 && out && eas > self.vle;
+        self.over_t = if over && eas > 1.25 * self.vle { self.over_t + dt } else { 0.0 };
+        if self.over_t > 2.0 {
+            self.overstressed = true;
+        }
+        s.flag(slots, "overspeed", over);
+        s.flag(slots, "overstressed", self.overstressed);
     }
 
     pub fn state(&self, v: &mut Vec<f64>) {
         self.rot.state(v);
         v.extend([self.up_lock.engaged as u8 as f64, self.up_lock.release, self.down_lock.engaged as u8 as f64, self.down_lock.release]);
         v.extend(self.strut.x);
-        v.push(self.strut.gas);
+        v.extend([self.strut.gas, self.strut.peak, self.strut.touchdown_rate, self.strut.bottomed as u8 as f64, self.hard as u8 as f64, self.fired_at.unwrap_or(f64::NAN), self.overstressed as u8 as f64]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
@@ -575,5 +871,11 @@ impl Leg {
             *v = it.next().unwrap_or(*v);
         }
         self.strut.gas = it.next().unwrap_or(1.0);
+        self.strut.peak = it.next().unwrap_or(0.0);
+        self.strut.touchdown_rate = it.next().unwrap_or(0.0);
+        self.strut.bottomed = it.next().unwrap_or(0.0) != 0.0;
+        self.hard = it.next().unwrap_or(0.0) != 0.0;
+        self.fired_at = it.next().filter(|x| x.is_finite());
+        self.overstressed = it.next().unwrap_or(0.0) != 0.0;
     }
 }

@@ -170,7 +170,7 @@ impl Aircraft {
             domains.push((rate_for(rates, "systems", 0.02), Box::new(d)));
         }
         if let Some(d) = actuation::Actuation::new(&checked) {
-            domains.push((rate_for(rates, "actuation", 0.005), Box::new(d)));
+            domains.push((rate_for(rates, "actuation", 0.01), Box::new(d)));
         }
         if let Some(d) = aircon::AirCon::new(&checked) {
             domains.push((rate_for(rates, "aircon", 0.02), Box::new(d)));

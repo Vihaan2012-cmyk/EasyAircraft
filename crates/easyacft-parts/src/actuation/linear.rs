@@ -54,6 +54,7 @@ pub static SPEC: PartSpec = PartSpec {
         opt("backup_when", WHEN, "true", "EBHA: switch to its electrical backup when the circuit is lost"),
         opt("heat_capacity", Kind::Number, "0", "J per K of the actuator body; 0 sizes it from force"),
         opt("overheat_temperature", Kind::Quantity(Dim::TEMPERATURE), "393.15 K", "body overheat; an EHA stops past it"),
+        opt("winding_limit", Kind::Quantity(Dim::TEMPERATURE), "453.15 K", "EHA motor winding temperature its drive cuts out at"),
         opt("ambient", Kind::Expr(T), "288.15 K", "temperature around it"),
         opt("mass", Kind::Quantity(Dim::MASS), "20 kg", "on its own: moving mass"),
         opt("load", Kind::Expr(Type::Num(Dim::FORCE)), "0 N", "on its own: external force, positive resisting extension"),
@@ -63,6 +64,16 @@ pub static SPEC: PartSpec = PartSpec {
         opt("disconnect_when", WHEN, "false", "rod end or attachment broken: transmits no force"),
         opt("seal_failed_when", WHEN, "false", "piston seal blown: chambers bypass each other"),
         opt("external_leak_when", WHEN, "false", "a leak to outside; the circuit loses fluid"),
+        opt("lvdt_1_fault", Kind::Expr(N), "0", "position transducer channel 1: 0 healthy, 1 open primary, 2 open secondary, 3 core detached, 4 drifting"),
+        opt("lvdt_2_fault", Kind::Expr(N), "0", "channel 2, the same codes"),
+        opt("voltage", Kind::Expr(Type::Num(Dim::VOLTAGE)), "0 V", "EHA or EBHA motor drive supply; 0 means rated"),
+        opt("rated_voltage", Kind::Quantity(Dim::VOLTAGE), "540 V", "drive supply the motor's torque is rated at"),
+        opt("cushion", Kind::Number, "-1", "stroke-end snubbing length, share of stroke; -1 means 0.05 for selector actuators and none for servos"),
+        opt("seal_life", Kind::Quantity(Dim::LENGTH), "400000 m", "piston travel after which worn seals leak about thirty times as much"),
+        opt("seal_wear", Kind::Number, "0", "seal wear at start, share of its life"),
+        opt("line_length", Kind::Quantity(Dim::LENGTH), "0 m", "supply and return line run from the circuit's manifold; long wing and tail runs lose pressure, more so cold"),
+        opt("line_bore", Kind::Quantity(Dim::LENGTH), "10 mm", "line inside diameter"),
+        opt("oscillation_when", WHEN, "false", "oscillatory failure: a coil or connector fault adds a 3 Hz current to the servo valve"),
     ],
     outputs: &[
         ("position", N),
@@ -82,6 +93,13 @@ pub static SPEC: PartSpec = PartSpec {
         ("cavitating", B),
         ("stalled", B),
         ("relieving", B),
+        ("lvdt_1", Type::Num(Dim::LENGTH)),
+        ("lvdt_2", Type::Num(Dim::LENGTH)),
+        ("lvdt_disagree", B),
+        ("current", Type::Num(Dim::CURRENT)),
+        ("seal_wear", N),
+        ("line_drop", P),
+        ("winding_temperature", T),
         ("failed", B),
     ],
 };
@@ -146,6 +164,14 @@ pub struct Io {
     pub disconnected: bool,
     pub seal_failed: bool,
     pub ext_leak: bool,
+    /// What the position transducer adds to the true extension, which the loop then closes on.
+    pub sensor_error: f64,
+    /// Seal wear share: internal leakage and friction grow with it.
+    pub wear: f64,
+    /// Motor drive supply share of rated.
+    pub volts: f64,
+    /// Oscillatory failure current added to the servo valve input.
+    pub dither: f64,
 }
 
 /// What an actuator gives back from one evaluation.
@@ -189,6 +215,8 @@ pub struct Linear {
     pub heat_cap: f64,
     pub overheat: f64,
     pub mass: f64,
+    cushion: f64,
+    pub seal_life: f64,
 }
 
 /// Reference viscosity the seal leakage is rated at, 40 C phosphate ester.
@@ -271,6 +299,8 @@ impl Linear {
             heat_cap: if given_cap > 0.0 { given_cap } else { 900.0 * (stall / 2000.0).max(2.0) },
             overheat: p.num("overheat_temperature"),
             mass: p.num("mass").max(0.1),
+            cushion: if p.num("cushion") >= 0.0 { p.num("cushion") } else if control == Control::Selector { 0.05 } else { 0.0 },
+            seal_life: p.num("seal_life").max(1.0),
         }
     }
 
@@ -289,11 +319,24 @@ impl Linear {
 
     /// Typical size of each state, for error control.
     pub fn scales(&self, s: &mut [f64]) {
-        s[0] = 0.002 * self.nominal;
-        s[1] = 0.002 * self.nominal;
-        s[2] = 0.01;
+        s[0] = 5_000.0;
+        s[1] = 5_000.0;
+        s[2] = 0.03;
         s[3] = 5.0;
         s[4] = self.pump.map_or(1.0, |p| 0.01 * p.w_max);
+    }
+
+    /// Force from the piston bottoming at either end of its stroke, `m` the mass it brings to rest: a stiff,
+    /// critically damped contact, smooth at the touch so the stepper sees no corner.
+    pub fn stroke_stop(&self, x: f64, v: f64, m: f64) -> f64 {
+        let w = 1e-4 * self.stroke.max(1e-3);
+        let k = 100.0 * self.stall / self.stroke.max(1e-3);
+        let c = 1.4 * (k * m.max(1e-3)).sqrt();
+        let pen_in = super::ode::soft_pos(-x, w);
+        let pen_out = super::ode::soft_pos(x - self.stroke, w);
+        let touch_in = super::ode::smooth_step(-x, 0.0, 2.0 * w);
+        let touch_out = super::ode::smooth_step(x - self.stroke, 0.0, 2.0 * w);
+        k * (pen_in - pen_out) - c * v * (touch_in + touch_out)
     }
 
     /// Fluid held in the chambers beyond a centred piston: what the circuit's reservoir gives up while it extends.
@@ -310,7 +353,7 @@ impl Linear {
         let mut out = Out::default();
         let mut qa = 0.0;
         let mut qb = 0.0;
-        let err = io.cmd - x / self.stroke;
+        let err = io.cmd - (x + io.sensor_error) / self.stroke;
         let servo_on = matches!(self.control, Control::Servo | Control::Ebha) && !io.backup;
         // Valve.
         match self.control {
@@ -326,7 +369,7 @@ impl Linear {
                 }
             }
             _ if servo_on => {
-                let u = (self.gain * err).clamp(-1.0, 1.0);
+                let u = (self.gain * err + io.dither).clamp(-1.0, 1.0);
                 d[2] = vv;
                 d[3] = self.servo.accel(u, xv, vv);
                 if io.mode > 0.0 {
@@ -345,8 +388,9 @@ impl Linear {
         // Electro-hydrostatic pump: speed loop on the position error, motor torque against the pump's pressure torque.
         if let Some(pm) = self.pump.filter(|_| matches!(self.control, Control::Eha) || io.backup) {
             let on = io.electric && io.mode > 0.0;
-            let w_cmd = if on { (self.gain * err).clamp(-1.0, 1.0) * pm.w_max } else { 0.0 };
-            let t_motor = if on { (pm.kw * (w_cmd - w)).clamp(-pm.t_max, pm.t_max) } else { 0.0 };
+            let w_cmd = if on { (self.gain * err).clamp(-1.0, 1.0) * pm.w_max * io.volts.min(1.0) } else { 0.0 };
+            let t_lim = pm.t_max * io.volts.clamp(0.0, 1.2);
+            let t_motor = if on { (pm.kw * (w_cmd - w)).clamp(-t_lim, t_lim) } else { 0.0 };
             let dp = pa - pb;
             let t_pump = pm.disp * dp / pm.mech_eff;
             d[4] = (t_motor - t_pump - 1e-3 * pm.t_max * soft_sign(w, 5.0) - 2e-4 * w) / pm.inertia;
@@ -392,7 +436,7 @@ impl Linear {
         qb += rb - lb;
         out.relieving = la > 1e-6 || lb > 1e-6;
         // Seal leakage across the piston, thinning as the fluid warms.
-        let mut seal = self.seal.flow(pa - pb, io.mu);
+        let mut seal = self.seal.flow(pa - pb, io.mu) * (1.0 + 30.0 * io.wear * io.wear);
         if io.seal_failed {
             seal += oil.q(0.5 * self.check_area, pa - pb);
         }
@@ -410,8 +454,10 @@ impl Linear {
         let va = self.dead_a + self.area_a * x.clamp(0.0, self.stroke);
         let vb = self.dead_b + self.area_b * (self.stroke - x).clamp(0.0, self.stroke);
         let piston_v = if io.jammed { 0.0 } else { v };
-        d[0] = self.fluid.bulk(io.beta_t, pa) / va * (qa - self.area_a * piston_v);
-        d[1] = self.fluid.bulk(io.beta_t, pb) / vb * (qb + self.area_b * piston_v);
+        // Below air release the chamber is a froth that fills without pressure: hold the modulus at its value there.
+        let release = self.fluid.air_release();
+        d[0] = self.fluid.bulk(io.beta_t, pa.max(release)) / va * (qa - self.area_a * piston_v);
+        d[1] = self.fluid.bulk(io.beta_t, pb.max(release)) / vb * (qb + self.area_b * piston_v);
         // Hold chambers off the vapour floor without a kink.
         let floor = self.fluid.vapour();
         if s[0] < floor * 2.0 && d[0] < 0.0 {
@@ -421,10 +467,19 @@ impl Linear {
             d[1] *= smooth_step(s[1], floor * 1.5, floor);
         }
         // Seal friction rises with chamber pressure; a Stribeck peak at breakaway.
-        let fc = self.fric_c + self.fric_p * (pa + pb);
+        let fc = (self.fric_c + self.fric_p * (pa + pb)) * (1.0 + 0.5 * io.wear);
         let fric = (fc + 0.5 * fc * (-(v / 0.002).powi(2)).exp()) * soft_sign(v, 5e-4) + 0.002 * self.stall / self.rate.max(1e-3) * v;
         let hydraulic = pa * self.area_a - pb * self.area_b;
-        out.force = if io.disconnected { 0.0 } else { hydraulic - fric };
+        // Snubbers: the last part of the stroke meters the outgoing fluid through a small orifice.
+        let mut snub = 0.0;
+        if self.cushion > 0.0 {
+            let len = self.cushion * self.stroke;
+            let c = self.stall / (0.5 * self.rate);
+            let near_in = ((len - x) / len).clamp(0.0, 1.0);
+            let near_out = ((x - (self.stroke - len)) / len).clamp(0.0, 1.0);
+            snub = c * (near_in * super::ode::soft_pos(-v, 1e-3) - near_out * super::ode::soft_pos(v, 1e-3));
+        }
+        out.force = if io.disconnected { 0.0 } else { hydraulic - fric + snub };
         // Throttling heat: hydraulic power taken less the mechanical work done on the load.
         out.heat += (out.supply * (io.ps - io.pr)).max(0.0) - (hydraulic * v).max(0.0).min((out.supply * (io.ps - io.pr)).max(0.0));
         out
@@ -472,6 +527,19 @@ pub struct Part {
     pub index: usize,
     pub s: Slots,
     pub lost: f64,
+    pub lvdt: super::sensors::Dual,
+    sensor_error: f64,
+    pub wear: f64,
+    sensors: [Option<Expr>; 4],
+    clock: f64,
+    line: (f64, f64),
+    line_drop: f64,
+    last_supply: f64,
+    winding: f64,
+    winding_limit: f64,
+    tripped: bool,
+    rated_v: f64,
+    volts: f64,
 }
 
 pub const EXPRS: [&str; 11] = ["command", "active_when", "powered_when", "backup_when", "load", "jam_when", "runaway_when", "valve_jam_when", "disconnect_when", "seal_failed_when", "external_leak_when"];
@@ -485,6 +553,7 @@ impl Part {
         });
         let nominal = p.part("circuit").map_or(0.0, |i| c.parts[i].num("nominal"));
         let act = Linear::from_part(p, nominal, stroke_needed);
+        let stroke = act.stroke;
         Part {
             act,
             circuit,
@@ -493,9 +562,28 @@ impl Part {
             mode: ModeLogic { share: 0.0, mode: Mode::Passive },
             temp: f64::NAN,
             index,
-            s: Slots::of(p, &["position", "extension", "velocity", "force", "pressure_a", "pressure_b", "valve", "mode", "active", "circuit_flow", "circuit_held", "electric_power", "temperature", "overheat", "cavitating", "stalled", "relieving", "failed"]),
+            s: Slots::of(p, &["position", "extension", "velocity", "force", "pressure_a", "pressure_b", "valve", "mode", "active", "circuit_flow", "circuit_held", "electric_power", "temperature", "overheat", "cavitating", "stalled", "relieving", "lvdt_1", "lvdt_2", "lvdt_disagree", "current", "seal_wear", "line_drop", "winding_temperature", "failed"]),
             lost: 0.0,
+            lvdt: super::sensors::Dual::new(0.0, stroke, (p.slot as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)),
+            sensor_error: 0.0,
+            wear: p.num("seal_wear").clamp(0.0, 1.0),
+            sensors: ["lvdt_1_fault", "lvdt_2_fault", "voltage", "oscillation_when"].map(|k| expr_of(p, k)),
+            clock: 0.0,
+            line: (p.num("line_length").max(0.0), p.num("line_bore").max(1e-3)),
+            line_drop: 0.0,
+            last_supply: 0.0,
+            winding: f64::NAN,
+            winding_limit: p.num("winding_limit"),
+            tripped: false,
+            rated_v: p.num("rated_voltage").max(1.0),
+            volts: 1.0,
         }
+    }
+
+    /// Re-sizes the actuator for the stroke its mechanism needs, transducers included.
+    pub fn resize(&mut self, p: &CheckedPart, stroke: f64) {
+        self.act = Linear::from_part(p, self.act.nominal, stroke);
+        self.lvdt = super::sensors::Dual::new(0.0, self.act.stroke, (p.slot as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
     }
 
     /// Supply and return pressures, the oil state at the fluid's temperature, and whether the circuit is up.
@@ -521,14 +609,40 @@ impl Part {
     /// Reads the expressions, moves the mode valve and builds the fixed inputs for this step; `cmd` overrides
     /// the actuator's own command when a mechanism closes the loop.
     pub fn prepare(&mut self, slots: &[f64], dt: f64, cmd: Option<f64>) -> Io {
-        let (ps, pr, temp, ok) = self.supply(slots);
+        let (ps0, pr0, temp, ok) = self.supply(slots);
+        // Line losses on last step's flow: supply arrives low, return backs up; both share the run.
+        let (ps, pr) = if self.line.0 > 0.0 && self.circuit.is_some() {
+            let rho = self.act.fluid.density(temp, ps0);
+            let nu = self.act.fluid.kinematic(temp);
+            let drop = super::fluid::pipe_drop(self.last_supply, self.line.0, self.line.1, rho, nu).clamp(0.0, 0.45 * (ps0 - pr0).max(0.0));
+            let filtered = self.line_drop + (drop - self.line_drop) * (dt / 0.02).min(1.0);
+            self.line_drop = filtered;
+            (ps0 - filtered, pr0 + filtered)
+        } else {
+            (ps0, pr0)
+        };
         if !self.temp.is_finite() {
             self.temp = temp;
         }
         let own = self.ev(0, slots, dt, 0.5);
         let active = self.yes(1, slots, dt, true) && !self.s.on(slots, "failed");
-        let powered = self.yes(2, slots, dt, true) && !(self.act.pump.is_some() && self.temp > self.act.overheat + 15.0);
+        let v = self.sensors[2].as_mut().map_or(0.0, |e| e.eval(slots, dt));
+        self.volts = if v <= 0.0 && self.sensors[2].as_ref().is_some_and(|e| e.program.constant().is_some()) { 1.0 } else { (v / self.rated_v).max(0.0) };
+        // A drive whose supply has sagged below a third of rated trips off.
+        // The drive cuts out on a hot winding and stays out until it has cooled 30 K.
+        if self.winding > self.winding_limit {
+            self.tripped = true;
+        } else if self.winding < self.winding_limit - 30.0 {
+            self.tripped = false;
+        }
+        let powered = self.yes(2, slots, dt, true) && !(self.act.pump.is_some() && (self.temp > self.act.overheat + 15.0 || self.tripped)) && (self.act.pump.is_none() || self.volts > 0.3);
+        if !powered {
+            self.volts = 0.0;
+        }
         let backup_ok = self.yes(3, slots, dt, true) && powered;
+        self.clock += dt;
+        let osc = self.sensors[3].as_mut().is_some_and(|e| e.yes(slots, dt));
+        let dither = if osc { 0.3 * (std::f64::consts::TAU * 3.0 * self.clock).sin() } else { 0.0 };
         let jammed = self.yes(5, slots, dt, false);
         let runaway = self.yes(6, slots, dt, false);
         let valve_jam = self.yes(7, slots, dt, false);
@@ -543,7 +657,9 @@ impl Part {
             SpoolFault::None
         };
         self.mode.update(&self.act, active, ok, backup_ok, dt);
-        let oil_t = if self.act.pump.is_some() && self.circuit.is_none() { self.temp } else { temp };
+        // The fluid in the cylinder is at the body's temperature: a cold-soaked actuator with little flow through it
+        // stays thick until circulation and its own losses warm it.
+        let oil_t = if self.temp.is_finite() { self.temp } else { temp };
         let rho = self.act.fluid.density(oil_t, 0.5 * (ps + pr));
         let mu = self.act.fluid.dynamic(oil_t, 0.5 * (ps + pr));
         Io {
@@ -560,6 +676,10 @@ impl Part {
             disconnected,
             seal_failed,
             ext_leak,
+            sensor_error: self.sensor_error,
+            wear: self.wear,
+            volts: self.volts,
+            dither,
         }
     }
 
@@ -569,12 +689,26 @@ impl Part {
         if !self.temp.is_finite() {
             self.temp = amb;
         }
+        if !self.winding.is_finite() {
+            self.winding = self.temp;
+        }
         let ua = self.act.heat_cap / 600.0;
+        // Windings: copper and iron losses heat a small mass that sheds into the body.
+        let motor_loss = self.act.pump.map_or(0.0, |p| out.electric * (1.0 - p.motor_eff));
+        let w_cap = 0.08 * self.act.heat_cap;
+        let w_ua = w_cap / 40.0;
+        self.winding += (motor_loss - w_ua * (self.winding - self.temp)) / w_cap * dt;
         let oil_t = self.circuit.map_or(amb, |(_, t, _)| slots[t]);
         // Body warms with throttling and motor losses, and toward the circulating fluid.
         let circ = if self.circuit.is_some() { out.supply.abs() * io.oil.rho * self.act.fluid.cp * 0.3 } else { 0.0 };
-        self.temp += (out.heat - ua * (self.temp - amb) - circ * (self.temp - oil_t)) / self.act.heat_cap * dt;
+        self.temp += (out.heat - motor_loss + w_ua * (self.winding - self.temp) - ua * (self.temp - amb) - circ * (self.temp - oil_t)) / self.act.heat_cap * dt;
         self.lost += out.ext_leak * dt;
+        self.last_supply = out.supply.max(0.0);
+        self.wear = (self.wear + v.abs() * dt / self.act.seal_life).min(1.0);
+        let f1 = super::sensors::fault_code(self.sensors[0].as_mut().map_or(0.0, |e| e.eval(slots, dt)));
+        let f2 = super::sensors::fault_code(self.sensors[1].as_mut().map_or(0.0, |e| e.eval(slots, dt)));
+        let (l1, l2, used, disagree) = self.lvdt.read(x, f1, f2, dt);
+        self.sensor_error = used - x;
         let a = &self.act;
         let stalled = (io.cmd - x / a.stroke).abs() > 0.02 && v.abs() < 0.02 * a.rate && io.mode > 0.5;
         let s = &self.s;
@@ -599,15 +733,31 @@ impl Part {
         s.flag(slots, "cavitating", st[0] < self.act.fluid.air_release() || st[1] < self.act.fluid.air_release());
         s.flag(slots, "stalled", stalled);
         s.flag(slots, "relieving", out.relieving);
+        s.put(slots, "lvdt_1", l1);
+        s.put(slots, "lvdt_2", l2);
+        s.flag(slots, "lvdt_disagree", disagree);
+        let volts = self.volts * self.rated_v;
+        s.put(slots, "current", if volts > 1.0 { out.electric / volts } else { 0.0 });
+        s.put(slots, "seal_wear", self.wear);
+        s.put(slots, "line_drop", self.line_drop);
+        s.put(slots, "winding_temperature", self.winding);
     }
 
     pub fn state(&self, v: &mut Vec<f64>) {
-        v.extend([self.mode.share, self.temp, self.lost]);
+        v.extend([self.mode.share, self.temp, self.lost, self.wear, self.sensor_error, self.lvdt.a.value, self.lvdt.b.value, self.winding, self.tripped as u8 as f64, self.line_drop, self.last_supply]);
     }
 
     pub fn restore(&mut self, it: &mut impl Iterator<Item = f64>) {
         self.mode.share = it.next().unwrap_or(0.0);
         self.temp = it.next().unwrap_or(f64::NAN);
         self.lost = it.next().unwrap_or(0.0);
+        self.wear = it.next().unwrap_or(self.wear);
+        self.sensor_error = it.next().unwrap_or(0.0);
+        self.lvdt.a.value = it.next().unwrap_or(self.lvdt.a.value);
+        self.lvdt.b.value = it.next().unwrap_or(self.lvdt.b.value);
+        self.winding = it.next().unwrap_or(f64::NAN);
+        self.tripped = it.next().unwrap_or(0.0) != 0.0;
+        self.line_drop = it.next().unwrap_or(0.0);
+        self.last_supply = it.next().unwrap_or(0.0);
     }
 }

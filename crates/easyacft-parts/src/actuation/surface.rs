@@ -47,6 +47,14 @@ pub static SPEC: PartSpec = PartSpec {
         opt("turbulence", Kind::Expr(N), "0", "gust intensity, 0 calm to 1 severe"),
         opt("jam_when", WHEN, "false", "surface seized on its hinge"),
         opt("separated_when", WHEN, "false", "surface gone: no load, no motion"),
+        opt("tab", Kind::Expr(N), "0 deg", "tab deflection"),
+        opt("ch_tab", Kind::Number, "-0.35", "hinge moment coefficient per radian of tab"),
+        opt("sensor_1_fault", Kind::Expr(N), "0", "surface position transducer 1: 0 healthy, 1 open primary, 2 open secondary, 3 detached, 4 drifting"),
+        opt("sensor_2_fault", Kind::Expr(N), "0", "transducer 2, the same codes"),
+        opt("free_play", Kind::Quantity(Dim::LENGTH), "0 m", "free play at each actuator's rod ends, worn bearings; gives the pistons their own motion"),
+        opt("attachment_stiffness", Kind::Number, "0", "rod and bearing stiffness, N per m; 0 rigid unless free play is given"),
+        opt("piston_mass", Kind::Quantity(Dim::MASS), "6 kg", "piston and rod mass, with a compliant attachment"),
+        opt("force_equalization", Kind::Bool, "false", "active/active actuators trim their commands against each other's chamber pressure so their transducer offsets do not set them fighting"),
     ],
     outputs: &[
         ("angle", N),
@@ -60,6 +68,11 @@ pub static SPEC: PartSpec = PartSpec {
         ("overstress", B),
         ("active_actuators", N),
         ("drooped", B),
+        ("sensor_1", N),
+        ("sensor_2", N),
+        ("sensor_disagree", B),
+        ("slack", Type::Num(Dim::LENGTH)),
+        ("force_fight", Type::Num(Dim::FORCE)),
         ("failed", B),
     ],
 };
@@ -82,6 +95,11 @@ pub struct Surface {
     osc: f64,
     osc_mean: f64,
     overstressed: bool,
+    rvdt: super::sensors::Dual,
+    extra: [Option<Expr>; 3],
+    ch_tab: f64,
+    equalize: bool,
+    trims: Vec<f64>,
     s: Slots,
 }
 
@@ -110,8 +128,7 @@ impl Surface {
             let (l, stroke) = Linkage::new(horn, anchor, lo, hi, true);
             let a = &mut acts[k];
             if a.act.stroke < stroke * 0.98 || (a.act.stroke - stroke).abs() > 0.5 * stroke {
-                let resized = linear::Linear::from_part(&c.parts[r], a.act.nominal, stroke);
-                a.act = resized;
+                a.resize(&c.parts[r], stroke);
             }
             m_ref += a.act.stall * horn;
             links.push(l);
@@ -119,6 +136,12 @@ impl Surface {
         }
         let start = 0.0f64.clamp(lo, hi);
         let mut rot = Rotary::new(links, idx, inertia, lo, hi, start, m_ref.max(10.0));
+        let gap = p.num("free_play").max(0.0);
+        let k_att = if p.num("attachment_stiffness") > 0.0 { p.num("attachment_stiffness") } else if gap > 0.0 { 1e8 } else { 0.0 };
+        if k_att > 0.0 {
+            let m_p = p.num("piston_mass").max(0.1);
+            rot.with_attachment(super::mechanism::Attach { stiffness: k_att, damping: 0.1 * (k_att * m_p).sqrt(), gap, piston_mass: m_p });
+        }
         rot.init_actuators(acts, 101_325.0 + 50.0 * 6894.757);
         let given = p.num("hinge_limit");
         Surface {
@@ -139,7 +162,12 @@ impl Surface {
             osc: 0.0,
             osc_mean: 0.0,
             overstressed: false,
-            s: Slots::of(p, &["angle", "rate", "command", "hinge_moment", "error", "blowdown", "flutter", "oscillation", "overstress", "active_actuators", "drooped", "failed"]),
+            rvdt: super::sensors::Dual::new(lo, hi, (p.slot as u64) ^ 0xa076_1d64_78bd_642f),
+            extra: ["tab", "sensor_1_fault", "sensor_2_fault"].map(|k| expr_of(p, k)),
+            ch_tab: p.num("ch_tab"),
+            equalize: p.flag("force_equalization"),
+            trims: vec![0.0; p.parts("actuators").len()],
+            s: Slots::of(p, &["angle", "rate", "command", "hinge_moment", "error", "blowdown", "flutter", "oscillation", "overstress", "active_actuators", "drooped", "sensor_1", "sensor_2", "sensor_disagree", "slack", "force_fight", "failed"]),
         }
     }
 
@@ -157,6 +185,10 @@ impl Surface {
         let turb = ev(&mut self.e[2], slots).clamp(0.0, 1.0);
         let jam = ev(&mut self.e[3], slots) != 0.0 || self.s.on(slots, "failed");
         let gone = ev(&mut self.e[4], slots) != 0.0;
+        let tab = ev(&mut self.extra[0], slots);
+        let f1 = super::sensors::fault_code(ev(&mut self.extra[1], slots));
+        let f2 = super::sensors::fault_code(ev(&mut self.extra[2], slots));
+        let ch_tab = self.ch_tab;
         let q = self.air[0].map_or(0.0, |i| slots[i]).max(0.0);
         let eas = self.air[1].map_or(0.0, |i| slots[i]).abs();
         let v = self.air[2].map_or(0.0, |i| slots[i]).abs().max(eas).max(1.0);
@@ -173,7 +205,7 @@ impl Surface {
         }
         let mut ios: Vec<Io> = Vec::with_capacity(self.rot.acts.len());
         for k in 0..self.rot.acts.len() {
-            let share = self.rot.command_for(acts, k, cmd);
+            let share = self.rot.command_for(acts, k, cmd) + self.trims.get(k).copied().unwrap_or(0.0);
             let ai = self.rot.acts[k];
             ios.push(acts[ai].prepare(slots, dt, Some(share)));
         }
@@ -187,7 +219,7 @@ impl Surface {
         let gravity = self.gravity;
         let load = move |t: f64, w: f64| {
             // Hinge moment in the surface's own sense.
-            let aero = qsc * (ch0 + cha * (alpha + gust) + chd * t);
+            let aero = qsc * (ch0 + cha * (alpha + gust) + chd * t + ch_tab * tab);
             let damp = qsc * chord / (2.0 * v) * (chq + excess) * w;
             let g = if gravity { mass * G * cg * (t * sign + pitch).cos() * sign } else { 0.0 };
             aero + damp + g - 0.02 * mass * chord * chord * w
@@ -210,13 +242,41 @@ impl Surface {
                 active += 1.0;
             }
         }
+        // Force fight between active actuators: each one's share of the total against the average.
+        let forces: Vec<(usize, f64)> = (0..self.rot.acts.len()).filter(|&k| acts[self.rot.acts[k]].mode.mode != linear::Mode::Passive).map(|k| (k, self.rot.outs[k].force)).collect();
+        let fight = if forces.len() >= 2 {
+            let hi = forces.iter().map(|f| f.1).fold(f64::MIN, f64::max);
+            let lo = forces.iter().map(|f| f.1).fold(f64::MAX, f64::min);
+            hi - lo
+        } else {
+            0.0
+        };
+        if self.equalize && forces.len() >= 2 {
+            let mean = forces.iter().map(|f| f.1).sum::<f64>() / forces.len() as f64;
+            for &(k, f) in &forces {
+                let a = &acts[self.rot.acts[k]].act;
+                // Integral trim: pushing harder than the average pulls this actuator's command back a little.
+                if let Some(tr) = self.trims.get_mut(k) {
+                    *tr = (*tr - 2.0 * (f - mean) / a.stall * dt * 0.02).clamp(-0.02, 0.02);
+                }
+            }
+        } else {
+            self.trims.iter_mut().for_each(|t| *t *= (1.0 - dt).max(0.0));
+        }
         let stall: f64 = self.rot.acts.iter().zip(&self.rot.links).filter(|(&ai, _)| acts[ai].mode.mode != linear::Mode::Passive).map(|(&ai, l)| acts[ai].act.stall * l.arm(t).abs()).sum();
         let err = cmd - t;
         let blowdown = active > 0.0 && err.abs() > 1.0 * DEG && hinge.abs() > 0.8 * stall && err * hinge < 0.0;
         if hinge.abs() > self.hinge_limit {
             self.overstressed = true;
         }
+        let (r1, r2, _, rd) = self.rvdt.read(t, f1, f2, dt);
         let s = &self.s;
+        s.put(slots, "sensor_1", r1);
+        s.put(slots, "sensor_2", r2);
+        s.flag(slots, "sensor_disagree", rd);
+        let slack = (0..self.rot.acts.len()).map(|k| self.rot.attachment_slack(k)).fold(0.0f64, |a, b| if b.abs() > a.abs() { b } else { a });
+        s.put(slots, "slack", slack);
+        s.put(slots, "force_fight", fight);
         s.put(slots, "angle", t);
         s.put(slots, "rate", w);
         s.put(slots, "command", cmd);

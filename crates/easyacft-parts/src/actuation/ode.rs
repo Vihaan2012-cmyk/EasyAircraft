@@ -26,6 +26,13 @@ pub struct Stepper {
     pub substeps: u64,
     /// Steps where error control gave up and accepted a step at the smallest size.
     pub forced: u64,
+    /// Steps a Jacobian is reused for: ROS2 keeps its order with an approximate one, and a rejected step
+    /// always gets a fresh one.
+    pub refresh: u32,
+    /// Relative tolerance added to each state's absolute one.
+    pub rtol: f64,
+    jac_age: u32,
+    jac_ok: bool,
 }
 
 /// Outcome of one call.
@@ -38,7 +45,7 @@ pub enum Outcome {
 
 impl Stepper {
     pub fn new(n: usize) -> Self {
-        let mut s = Stepper::default();
+        let mut s = Stepper { refresh: 4, rtol: 0.01, ..Stepper::default() };
         s.resize(n);
         s
     }
@@ -48,6 +55,7 @@ impl Stepper {
             return;
         }
         self.n = n;
+        self.jac_ok = false;
         self.jac = vec![0.0; n * n];
         self.lu = vec![0.0; n * n];
         self.piv = vec![0; n];
@@ -81,6 +89,7 @@ impl Stepper {
                 if !err.is_finite() || x.iter().any(|v| !v.is_finite()) {
                     x.copy_from_slice(&self.x0);
                     self.h = h_min;
+                    self.jac_ok = false;
                     return Outcome::Restored;
                 }
                 x.copy_from_slice(&self.xt);
@@ -90,6 +99,11 @@ impl Stepper {
                 let grow = if err > 1e-10 { (0.9 / err.sqrt()).clamp(0.2, 4.0) } else { 4.0 };
                 h *= grow;
             } else {
+                if self.jac_age > 0 {
+                    // A stale Jacobian may be why: retry at the same size with a fresh one first.
+                    self.jac_ok = false;
+                    continue;
+                }
                 h *= (0.9 / err.sqrt()).clamp(0.1, 0.5);
             }
         }
@@ -101,7 +115,13 @@ impl Stepper {
     fn attempt(&mut self, x: &[f64], h: f64, scale: &[f64], f: &mut impl FnMut(&[f64], &mut [f64])) -> f64 {
         let n = x.len();
         f(x, &mut self.f0);
-        self.jacobian(x, scale, f);
+        if !self.jac_ok || self.jac_age >= self.refresh.max(1) {
+            self.jacobian(x, scale, f);
+            self.jac_ok = true;
+            self.jac_age = 0;
+        } else {
+            self.jac_age += 1;
+        }
         for i in 0..n {
             for j in 0..n {
                 self.lu[i * n + j] = if i == j { 1.0 } else { 0.0 } - GAMMA * h * self.jac[i * n + j];
@@ -125,7 +145,7 @@ impl Stepper {
             let step = h * (1.5 * self.k1[i] + 0.5 * self.k2[i]);
             let low = h * self.k1[i];
             self.xt[i] = x[i] + step;
-            let s = scale[i].abs().max(1e-30);
+            let s = (scale[i].abs() + self.rtol * x[i].abs().max(self.xt[i].abs())).max(1e-30);
             err = err.max(((step - low) / s).abs());
         }
         if self.xt.iter().any(|v| !v.is_finite()) {

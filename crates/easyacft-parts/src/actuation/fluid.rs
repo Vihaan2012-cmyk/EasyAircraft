@@ -133,7 +133,7 @@ pub fn orifice(cd: f64, area: f64, dp: f64, rho: f64, nu: f64) -> f64 {
     }
     let dh = (4.0 * area / std::f64::consts::PI).sqrt();
     let p_cr = critical_dp(cd, dh, rho, nu);
-    cd * area * (2.0 / rho).sqrt() * dp / (dp * dp + p_cr * p_cr).powf(0.25)
+    cd * area * (2.0 / rho).sqrt() * dp / (dp * dp + p_cr * p_cr).sqrt().sqrt()
 }
 
 /// Pressure difference at the laminar-turbulent change, from a critical Reynolds number of 12.
@@ -152,6 +152,22 @@ pub fn area_for(cd: f64, q: f64, dp: f64, rho: f64) -> f64 {
 /// eccentricity share; laminar, so it rises as the fluid warms and thins.
 pub fn annulus(d: f64, c: f64, l: f64, ecc: f64, dp: f64, mu: f64) -> f64 {
     std::f64::consts::PI * d * c.powi(3) * dp / (12.0 * mu.max(1e-6) * l.max(1e-4)) * (1.0 + 1.5 * ecc * ecc)
+}
+
+/// Pressure lost along a smooth pipe of length `l` and bore `d` carrying `q`: Darcy friction, laminar 64/Re below
+/// transition, Blasius above, blended across 2000 to 4000.
+pub fn pipe_drop(q: f64, l: f64, d: f64, rho: f64, nu: f64) -> f64 {
+    if l <= 0.0 || q == 0.0 {
+        return 0.0;
+    }
+    let area = std::f64::consts::FRAC_PI_4 * d * d;
+    let v = q.abs() / area;
+    let re = (v * d / nu.max(1e-9)).max(1.0);
+    let lam = 64.0 / re;
+    let turb = 0.316 * re.powf(-0.25);
+    let k = ((re - 2000.0) / 2000.0).clamp(0.0, 1.0);
+    let f = lam * (1.0 - k) + turb * k;
+    f * l / d * 0.5 * rho * v * v * q.signum()
 }
 
 /// A laminar leakage conductance sized to pass `q` at `dp` with fluid of viscosity `mu_ref`.
@@ -175,6 +191,15 @@ impl Leak {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cold_fluid_loses_far_more_in_a_long_line() {
+        let f = Fluid::new(Kind::PhosphateEster);
+        let q = 20e-3 / 60.0;
+        let warm = pipe_drop(q, 30.0, 0.008, 1000.0, f.kinematic(323.15));
+        let cold = pipe_drop(q, 30.0, 0.008, 1000.0, f.kinematic(233.15));
+        assert!(cold > 10.0 * warm && warm > 1e4, "{warm:.0} Pa warm, {cold:.0} Pa cold");
+    }
 
     #[test]
     fn viscosity_matches_the_datasheet_points() {
