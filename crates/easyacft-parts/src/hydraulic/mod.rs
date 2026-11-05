@@ -10,6 +10,7 @@ pub mod net;
 mod ptu;
 mod pump;
 mod users;
+mod valve;
 
 use crate::{Domain, Expr};
 use accumulator::Accumulator;
@@ -22,6 +23,7 @@ use ptu::Ptu;
 use pump::Pump;
 use std::collections::HashMap;
 use users::{Consumer, Draw, Port};
+use valve::Valve;
 
 pub(crate) const P: Type = Type::Num(Dim::PRESSURE);
 pub(crate) const Q: Type = Type::Num(Dim::VOLUME_FLOW);
@@ -33,7 +35,7 @@ pub(crate) const B: Type = Type::Bool;
 pub(crate) const TQ: Type = Type::Num(Dim::TORQUE);
 pub(crate) const WHEN: Kind = Kind::Expr(Type::Bool);
 
-pub static SPECS: &[PartSpec] = &[circuit::SPEC, pump::SPEC, accumulator::SPEC, users::SPEC, ptu::SPEC];
+pub static SPECS: &[PartSpec] = &[circuit::SPEC, pump::SPEC, accumulator::SPEC, users::SPEC, ptu::SPEC, valve::SPEC];
 
 /// Longest substep: a millisecond resolves the pump compensators and the pressure waves in the lines.
 const H_MAX: f64 = 1e-3;
@@ -74,6 +76,10 @@ pub struct Hydraulic {
     draws: Vec<Draw>,
     ports: Vec<Port>,
     links: Vec<CustomLink>,
+    valves: Vec<Valve>,
+    /// Part index of each pump and consumer, for the valves that serve them.
+    pump_part: Vec<usize>,
+    consumer_part: Vec<usize>,
     checkpoint: Vec<f64>,
     since: u32,
     pub rollbacks: u64,
@@ -87,19 +93,21 @@ impl Hydraulic {
         }
         let mut net = Net::default();
         let mut of: HashMap<usize, usize> = HashMap::new();
-        let mut h = Hydraulic { net: Net::default(), circuits: vec![], pumps: vec![], accumulators: vec![], consumers: vec![], ptus: vec![], draws: vec![], ports: vec![], links: vec![], checkpoint: vec![], since: 0, rollbacks: 0 };
+        let mut h = Hydraulic { net: Net::default(), circuits: vec![], pumps: vec![], accumulators: vec![], consumers: vec![], ptus: vec![], draws: vec![], ports: vec![], links: vec![], valves: vec![], pump_part: vec![], consumer_part: vec![], checkpoint: vec![], since: 0, rollbacks: 0 };
         for &(i, p) in parts.iter().filter(|(_, p)| p.kind == "circuit") {
             of.insert(i, h.circuits.len());
             h.circuits.push(Circuit::new(p, &mut net));
         }
         let circ = |p: &CheckedPart| p.part("circuit").and_then(|x| of.get(&x).copied());
-        for &(_, p) in &parts {
+        for &(i, p) in &parts {
             match p.kind {
                 "pump" => {
                     let Some(ci) = circ(p) else { continue };
                     let pm = Pump::new(p, ci, &h.circuits[ci], &mut net);
                     h.pumps.push(pm);
+                    h.pump_part.push(i);
                 }
+                "valve" => h.valves.push(Valve::new(p)),
                 "accumulator" => {
                     let Some(ci) = circ(p) else { continue };
                     let a = Accumulator::new(p, ci, &h.circuits[ci], &mut net);
@@ -109,6 +117,7 @@ impl Hydraulic {
                     let Some(ci) = circ(p) else { continue };
                     let u = Consumer::new(p, ci, &h.circuits[ci]);
                     h.consumers.push(u);
+                    h.consumer_part.push(i);
                 }
                 "ptu" => {
                     let ends = p.parts("between");
@@ -222,15 +231,30 @@ impl Domain for Hydraulic {
         for c in &mut self.circuits {
             c.begin(slots, dt, &self.net);
         }
-        for pm in &mut self.pumps {
+        // Valves first: a pump behind a shut one starves, a user behind one stops.
+        let mut opening: HashMap<usize, f64> = HashMap::new();
+        for v in &mut self.valves {
+            let x = v.step(slots, dt);
+            for &s in &v.serves {
+                let o = opening.entry(s).or_insert(1.0);
+                *o = o.min(x);
+            }
+        }
+        for (k, pm) in self.pumps.iter_mut().enumerate() {
             pm.begin(slots, dt, &self.circuits[pm.circuit]);
+            if let Some(&x) = opening.get(&self.pump_part[k]) {
+                pm.full_flow *= x;
+            }
         }
         self.size_filters();
         for a in &mut self.accumulators {
             a.begin(slots, dt);
         }
-        for u in &mut self.consumers {
+        for (k, u) in self.consumers.iter_mut().enumerate() {
             u.begin(slots, dt);
+            if opening.get(&self.consumer_part[k]).is_some_and(|&x| x < 0.5) {
+                u.hold();
+            }
         }
         for d in &mut self.draws {
             d.begin(slots);
@@ -275,9 +299,11 @@ impl Domain for Hydraulic {
             let c = &self.circuits[u.circuit];
             let p = self.net.p[c.node];
             let (q, heat) = u.returned(p);
+            let lost = u.lost(dt);
             u.finish(slots, c, &self.net);
             self.circuits[u.circuit].heat += heat * n;
             self.circuits[u.circuit].add_return(q * n);
+            self.circuits[u.circuit].lose(lost);
         }
         for t in &mut self.ptus {
             t.finish(slots);

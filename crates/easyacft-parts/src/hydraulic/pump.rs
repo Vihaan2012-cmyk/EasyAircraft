@@ -35,6 +35,8 @@ pub const SPEC: PartSpec = PartSpec {
         opt("overheat_temperature", Kind::Quantity(Dim::TEMPERATURE), "393.15 K", "case drain temperature that sets its overheat warning"),
         opt("motor_efficiency", Kind::Number, "0.88", "electric pump: motor efficiency"),
         opt("powered_when", WHEN, "true", "electric pump: its motor has power"),
+        opt("check_open_when", WHEN, "false", "its discharge check valve is stuck open: the circuit flows back through it when it stops"),
+        opt("check_shut_when", WHEN, "false", "its discharge check valve is stuck shut: it cannot deliver"),
     ],
     outputs: OUT,
 };
@@ -71,6 +73,10 @@ pub struct Pump {
     worn_e: Option<Expr>,
     seized_e: Option<Expr>,
     powered_e: Option<Expr>,
+    check_open_e: Option<Expr>,
+    check_shut_e: Option<Expr>,
+    check_open: bool,
+    check_shut: bool,
     set: f64,
     eff: f64,
     band: f64,
@@ -123,6 +129,10 @@ impl Pump {
             worn_e: expr_of(p, "worn_when"),
             seized_e: expr_of(p, "seized_when"),
             powered_e: expr_of(p, "powered_when"),
+            check_open_e: expr_of(p, "check_open_when"),
+            check_shut_e: expr_of(p, "check_shut_when"),
+            check_open: false,
+            check_shut: false,
             set: p.num("pressure").max(1.0),
             eff: p.num("efficiency").clamp(0.05, 1.0),
             band: p.num("compensator_band").clamp(0.01, 0.5),
@@ -162,6 +172,8 @@ impl Pump {
         }
         self.worn = yes(&mut self.worn_e, slots, dt, false);
         self.depress = yes(&mut self.depress_e, slots, dt, false);
+        self.check_open = yes(&mut self.check_open_e, slots, dt, false);
+        self.check_shut = yes(&mut self.check_shut_e, slots, dt, false);
         let powered = self.kind != PumpType::Electric || yes(&mut self.powered_e, slots, dt, true);
         if self.kind == PumpType::Electric {
             // An induction motor slips a few per cent at full torque.
@@ -205,8 +217,15 @@ impl Pump {
         self.q = geometric;
         self.q_drain = drain_g * p_out;
         net.stamp(self.outlet, drain_g, geometric);
-        // The discharge check valve's drop, linearised at its last flow.
+        // The discharge check valve's drop, linearised at its last flow; stuck, it no longer checks.
         let link = &mut net.links[self.link];
+        if self.check_shut {
+            link.check = false;
+            link.open = false;
+        } else if !link.check || self.check_open {
+            link.open = link.open || !link.check || self.check_open;
+            link.check = !self.check_open;
+        }
         let qn = self.full_flow.max(1e-5);
         link.r = CHECK_DP / qn * (0.2 + 0.8 * (link.q.abs() / qn).min(2.0));
         self.sum_q += link.q.max(0.0);

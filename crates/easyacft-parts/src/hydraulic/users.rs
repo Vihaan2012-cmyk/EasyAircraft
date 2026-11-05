@@ -22,11 +22,13 @@ pub const SPEC: PartSpec = PartSpec {
         opt("priority_below", Kind::Quantity(Dim::PRESSURE), "0 psi", "a priority valve throttles it to hold the circuit at this, shut 5 % below"),
         opt("leak", Kind::Quantity(Dim::VOLUME_FLOW), "0 L/min", "spool and seal leakage at nominal pressure and 40 C"),
         opt("load", Kind::Expr(N), "0", "load on it as a share of what it can push: flow falls as the load takes the pressure"),
+        opt("leak_when", WHEN, "false", "its supply line leaks: fluid goes overboard"),
+        opt("leak_rate", Kind::Quantity(Dim::VOLUME_FLOW), "2 L/min", "that leak at nominal pressure"),
     ],
     outputs: OUT,
 };
 
-outputs!(OUT, uo { powered: B, flow: Q, rate: N, failed: B, leak_flow: Q, priority_open: N, stalled: B });
+outputs!(OUT, uo { powered: B, flow: Q, rate: N, failed: B, leak_flow: Q, priority_open: N, stalled: B, overboard_flow: Q });
 
 pub struct Consumer {
     base: usize,
@@ -37,6 +39,10 @@ pub struct Consumer {
     minimum: f64,
     priority: f64,
     leak_g: f64,
+    ext_g: f64,
+    ext_when: Option<Expr>,
+    ext_on: bool,
+    sum_lost: f64,
     flow: f64,
     load: f64,
     moving: bool,
@@ -59,6 +65,10 @@ impl Consumer {
             minimum: p.num("minimum"),
             priority: p.num("priority_below"),
             leak_g: p.num("leak") / c.nominal,
+            ext_g: p.num("leak_rate") / c.nominal,
+            ext_when: expr_of(p, "leak_when"),
+            ext_on: false,
+            sum_lost: 0.0,
             flow: 0.0,
             load: 0.0,
             moving: false,
@@ -76,6 +86,8 @@ impl Consumer {
         self.flow = eval(&mut self.flow_e, slots, dt, 0.0).max(0.0);
         self.load = eval(&mut self.load_e, slots, dt, 0.0).clamp(0.0, 1.0);
         self.moving = !self.failed && yes(&mut self.when, slots, dt, false);
+        self.ext_on = yes(&mut self.ext_when, slots, dt, false);
+        self.sum_lost = 0.0;
         self.sum_q = 0.0;
         self.sum_leak = 0.0;
         self.n_sub = 0.0;
@@ -92,10 +104,22 @@ impl Consumer {
         let q = if self.moving && p > 0.0 { self.flow * self.share * (dp / dp_ref).sqrt().min(1.3) } else { 0.0 };
         self.g = q / p.max(0.02 * c.nominal);
         let leak = if self.failed { 0.0 } else { self.leak_g / c.visc };
-        net.stamp(c.node, self.g + leak, 0.0);
+        let ext = if self.ext_on { self.ext_g } else { 0.0 };
+        net.stamp(c.node, self.g + leak + ext, 0.0);
+        self.sum_lost += ext * p.max(0.0);
         self.sum_q += self.g * p.max(0.0);
         self.sum_leak += leak * p.max(0.0);
         self.n_sub += 1.0;
+    }
+
+    /// Held off by a shut valve ahead of it.
+    pub fn hold(&mut self) {
+        self.moving = false;
+    }
+
+    /// Fluid its leaking line put overboard over a step.
+    pub fn lost(&self, dt: f64) -> f64 {
+        self.sum_lost / self.n_sub.max(1.0) * dt
     }
 
     /// Flow returned, for the filters, and the heat its throttling makes.
@@ -116,6 +140,7 @@ impl Consumer {
         put(slots, b + uo::rate, rate);
         put(slots, b + uo::leak_flow, self.sum_leak / n);
         put(slots, b + uo::priority_open, self.share);
+        put(slots, b + uo::overboard_flow, self.sum_lost / n);
         flag(slots, b + uo::stalled, self.moving && (p * (1.0 - self.load)) < self.minimum);
     }
 

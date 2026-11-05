@@ -250,6 +250,13 @@ impl Circuit {
         self.return_q = 0.0;
     }
 
+    /// Fluid gone overboard elsewhere, such as from a leaking user's line.
+    pub fn lose(&mut self, v: f64) {
+        let v = v.clamp(0.0, self.fluid);
+        self.fluid -= v;
+        self.overboard += v;
+    }
+
     /// Flow summed over the substeps that came back through the return filter from users and case drains.
     pub fn add_return(&mut self, q: f64) {
         self.return_q += q;

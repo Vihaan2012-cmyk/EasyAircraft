@@ -396,7 +396,11 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
     files.push(("systems/cockpit.toml".to_owned(), ck));
     files.push(("systems/electrical.toml".to_owned(), el));
     if let Some(g) = &s.fuel_graph {
-        files.push(("systems/fuel.toml".to_owned(), msfs_fuel::write(g, &head, s.engines.len(), s.deep.is_some() && s.engines.len() == 4)));
+        let mut fuel = msfs_fuel::write(g, &head, s.engines.len(), s.deep.is_some() && s.engines.len() == 4);
+        if let Some(c) = s.deep.as_ref().and_then(|d| d.catalogue.as_ref()) {
+            fuel = deep_parts::fuel_failures(&fuel, c);
+        }
+        files.push(("systems/fuel.toml".to_owned(), fuel));
         inc.push("systems/fuel.toml");
         let mut w = head.clone();
         writeln!(w, "[[weight.station]]\nid = \"empty\"\nmass = \"{:.0} kg\"\narm = \"{:.2} m\"\n", s.empty_kg.max(1.0), s.empty_arm_m).unwrap();

@@ -643,21 +643,60 @@ pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: &[Option<String>]) -
     }
 
     let mut h = head.to_owned();
-    h += "# Two 5000 psi systems: green from engines 1 and 2, yellow from 3 and 4, two engine pumps per engine and two AC motor pumps per system.\n\n";
+    let none = Catalogue::default();
+    let cat = d.catalogue.as_ref().unwrap_or(&none);
+    let f = |id: &str, words: &[&str]| super::deep_parts::fails(cat, id, words);
+    let or = |a: String, b: String| match (a.as_str(), b.as_str()) {
+        ("false", _) => b,
+        (_, "false") => a,
+        _ => format!("{a} || {b}"),
+    };
+    let when = |k: &str, e: String| if e == "false" { String::new() } else { format!("{k} = \"{e}\"\n") };
+    h += "# Two 5000 psi systems: green from engines 1 and 2, yellow from 3 and 4, two engine pumps per engine and two AC motor pumps per system; each unit's failures from the plugin's catalogue (29_hyd, 29_elec).\n\n";
+    let duct = f("36_pneu.hydraulic_reservoir_pressurisation_duct", &["leak", "rupture"]);
     for c in ["green", "yellow"] {
-        writeln!(h, "[[hydraulic.circuit]]\nid = \"{c}\"\nnominal = \"5000 psi\"\nfluid = \"125 L\"\nlow_pressure = \"3000 psi\"\ncompliance = 4e-11\nleak = \"6.8 L/min\"\n").unwrap();
+        let res = format!("29_hyd.{c}_reservoir");
+        writeln!(
+            h,
+            "[[hydraulic.circuit]]\nid = \"{c}\"\nnominal = \"5000 psi\"\nfluid = \"125 L\"\nlow_pressure = \"3000 psi\"\ncompliance = 4e-11\nleak = \"6.8 L/min\"\n{}{}{}",
+            when("leak_when", f(&res, &["leak"])),
+            when("reservoir_failed_when", or(f(&res, &["pressurisation"]), duct.clone())),
+            when("filter_clog_when", f(&format!("29_hyd.{c}_return_filter"), &[])),
+        )
+        .unwrap();
     }
     for n in 1..=4 {
         let c = if n <= 2 { "green" } else { "yellow" };
+        writeln!(h, "[[cockpit.switch]]\nid = \"eng{n}_fire_pb\"\n").unwrap();
         for x in ["a", "b"] {
-            writeln!(h, "[[hydraulic.pump]]\nid = \"edp{n}{x}\"\ncircuit = \"{c}\"\npressure = \"5000 psi\"\nflow = \"if(eng{n}.n3 > 30, min(1, eng{n}.n3 / 60) * 150 L/min, 0 L/min)\"\nrunning_when = \"eng{n}.n3 > 30\"\n").unwrap();
+            let u = format!("29_hyd.{c}_edp_{n}{x}");
+            writeln!(
+                h,
+                "[[hydraulic.pump]]\nid = \"edp{n}{x}\"\ncircuit = \"{c}\"\npressure = \"5000 psi\"\nflow = \"if(eng{n}.n3 > 30, min(1, eng{n}.n3 / 60) * 150 L/min, 0 L/min)\"\nrunning_when = \"eng{n}.n3 > 30\"\n{}{}{}{}",
+                when("worn_when", f(&u, &["displacement"])),
+                when("seized_when", f(&u, &["seizure"])),
+                when("check_open_when", f(&u, &["stuck open"])),
+                when("check_shut_when", f(&u, &["stuck shut"])),
+            )
+            .unwrap();
+            writeln!(h, "# Its fire shutoff valve, shut by the ENG {n} FIRE pushbutton.\n[[hydraulic.valve]]\nid = \"edp{n}{x}_fsov\"\ncircuit = \"{c}\"\nserves = [\"edp{n}{x}\"]\nopen_when = \"!eng{n}_fire_pb.on\"\n{}", when("stuck_when", f(&u, &["fire shutoff"]))).unwrap();
         }
     }
-    for (c, x, bus) in [("green", "a", "ac1"), ("green", "b", "ac2"), ("yellow", "a", "ac3"), ("yellow", "b", "ac4")] {
-        writeln!(h, "[[cockpit.switch]]\nid = \"{c}_epump_{x}_sw\"\n\n[[hydraulic.pump]]\nid = \"{c}_epump_{x}\"\ncircuit = \"{c}\"\npressure = \"5000 psi\"\nflow = \"16 L/min\"\nrunning_when = \"{c}_epump_{x}_sw.on && {bus}.powered\"\n").unwrap();
+    for (c, x, bus, e) in [("green", "a", "ac1", "ga"), ("green", "b", "ac2", "gb"), ("yellow", "a", "ac3", "ya"), ("yellow", "b", "ac4", "yb")] {
+        let u = format!("29_hyd.{c}_electric_pump_{x}");
+        let motor = or(f(&format!("29_elec.hyd-epump-{e}"), &[]), f(&format!("29_elec.hyd-epump-{e}-coil"), &[]));
+        writeln!(
+            h,
+            "[[cockpit.switch]]\nid = \"{c}_epump_{x}_sw\"\n\n[[hydraulic.pump]]\nid = \"{c}_epump_{x}\"\ncircuit = \"{c}\"\ntype = \"electric\"\npressure = \"5000 psi\"\nflow = \"16 L/min\"\nrunning_when = \"{c}_epump_{x}_sw.on && {bus}.powered\"\n{}{}{}",
+            when("worn_when", f(&u, &["displacement"])),
+            when("seized_when", f(&u, &["seizure"])),
+            when("powered_when", if motor == "false" { "false".into() } else { super::deep_parts::not(&motor) }),
+        )
+        .unwrap();
     }
     for (id, c, vol) in [("brake_acc_g", "green", "12 L"), ("brake_acc_y", "yellow", "12 L"), ("cargo_door_acc", "yellow", "2 L")] {
-        writeln!(h, "[[hydraulic.accumulator]]\nid = \"{id}\"\ncircuit = \"{c}\"\nvolume = \"{vol}\"\nprecharge = \"2000 psi\"\ncheck_valve = true\n").unwrap();
+        let lost = if id.starts_with("brake") { f(&format!("29_hyd.{c}_accumulator"), &[]) } else { "false".into() };
+        writeln!(h, "[[hydraulic.accumulator]]\nid = \"{id}\"\ncircuit = \"{c}\"\nvolume = \"{vol}\"\nprecharge = \"2000 psi\"\ncheck_valve = true\n{}", when("precharge_lost_when", lost)).unwrap();
     }
     h += "[[logic.flag]]\nid = \"flying\"\nwhen = \"!air.on_ground\"\n\n";
     for (id, flow) in [("ailerons", 40), ("elevators", 30), ("rudder", 15), ("ths", 20)] {
@@ -667,6 +706,13 @@ pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: &[Option<String>]) -
     }
     h += "[[input.number]]\nid = \"flap_lever\"\n\n[[logic.flag]]\nid = \"flaps_moving\"\nwhen = \"off_delay(rising(flap_lever.value > 0.5) || rising(flap_lever.value < 0.5), 40 s)\"\n\n";
     h += "[[hydraulic.consumer]]\nid = \"flaps_motor_g\"\ncircuit = \"green\"\nflow = \"60 L/min\"\nmoving_when = \"flaps_moving.on\"\n\n[[hydraulic.consumer]]\nid = \"slats_motor_g\"\ncircuit = \"green\"\nflow = \"40 L/min\"\nmoving_when = \"flaps_moving.on\"\n\n";
+    h += "# Each system's supply lines to its gear, brakes, steering, reversers and cargo doors, each able to leak, the gear and cargo door lines behind the priority valve.\n";
+    for c in ["green", "yellow"] {
+        for line in ["gear", "brakes", "steering", "reversers", "cargo_doors"] {
+            writeln!(h, "[[hydraulic.consumer]]\nid = \"{c}_line_{line}\"\ncircuit = \"{c}\"\nflow = \"0 L/min\"\n{}", when("leak_when", f(&format!("29_hyd.{c}_line_{line}"), &[]))).unwrap();
+        }
+        writeln!(h, "[[hydraulic.valve]]\nid = \"{c}_priority_valve\"\ncircuit = \"{c}\"\nserves = [\"{c}_line_gear\", \"{c}_line_cargo_doors\"]\nopen_when = \"{c}.pressure > 3000 psi\"\nopen_time = \"0.2 s\"\n{}", when("stuck_when", f(&format!("29_hyd.{c}_priority_valve"), &[]))).unwrap();
+    }
     h += "# Five legs; the body and wing gear on green, the nose on yellow.\n";
     for (id, c, t) in [("nose_gear", "yellow", 10), ("wing_gear_l", "green", 14), ("wing_gear_r", "green", 14), ("body_gear_l", "green", 14), ("body_gear_r", "green", 14)] {
         writeln!(h, "[[gear.leg]]\nid = \"{id}\"\ncircuit = \"{c}\"\ndown_when = \"gear_lever.on\"\ntime = \"{t} s\"\n").unwrap();

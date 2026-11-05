@@ -44,6 +44,8 @@ pub const SPEC: PartSpec = PartSpec {
         opt("water", Kind::Number, "40", "dissolved water at start, parts per million by mass"),
         opt("drain_when", WHEN, "false", "sump drain open: free water runs out"),
         opt("probe_failed_when", WHEN, "false", "quantity probes failed: the gauge holds its last reading"),
+        opt("leak_when", WHEN, "false", "a structural leak in its skin: fuel runs overboard"),
+        opt("leak_rate", Kind::Quantity(Dim::MASS_FLOW), "0.5 kg/s", "that leak with the tank full; it falls with the head"),
     ],
     outputs: OUT,
 };
@@ -53,7 +55,7 @@ const ACC: easyacft_lang::Type = easyacft_lang::Type::Num(Dim([0, 1, -2, 0, 0]))
 outputs!(OUT, ko {
     quantity: M, indicated: M, mass: M, arm: L, volume: VOL, temperature: T, low: B, empty: B, frozen: B, spilled: M, failed: B,
     level: N, inlet_depth: L, inlet_uncovered: B, ullage_pressure: P, head: P, boiling: B, free_water: M, dissolved: N, ice: B,
-    density: N, viscosity: N, vapour_pressure: P, surface_tilt: N
+    density: N, viscosity: N, vapour_pressure: P, surface_tilt: N, leaked: M
 });
 
 const T_REF: f64 = 288.15;
@@ -86,6 +88,9 @@ pub struct Tank {
     vent_blocked: Option<Expr>,
     drain: Option<Expr>,
     probe_failed: Option<Expr>,
+    leak_e: Option<Expr>,
+    leak_rate: f64,
+    pub leaked: f64,
     /// Surface tilt about the pitch and roll axes, rad, and their rates, for slosh.
     tilt: [f64; 2],
     tilt_rate: [f64; 2],
@@ -130,6 +135,9 @@ impl Tank {
             vent_blocked: expr_of(p, "vent_blocked_when"),
             drain: expr_of(p, "drain_when"),
             probe_failed: expr_of(p, "probe_failed_when"),
+            leak_e: expr_of(p, "leak_when"),
+            leak_rate: p.num("leak_rate").max(0.0),
+            leaked: 0.0,
             tilt: [0.0; 2],
             tilt_rate: [0.0; 2],
             ullage: 101_325.0,
@@ -199,6 +207,12 @@ impl Tank {
         let q = self.quantity - net_out * dt;
         let overflow = (q - self.capacity).max(0.0);
         self.quantity = q.clamp(0.0, self.capacity);
+        // A skin leak drains as the square root of the head over it.
+        if yes(&mut self.leak_e, slots, dt, false) {
+            let lost = (self.leak_rate * self.fill().sqrt() * dt).min(self.quantity);
+            self.quantity -= lost;
+            self.leaked += lost;
+        }
         // Water: dissolved water above saturation drops out as free water, which sinks to the sump.
         self.water = (self.water * (self.quantity + 1.0) + water_in * dt - water_out * dt).max(0.0) / (self.quantity + 1.0);
         let sat = self.fuel.water_saturation(self.temp);
@@ -232,6 +246,7 @@ impl Tank {
         flag(slots, b + ko::empty, self.quantity <= self.unusable);
         flag(slots, b + ko::frozen, self.temp < self.fuel.cloud());
         put(slots, b + ko::spilled, self.spilled);
+        put(slots, b + ko::leaked, self.leaked);
         put(slots, b + ko::level, level);
         put(slots, b + ko::inlet_depth, self.inlet_depth);
         flag(slots, b + ko::inlet_uncovered, self.uncovered());

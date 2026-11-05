@@ -90,6 +90,7 @@ pub fn role(p: &CheckedPart) -> Option<(Role, &'static str)> {
         ("electrical", "battery" | "generator" | "ext_power") => (Role::Source, "bus"),
         ("electrical", "load") => (Role::Sink, "bus"),
         ("hydraulic", "pump" | "accumulator") => (Role::Source, "circuit"),
+        ("hydraulic", "valve") => (Role::Sink, "circuit"),
         ("hydraulic", "consumer") => (Role::Sink, "circuit"),
         ("fuel", "feed") => (Role::Sink, "line"),
         ("pneumatic", "source") => (Role::Source, "duct"),

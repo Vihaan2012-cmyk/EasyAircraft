@@ -227,3 +227,42 @@ fn a_ptu_moves_power_not_fluid() {
     assert!(out > 0.0 && pump * 0.85 > out / 0.8, "green pays for yellow's power and the losses: {pump:.0} W for {out:.0} W");
     assert!(get(&a, "ptu.flow") <= 40.0 * LITRE / 60.0 + 1e-6);
 }
+
+#[test]
+fn a_shut_shutoff_valve_starves_its_pump_and_a_stuck_one_stays_open() {
+    let valve = "[[cockpit.switch]]\nid = \"fire\"\n\n[[cockpit.switch]]\nid = \"jam\"\n\n[[hydraulic.valve]]\nid = \"fsov\"\ncircuit = \"green\"\nserves = [\"edp\"]\nopen_when = \"!fire.on\"\nstuck_when = \"jam.on\"\n";
+    let mut a = aircraft(&(circuit("") + valve));
+    a.set("pump_on.on", 1.0);
+    run(&mut a, 10.0);
+    assert!(get(&a, "green.pressure") > 2800.0 * PSI);
+    a.set("fire.on", 1.0);
+    a.set("use.on", 1.0);
+    run(&mut a, 30.0);
+    assert_eq!(a.get("fsov.open"), Some(0.0));
+    assert!(get(&a, "green.pressure") < 500.0 * PSI, "the pump behind a shut valve delivers nothing: {:.0} psi", get(&a, "green.pressure") / PSI);
+    let mut b = aircraft(&(circuit("") + valve));
+    b.set("pump_on.on", 1.0);
+    b.set("jam.on", 1.0);
+    b.set("fire.on", 1.0);
+    b.set("use.on", 1.0);
+    run(&mut b, 30.0);
+    assert_eq!(b.get("fsov.open"), Some(1.0));
+    assert!(get(&b, "green.pressure") > 2500.0 * PSI);
+}
+
+#[test]
+fn a_leaking_user_line_puts_fluid_overboard_and_a_jammed_check_valve_blocks_its_pump() {
+    let mut a = aircraft(&(circuit("").replace("moving_when = \"use.on\"", "moving_when = \"use.on\"\nleak_when = \"line.on\"\nleak_rate = \"6 L/min\"") + "[[cockpit.switch]]\nid = \"line\"\n"));
+    a.set("pump_on.on", 1.0);
+    run(&mut a, 10.0);
+    let before = get(&a, "green.fluid");
+    a.set("line.on", 1.0);
+    run(&mut a, 60.0);
+    let gone = get(&a, "green.overboard");
+    assert!(gone > 3.0 * LITRE && gone < 8.0 * LITRE && get(&a, "green.fluid") < before - 3.0 * LITRE, "about 6 L in a minute: {:.2} L", gone / LITRE);
+    let mut b = aircraft(&circuit("").replace("running_when = \"pump_on.on\"", "running_when = \"pump_on.on\"\ncheck_shut_when = \"leak.on\""));
+    b.set("pump_on.on", 1.0);
+    b.set("leak.on", 1.0);
+    run(&mut b, 10.0);
+    assert!(get(&b, "green.pressure") < 100.0 * PSI, "{:.0} psi", get(&b, "green.pressure") / PSI);
+}

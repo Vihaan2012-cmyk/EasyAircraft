@@ -9,7 +9,7 @@ fn comp<'a>(c: &'a Catalogue, id: &str) -> Option<&'a Comp> {
 }
 
 /// The failures of `id` whose names contain any of `words` (all of them when `words` is empty), as an expression.
-fn fails(c: &Catalogue, id: &str, words: &[&str]) -> String {
+pub(crate) fn fails(c: &Catalogue, id: &str, words: &[&str]) -> String {
     let Some(x) = comp(c, id) else { return "false".into() };
     let names: std::collections::HashMap<u64, String> = c.failures.iter().map(|f| (f.0, f.1.to_ascii_lowercase())).collect();
     let ids: Vec<String> = x
@@ -25,7 +25,7 @@ fn fails(c: &Catalogue, id: &str, words: &[&str]) -> String {
     }
 }
 
-fn not(e: &str) -> String {
+pub(crate) fn not(e: &str) -> String {
     if e == "false" {
         "true".into()
     } else {
@@ -33,7 +33,7 @@ fn not(e: &str) -> String {
     }
 }
 
-fn and_not(base: &str, e: &str) -> String {
+pub(crate) fn and_not(base: &str, e: &str) -> String {
     if e == "false" {
         base.to_owned()
     } else {
@@ -158,15 +158,24 @@ fn pneumatic(c: &Catalogue, head: &str) -> String {
     let duct_leak = fails(c, "36_pneu.engine_bleed_duct", &["leak", "rupture"]);
     let prv_stuck = fails(c, "36_pneu.engine_upstream_valve_stage", &["pr (shutoff) valve stuck"]);
     let hp_stuck = fails(c, "36_pneu.engine_upstream_valve_stage", &["hp valve stuck"]);
-    let fouled = fails(c, "36_pneu.engine_precooler", &["fouling"]);
+    let fan_stuck = fails(c, "36_pneu.engine_precooler", &["fan air valve stuck"]);
+    let pc_check = fails(c, "36_pneu.engine_precooler", &["check valve"]);
+    let ip_check = fails(c, "36_pneu.engine_upstream_valve_stage", &["ip8 check valve"]);
+    let start_leak = fails(c, "36_pneu.engine_start_duct", &["leak", "rupture"]);
+    let start_check = fails(c, "36_pneu.engine_start_duct", &["check valve"]);
+    let opt = |k: &str, e: &str| if e == "false" { String::new() } else { format!("{k} = \"{e}\"\n") };
     for n in 1..=4 {
         let side = if n <= 2 { "manifold_l" } else { "manifold_r" };
         switch(&mut f, &format!("bleed{n}_pb"), true);
         writeln!(f, "[[pneumatic.duct]]\nid = \"bleed{n}\"\nleak_when = \"{duct_leak}\"\n").unwrap();
-        writeln!(f, "[[pneumatic.source]]\nid = \"bleed{n}_ip\"\nduct = \"bleed{n}\"\npressure = \"90 psi\"\ntemperature = \"300 degC\"\nflow = \"if(eng{n}.n1 > 45, 5 kg/s, 2 kg/s)\"\navailable_when = \"eng{n}.n3 > 30\"\n").unwrap();
-        writeln!(f, "[[pneumatic.source]]\nid = \"bleed{n}_hp\"\nduct = \"bleed{n}\"\npressure = \"120 psi\"\ntemperature = \"480 degC\"\nflow = \"if(eng{n}.n1 < 45, 4 kg/s, 0 kg/s)\"\navailable_when = \"{}\"\n", and_not(&format!("eng{n}.n3 > 30 && eng{n}.n1 < 45"), &hp_stuck)).unwrap();
-        let cool = if fouled == "false" { "200 degC" } else { "260 degC" };
-        writeln!(f, "[[pneumatic.valve]]\nid = \"prv{n}\"\nbetween = [\"bleed{n}\", \"{side}\"]\nopen_when = \"bleed{n}_pb.on && !fadec{n}.starter\"\nregulate = \"40 psi\"\ncool_to = \"{cool}\"\nstuck_when = \"{prv_stuck}\"\n").unwrap();
+        writeln!(f, "[[pneumatic.source]]\nid = \"bleed{n}_ip\"\nduct = \"bleed{n}\"\npressure = \"90 psi\"\ntemperature = \"300 degC\"\nflow = \"if(eng{n}.n1 > 45, 5 kg/s, 2 kg/s)\"\navailable_when = \"{}\"\n{}", and_not(&format!("eng{n}.n3 > 30"), &ip_check), opt("check_failed_when", &pc_check)).unwrap();
+        writeln!(f, "[[pneumatic.source]]\nid = \"bleed{n}_hp\"\nduct = \"bleed{n}\"\npressure = \"120 psi\"\ntemperature = \"480 degC\"\nflow = \"if(eng{n}.n1 < 45, 4 kg/s, 0 kg/s)\"\navailable_when = \"{}\"\n{}", and_not(&format!("eng{n}.n3 > 30 && eng{n}.n1 < 45"), &hp_stuck), opt("check_failed_when", &pc_check)).unwrap();
+        let cool = "200 degC";
+        writeln!(f, "[[pneumatic.valve]]\nid = \"prv{n}\"\nbetween = [\"bleed{n}\", \"{side}\"]\nopen_when = \"bleed{n}_pb.on && !fadec{n}.starter\"\nregulate = \"40 psi\"\ncool_to = \"{cool}\"\nstuck_when = \"{prv_stuck}\"\n{}", opt("fan_air_when", &not(&fan_stuck)).replace("fan_air_when = \"true\"\n", "")).unwrap();
+    }
+    for n in 1..=4 {
+        let side = if n <= 2 { "manifold_l" } else { "manifold_r" };
+        writeln!(f, "# Engine {n}'s air turbine starter, fed from the manifold through its start valve.\n[[pneumatic.duct]]\nid = \"start{n}_duct\"\nvolume = \"0.02 m3\"\n{}\n[[pneumatic.valve]]\nid = \"start{n}_valve\"\nbetween = [\"{side}\", \"start{n}_duct\"]\nopen_when = \"fadec{n}.starter\"\nflow = \"3 kg/s\"\n{}\n[[pneumatic.consumer]]\nid = \"starter{n}\"\nduct = \"start{n}_duct\"\nflow = \"1.2 kg/s\"\non_when = \"fadec{n}.starter\"\nturbine = true\n", opt("leak_when", &start_leak), opt("leak_when", &start_check)).unwrap();
     }
     for (id, vol) in [("manifold_l", "0.3 m3"), ("manifold_r", "0.3 m3")] {
         writeln!(f, "[[pneumatic.duct]]\nid = \"{id}\"\nvolume = \"{vol}\"\n").unwrap();
@@ -175,8 +184,9 @@ fn pneumatic(c: &Catalogue, head: &str) -> String {
     f += "[[pneumatic.valve]]\nid = \"xbleed_valve\"\nbetween = [\"manifold_l\", \"manifold_r\"]\nopen_when = \"xbleed.on || apu_bleed_valve.open\"\nflow = \"6 kg/s\"\n\n";
     switch(&mut f, "apu_bleed_pb", true);
     writeln!(f, "[[pneumatic.duct]]\nid = \"apu_duct\"\nleak_when = \"{}\"\n", fails(c, "36_pneu.apu_bleed_duct", &["leak", "rupture"])).unwrap();
-    f += "[[pneumatic.source]]\nid = \"apu_load_compressor\"\nduct = \"apu_duct\"\npressure = \"55 psi\"\ntemperature = \"220 degC\"\nflow = \"2.4 kg/s\"\navailable_when = \"apu.available\"\n\n";
-    f += "[[pneumatic.valve]]\nid = \"apu_bleed_valve\"\nbetween = [\"apu_duct\", \"manifold_l\"]\nopen_when = \"apu_bleed_pb.on && apu.available\"\n\n";
+    let apu_pc = |w: &str| fails(c, "36_pneu.apu_precooler", &[w]);
+    writeln!(f, "[[pneumatic.source]]\nid = \"apu_load_compressor\"\nduct = \"apu_duct\"\npressure = \"55 psi\"\ntemperature = \"220 degC\"\nflow = \"2.4 kg/s\"\navailable_when = \"apu.available\"\n{}", opt("check_failed_when", &apu_pc("check valve"))).unwrap();
+    writeln!(f, "[[pneumatic.valve]]\nid = \"apu_bleed_valve\"\nbetween = [\"apu_duct\", \"manifold_l\"]\nopen_when = \"apu_bleed_pb.on && apu.available\"\ncool_to = \"{}\"\n{}", "180 degC", opt("fan_air_when", &not(&apu_pc("fan air valve stuck"))).replace("fan_air_when = \"true\"\n", "")).unwrap();
     let pack_leak = fails(c, "36_pneu.pack_supply_duct", &["leak", "rupture"]);
     for (n, side) in [(1, "manifold_l"), (2, "manifold_r")] {
         switch(&mut f, &format!("pack{n}_pb"), true);
@@ -254,4 +264,48 @@ mod tests {
         let n = "Crew oxygen cylinder group (2 x 3260 L free air, 1850 psig)";
         assert_eq!((number_before(n, "psig"), number_before(n, "L free air")), (Some(1850.0), Some(3260.0)));
     }
+}
+
+/// The plugin's fuel failures on FlyByWire's fuel graph parts, which carry FlyByWire's names: pumps, valves,
+/// tank skins and probes, and the transfer galleries.
+pub fn fuel_failures(text: &str, c: &Catalogue) -> String {
+    let mut add: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut put = |id: String, field: &str, e: String| {
+        if e != "false" {
+            add.entry(id).or_default().push(format!("{field} = \"{e}\""));
+        }
+    };
+    let tank = |k: &str| k.replace("feed_", "feed");
+    for x in c.components.iter().filter(|x| x.id.starts_with("28_fuel.")) {
+        let key = &x.id["28_fuel.".len()..];
+        let e = fails(c, &x.id, &[]);
+        if key.starts_with("pump.") {
+            put(super::msfs_fuel::id(&x.name), "impeller_damaged_when", e);
+        } else if key.starts_with("valve.") {
+            for n in x.name.split('/') {
+                put(super::msfs_fuel::id(n), "stuck_when", e.clone());
+            }
+        } else if let Some(t) = key.strip_prefix("tank_wall.") {
+            put(tank(t), "leak_when", e);
+        } else if let Some(t) = key.strip_prefix("fqms_probes.") {
+            put(tank(t), "probe_failed_when", fails(c, &x.id, &["probe failure"]));
+        } else if let Some(g) = key.strip_prefix("gallery.") {
+            let lines: &[&str] = if g == "aft" { &["aft_gallery_junction1", "aft_gallery_junction2"] } else { &["fwd_gallery_junction"] };
+            for l in lines {
+                put(l.to_string(), "leak_when", e.clone());
+            }
+        }
+    }
+    let mut out = String::new();
+    for line in text.lines() {
+        out += line;
+        out.push('\n');
+        if let Some(id) = line.strip_prefix("id = \"").and_then(|r| r.strip_suffix('"')) {
+            for f in add.get(id).into_iter().flatten() {
+                out += f;
+                out.push('\n');
+            }
+        }
+    }
+    out
 }

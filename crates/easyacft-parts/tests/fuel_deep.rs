@@ -268,3 +268,17 @@ fn fuel_is_conserved_through_transfer_and_burn() {
     assert!((start - left - burnt).abs() < 0.5, "{:.2} kg unaccounted", start - left - burnt);
     assert!(get(&a, "aft.quantity") > 540.0, "the transfer pump moved fuel aft");
 }
+
+#[test]
+fn a_leaking_tank_skin_drains_slower_as_it_empties() {
+    let mut a = aircraft("[[cockpit.switch]]\nid = \"hole\"\n\n[[fuel.tank]]\nid = \"wing\"\ncapacity = \"1000 kg\"\nquantity = \"1000 kg\"\nleak_when = \"hole.on\"\nleak_rate = \"1 kg/s\"\n");
+    run(&mut a, 10.0);
+    assert_eq!(a.get("wing.leaked"), Some(0.0));
+    a.set("hole.on", 1.0);
+    run(&mut a, 100.0);
+    let first = get(&a, "wing.leaked");
+    assert!(first > 80.0 && first < 100.0, "about 1 kg/s full: {first:.1} kg");
+    run(&mut a, 100.0);
+    let second = get(&a, "wing.leaked") - first;
+    assert!(second < first && (get(&a, "wing.quantity") + get(&a, "wing.leaked") - 1000.0).abs() < 1.0, "{second:.1} kg in the next 100 s");
+}
