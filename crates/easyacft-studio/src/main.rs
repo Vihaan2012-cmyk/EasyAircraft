@@ -601,7 +601,24 @@ impl App {
                 sub.push(if b == 0 { format!("{u} USERS") } else { format!("{b} CB  {u} USERS") });
             }
             let sub_g = if sub.is_empty() { None } else { fit(&sub.join("  "), 9.0 * z, inner, faint) };
-            let name_g = fit(&name, size, inner, style::text_of(st));
+            let colour = style::text_of(st);
+            let mut short = name.trim_end_matches(" LOAD").trim_end_matches(" BUS").to_owned();
+            // A load named after the bus it hangs on shows its reading; the bus box already carries the name.
+            let own_bus = part.part("bus").map(|b| style::label(&a.checked.parts[b].id).trim_end_matches(" BUS").to_owned());
+            if it.role == Role::Sink && own_bus.as_deref() == Some(short.as_str()) && !text.is_empty() {
+                short = text.clone();
+            }
+            let mut name_g = fit(&name, size, inner, colour).or_else(|| fit(&short, size.max(LABEL_MIN), inner, colour));
+            // Still too long for its box: as much of it as fits, cut short.
+            if name_g.is_none() && rect.height() >= 9.0 && inner >= 24.0 {
+                let fs = LABEL_MIN.min(rect.height() - 2.0);
+                let whole = painter.layout_no_wrap(short.clone(), FontId::monospace(fs), colour);
+                let per = whole.size().x / short.chars().count().max(1) as f32;
+                let n = ((inner / per).floor() as usize).saturating_sub(1);
+                if n >= 3 {
+                    name_g = Some(painter.layout_no_wrap(short.chars().take(n).collect::<String>() + "…", FontId::monospace(fs), colour));
+                }
+            }
             if name_g.is_none() {
                 let rank = match it.role {
                     Role::Hub if d.major.contains(&it.part) => 4,
