@@ -839,7 +839,7 @@ impl App {
                     }
                 });
                 let w = ui.available_width().min(1600.0);
-                let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, w * 0.56), Sense::click());
+                let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, w * 0.88), Sense::click());
                 let painter = ui.painter_at(rect);
                 let mut live = self.engine_live(&p, ui.input(|i| i.time));
                 live.selected = self.engine_pick.clone();

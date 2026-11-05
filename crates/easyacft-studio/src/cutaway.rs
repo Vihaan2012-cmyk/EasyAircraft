@@ -165,11 +165,82 @@ struct Pen<'a> {
     p: &'a Painter,
     o: Pos2,
     s: f32,
+    /// Below-axis annotation sits this far further down, under the mirrored lower half.
+    drop: f32,
+    /// Radius up to which the section is mirrored below the axis.
+    mirror_r: f32,
+    sink: std::cell::RefCell<Vec<Shape>>,
+}
+
+/// The shape reflected about the horizontal line at `axis`; None for text or anything it cannot reflect.
+fn reflect(shape: &Shape, axis: f32) -> Option<Shape> {
+    let f = |p: Pos2| Pos2::new(p.x, 2.0 * axis - p.y);
+    Some(match shape {
+        Shape::LineSegment { points, stroke } => Shape::LineSegment { points: [f(points[0]), f(points[1])], stroke: stroke.clone() },
+        Shape::Path(ps) => {
+            let mut q = ps.clone();
+            q.points = ps.points.iter().map(|&p| f(p)).collect();
+            Shape::Path(q)
+        }
+        Shape::Circle(c) => {
+            let mut q = *c;
+            q.center = f(c.center);
+            Shape::Circle(q)
+        }
+        Shape::Mesh(m) => {
+            let mut q = m.clone();
+            q.vertices.iter_mut().for_each(|v| v.pos = f(v.pos));
+            Shape::Mesh(q)
+        }
+        Shape::Vec(v) => Shape::Vec(v.iter().filter_map(|x| reflect(x, axis)).collect()),
+        _ => return None,
+    })
+}
+
+/// Lowest and highest screen y a shape reaches; None for text and other shapes that are never mirrored.
+fn y_span(shape: &Shape) -> Option<(f32, f32)> {
+    let span = |it: &mut dyn Iterator<Item = f32>| it.fold(None, |a: Option<(f32, f32)>, y| Some(a.map_or((y, y), |(l, h)| (l.min(y), h.max(y)))));
+    match shape {
+        Shape::LineSegment { points, .. } => span(&mut points.iter().map(|p| p.y)),
+        Shape::Path(ps) => span(&mut ps.points.iter().map(|p| p.y)),
+        Shape::Circle(c) => Some((c.center.y - c.radius, c.center.y + c.radius)),
+        Shape::Mesh(m) => span(&mut m.vertices.iter().map(|v| v.pos.y)),
+        Shape::Vec(v) => v.iter().map(y_span).try_fold(None, |a: Option<(f32, f32)>, b| b.map(|(l, h)| Some(a.map_or((l, h), |(al, ah)| (al.min(l), ah.max(h)))))).flatten(),
+        _ => None,
+    }
 }
 
 impl Pen<'_> {
     fn at(&self, x: f32, r: f32) -> Pos2 {
+        let r = if r < 0.0 { r - self.drop } else { r };
         self.o + Vec2::new(x * self.s, -r * self.s)
+    }
+    fn add(&self, shape: Shape) {
+        self.sink.borrow_mut().push(shape);
+    }
+    fn extend(&self, shapes: Vec<Shape>) {
+        self.sink.borrow_mut().extend(shapes);
+    }
+    /// Paints everything drawn so far, then the section's mirror image below the axis, so the whole engine shows.
+    fn flush(&self) {
+        let shapes = std::mem::take(&mut *self.sink.borrow_mut());
+        let axis = self.o.y;
+        let top = axis - self.mirror_r * self.s;
+        let mut mirrored = Vec::new();
+        for sh in &shapes {
+            if let Some((lo, hi)) = y_span(sh) {
+                if lo >= top - 0.5 && hi <= axis + 0.5 {
+                    if let Some(m) = reflect(sh, axis) {
+                        mirrored.push(m);
+                    }
+                }
+            }
+        }
+        self.p.extend(shapes);
+        self.p.extend(mirrored);
+    }
+    fn text_shape(&self, pos: Pos2, al: Align2, t: &str, font: FontId, c: Color32) -> Shape {
+        self.p.fonts(|f| Shape::text(f, pos, al, t, font, c))
     }
     fn w(&self, w: f32) -> f32 {
         (w * self.s).max(0.7)
@@ -185,7 +256,7 @@ impl Pen<'_> {
         Rect::from_two_pos(self.at(x0, r0), self.at(x1, r1))
     }
     fn line(&self, pts: &[(f32, f32)], w: f32, c: Color32) {
-        self.p.add(Shape::line(pts.iter().map(|&(x, r)| self.at(x, r)).collect(), Stroke::new(self.w(w), c)));
+        self.add(Shape::line(pts.iter().map(|&(x, r)| self.at(x, r)).collect(), Stroke::new(self.w(w), c)));
     }
     /// A horizontal run that hops over the vertical lines at `over`.
     fn hop_line(&self, x0: f32, x1: f32, r: f32, over: &[f32], w: f32, c: Color32) {
@@ -211,7 +282,7 @@ impl Pen<'_> {
     }
     fn poly(&self, pts: &[(f32, f32)], fill: Color32, w: f32, c: Color32) {
         let st = if w > 0.0 { Stroke::new(self.w(w), c) } else { Stroke::NONE };
-        self.p.add(Shape::convex_polygon(pts.iter().map(|&(x, r)| self.at(x, r)).collect(), fill, st));
+        self.add(Shape::convex_polygon(pts.iter().map(|&(x, r)| self.at(x, r)).collect(), fill, st));
     }
     /// Region between two radius curves, coloured per column.
     fn fill(&self, top: &dyn Fn(f32) -> f32, bottom: &dyn Fn(f32) -> f32, x0: f32, x1: f32, colour: &dyn Fn(f32) -> Color32) {
@@ -228,7 +299,7 @@ impl Pen<'_> {
                 mesh.add_triangle(i - 1, i + 1, i);
             }
         }
-        self.p.add(Shape::mesh(mesh));
+        self.add(Shape::mesh(mesh));
     }
     /// Section hatching at 45 degrees between two radius curves.
     fn hatch(&self, top: &dyn Fn(f32) -> f32, bottom: &dyn Fn(f32) -> f32, x0: f32, x1: f32, pitch: f32) {
@@ -252,17 +323,17 @@ impl Pen<'_> {
     }
     fn circle(&self, x: f32, r: f32, rad: f32, fill: Color32, w: f32, c: Color32) {
         let st = if w > 0.0 { Stroke::new(self.w(w), c) } else { Stroke::NONE };
-        self.p.circle(self.at(x, r), rad * self.s, fill, st);
+        self.add(Shape::Circle(eframe::egui::epaint::CircleShape { center: self.at(x, r), radius: rad * self.s, fill, stroke: st }));
     }
     fn text(&self, x: f32, r: f32, t: &str, size: f32, c: Color32, al: Align2) {
-        self.p.text(self.at(x, r), al, t, FontId::monospace(self.px(size)), c);
+        self.add(self.text_shape(self.at(x, r), al, t, FontId::monospace(self.px(size)), c));
     }
     /// Text shrunk to fit `max_w` units, centred on (x, r).
     fn text_in(&self, x: f32, r: f32, t: &str, size: f32, max_w: f32, c: Color32) {
         let k = (max_w / self.text_w(t, size).max(1.0)).min(1.0);
         let px = self.px(size) * k;
         if px >= 6.0 {
-            self.p.text(self.at(x, r), Align2::CENTER_CENTER, t, FontId::monospace(px), c);
+            self.add(self.text_shape(self.at(x, r), Align2::CENTER_CENTER, t, FontId::monospace(px), c));
         }
     }
     fn tag(&self, rect: Rect, st: State, t: &str, size: f32) {
@@ -313,13 +384,14 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     let lit = l.running && !l.failed;
     let h = l.health;
 
-    let (top_r, bottom_r) = (488.0f32, -96.0f32);
-    let s = ((rect.width() - 20.0) / 1090.0).min((rect.height() - 16.0) / (top_r - bottom_r));
-    let o = Pos2::new(rect.left() + 10.0 + 62.0 * s, rect.top() + 8.0 + top_r * s);
-    let pen = Pen { p: painter, o, s };
-
     // Radial scheme: fan tip, hub and splitter from bypass ratio
     let r_tip: f32 = if fan { 300.0 } else if turboprop { 120.0 } else { 160.0 };
+    // The full section: the lower half mirrors the upper below the axis, with the annotation under it.
+    let drop = r_tip + 64.0;
+    let (top_r, bottom_r) = (488.0f32, -96.0f32 - drop);
+    let s = ((rect.width() - 20.0) / 1090.0).min((rect.height() - 16.0) / (top_r - bottom_r));
+    let o = Pos2::new(rect.left() + 10.0 + 62.0 * s, rect.top() + 8.0 + top_r * s);
+    let pen = Pen { p: painter, o, s, drop, mirror_r: drop, sink: Default::default() };
     let r_hub_fan = r_tip * 0.3;
     let k_bpr = 0.6 * p.bpr.max(0.0) as f32;
     let r_split = if bypass { ((r_tip * r_tip + k_bpr * (r_hub_fan + 20.0).powi(2)) / (1.0 + k_bpr)).sqrt() } else { r_tip };
@@ -840,14 +912,14 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     let oil_on = core_n_live(l) > 10.0;
     let oil_c = if oil_on { OIL } else { OIL.gamma_multiply(0.45) };
     for (ox, r0) in [(ix - 4.0, shaft_r(2) + 6.0), (x_end - 8.0, shaft_r(0) + 6.0)] {
-        pen.p.extend(Shape::dashed_line(&[pen.at(ox, r0), pen.at(ox, core_case(ox) + 6.0)], Stroke::new(pen.w(1.0), oil_c), 3.0 * s, 2.0 * s));
+        pen.extend(Shape::dashed_line(&[pen.at(ox, r0), pen.at(ox, core_case(ox) + 6.0)], Stroke::new(pen.w(1.0), oil_c), 3.0 * s, 2.0 * s));
         pen.circle(ox, core_case(ox) + 7.5, 1.4, oil_c, 0.0, Color32::TRANSPARENT);
     }
 
     // Fire detection loop around the hot section
     let loop_c = if l.fire == State::Fail { style::RED } else { Color32::from_rgb(150, 70, 80) };
     let loop_pts: Vec<Pos2> = (0..=40).map(|k| comb0 + 20.0 + (x_end - 12.0 - comb0 - 20.0) * k as f32 / 40.0).map(|x| pen.at(x, core_case(x) + 16.0)).collect();
-    pen.p.extend(Shape::dashed_line(&loop_pts, Stroke::new(pen.w(1.0), loop_c), 5.0 * s, 2.5 * s));
+    pen.extend(Shape::dashed_line(&loop_pts, Stroke::new(pen.w(1.0), loop_c), 5.0 * s, 2.5 * s));
 
     // Services: one corridor through the intermediate-case strut and the bifurcation carries the radial drive,
     // the merged bleed duct and the fuel supply; nothing else crosses the bypass
@@ -1035,7 +1107,7 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
         pen.line(&[(x0 + 2.0, r + 4.0), (x0 + 2.0, r), (x1 - 2.0, r), (x1 - 2.0, r + 4.0)], 0.8, LEADER);
         let tw = pen.text_w(name, 7.5) + 6.0;
         let mx = (x0 + x1) / 2.0;
-        painter.rect_filled(pen.rect(mx - tw / 2.0, r + 5.0, mx + tw / 2.0, r - 5.0), 2.0, style::PANEL);
+        pen.add(Shape::rect_filled(pen.rect(mx - tw / 2.0, r + 5.0, mx + tw / 2.0, r - 5.0), 2.0, style::PANEL));
         pen.text(mx, r, name, 7.5, c, Align2::CENTER_CENTER);
     }
 
@@ -1071,7 +1143,7 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     let mut lx = -50.0;
     for (c, name, dashed) in legend {
         if dashed {
-            pen.p.extend(Shape::dashed_line(&[pen.at(lx, -90.0), pen.at(lx + 16.0, -90.0)], Stroke::new(pen.w(1.4), c), 3.0 * s, 2.0 * s));
+            pen.extend(Shape::dashed_line(&[pen.at(lx, -90.0), pen.at(lx + 16.0, -90.0)], Stroke::new(pen.w(1.4), c), 3.0 * s, 2.0 * s));
         } else {
             pen.line(&[(lx, -90.0), (lx + 16.0, -90.0)], 1.8, c);
         }
@@ -1136,6 +1208,7 @@ pub fn draw(painter: &Painter, rect: Rect, title: &str, p: &Params, l: &Live) ->
     let whole = pen.rect(-50.0, top_r - 2.0, 150.0, top_r - 20.0);
     hits.push(Hit { rect: whole, path: path("failed"), label: "Whole engine: failure".into(), level: l.failed as u8 as f64, graded: false });
 
+    pen.flush();
     if let Some(sel) = &l.selected {
         for hh in hits.iter().filter(|hh| &hh.path == sel) {
             painter.rect_stroke(hh.rect.expand(2.0), 4.0, Stroke::new(1.6f32, style::SELECT));
