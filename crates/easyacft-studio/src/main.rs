@@ -48,6 +48,9 @@ pub struct App {
     pub plots: Vec<(String, Vec<[f64; 2]>)>,
     pinned: HashMap<String, (f32, f32)>,
     fold: bool,
+    full: bool,
+    toggle_full: bool,
+    saved_ppp: Option<f32>,
     dragging: Option<usize>,
     offset: Vec2,
     pub edits: HashMap<String, String>,
@@ -236,6 +239,9 @@ impl App {
             plots: Vec::new(),
             pinned: HashMap::new(),
             fold: false,
+            full: false,
+            toggle_full: false,
+            saved_ppp: None,
             dragging: None,
             offset: Vec2::ZERO,
             edits: HashMap::new(),
@@ -459,7 +465,8 @@ impl App {
             return;
         };
         let domain = DOMAINS[self.domain];
-        let d: Diagram = diagram::build(&a.checked, domain, &self.pinned, self.fold);
+        let avail = ui.available_size();
+        let d: Diagram = diagram::build(&a.checked, domain, &self.pinned, self.fold, (avail.x / avail.y.max(1.0)).clamp(0.6, 3.0));
         let (resp, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
         if !self.zoomed && self.fit_size != resp.rect.size() {
             self.fit = true;
@@ -570,7 +577,8 @@ impl App {
                 hit = row.feeds.first().copied().or_else(|| row.users.first().copied());
             }
         }
-        let mut crisp_rects: Vec<Rect> = Vec::new();
+        // Names too big for their box are placed afterwards, map-style: the most important first, only where they hit nothing.
+        let mut pending: Vec<(u32, Pos2, String, Color32, Rect)> = Vec::new();
         for it in &d.items {
             let p = at(it.pos);
             let part = &a.checked.parts[it.part];
@@ -578,19 +586,7 @@ impl App {
             let st = state_of(live, failed, &text);
             let sel = self.selected == Some(it.part);
             let name = style::label(&part.id);
-            // A structural hub keeps a crisp label at any zoom; its box grows around it.
-            let mut crisp: Option<std::sync::Arc<egui::Galley>> = None;
-            let mut rect = box_of(it);
-            if let Some(g) = &crisp {
-                let grown = Rect::from_center_size(rect.center(), Vec2::new(rect.width().max(g.size().x + 12.0), rect.height().max(g.size().y + 8.0)));
-                let own = rect.expand(2.0);
-                if crisp_rects.iter().any(|r| r.expand(2.0).intersects(grown)) || occupied.iter().any(|o| *o != own && o.intersects(grown)) {
-                    crisp = None;
-                } else {
-                    crisp_rects.push(grown);
-                    rect = grown;
-                }
-            }
+            let rect = box_of(it);
             style::squircle(&painter, rect, 9.0 * z, st);
             if sel {
                 style::squircle_with(&painter, rect.expand(3.0 * z), 11.0 * z, Color32::TRANSPARENT, Stroke::new(2.0f32, style::SELECT));
@@ -605,8 +601,16 @@ impl App {
                 sub.push(if b == 0 { format!("{u} USERS") } else { format!("{b} CB  {u} USERS") });
             }
             let sub_g = if sub.is_empty() { None } else { fit(&sub.join("  "), 9.0 * z, inner, faint) };
-            let name_g = crisp.clone().or_else(|| fit(&name, size, inner, style::text_of(st)));
-            let sub_g = if crisp.is_some() { None } else { sub_g };
+            let name_g = fit(&name, size, inner, style::text_of(st));
+            if name_g.is_none() {
+                let rank = match it.role {
+                    Role::Hub if d.major.contains(&it.part) => 4,
+                    Role::Source => 3,
+                    Role::Hub => 2,
+                    _ => 1,
+                };
+                pending.push((rank * 100_000 + rect.width() as u32, p, name.clone(), style::text_of(st), rect));
+            }
             match (name_g, sub_g) {
                 (Some(g), Some(sg)) => {
                     let gap = 2.0 * z;
@@ -621,6 +625,19 @@ impl App {
             if resp.hover_pos().is_some_and(|h| rect.expand(4.0).contains(h)) {
                 hit = Some(it.part);
             }
+        }
+        pending.sort_by(|a, b| b.0.cmp(&a.0));
+        let mut placed: Vec<Rect> = Vec::new();
+        for (_, at_p, name, colour, own) in pending {
+            let g = painter.layout_no_wrap(name, FontId::monospace(LABEL_MIN), colour);
+            let r = Rect::from_center_size(at_p, g.size() + Vec2::new(6.0, 2.0));
+            let own = own.expand(2.0);
+            if placed.iter().any(|q| q.intersects(r)) || occupied.iter().any(|o| *o != own && o.intersects(r)) || !resp.rect.contains_rect(r) {
+                continue;
+            }
+            painter.rect_filled(r, 3.0, style::PANEL);
+            painter.galley(r.center() - g.size() / 2.0, g, colour);
+            placed.push(r);
         }
         for (c, rad, vertical, t, st) in edge_labels {
             let colour = if st == State::Live || st == State::Off { faint } else { style::colour_of(st) };
@@ -1399,6 +1416,20 @@ impl eframe::App for App {
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
             self.help = !self.help;
         }
+        if ctx.input(|i| i.key_pressed(egui::Key::F11)) || std::mem::take(&mut self.toggle_full) {
+            self.full = !self.full;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.full));
+            // Full screen draws at one screen pixel per unit, so a 4K monitor gives the diagram all of its pixels.
+            if self.full {
+                self.saved_ppp = Some(ctx.pixels_per_point());
+                ctx.set_pixels_per_point(1.0);
+            } else if let Some(p) = self.saved_ppp.take() {
+                ctx.set_pixels_per_point(p);
+            }
+            self.fit = true;
+            self.zoomed = false;
+        }
+        let bare = self.full && self.tab == Tab::Diagram;
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Aircraft folder");
@@ -1503,6 +1534,9 @@ impl eframe::App for App {
                         self.fit = true;
                         self.zoomed = false;
                     }
+                    if ui.selectable_label(self.full, "Full screen").on_hover_text("F11: the diagram alone, one screen pixel per unit").clicked() {
+                        self.toggle_full = true;
+                    }
                     let mut all = !self.fold;
                     if ui.checkbox(&mut all, "Show every breaker").on_hover_text("Off: each bus lists its breakers and users when you click it").changed() {
                         self.fold = !all;
@@ -1527,17 +1561,19 @@ impl eframe::App for App {
                 }
             });
         });
-        if !self.report.is_empty() {
+        if !self.report.is_empty() && !bare {
             egui::TopBottomPanel::bottom("report").resizable(true).show(ctx, |ui| {
                 egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
                     ui.monospace(&self.report);
                 });
             });
         }
-        egui::SidePanel::left("left").default_width(220.0).show(ctx, |ui| self.left(ui));
-        egui::SidePanel::right("right").default_width(360.0).max_width(460.0).show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
-        });
+        if !bare {
+            egui::SidePanel::left("left").default_width(220.0).show(ctx, |ui| self.left(ui));
+            egui::SidePanel::right("right").default_width(360.0).max_width(460.0).show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| self.inspector(ui));
+            });
+        }
         egui::CentralPanel::default().show(ctx, |ui| match self.tab {
             Tab::Diagram => self.draw_diagram(ui),
             Tab::Engine => {
@@ -1632,6 +1668,9 @@ fn export(args: &[String]) -> bool {
     }
 }
 
+/// Smallest a name is drawn when its box is too small to hold it.
+const LABEL_MIN: f32 = 8.0;
+
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "--svg") {
@@ -1650,7 +1689,9 @@ fn main() -> eframe::Result<()> {
     let fails = pairs("--fail");
     let pick = flag("--pick");
     let zoom: Option<f32> = flag("--zoom").and_then(|s| s.parse().ok());
-    let mut viewport = egui::ViewportBuilder::default().with_inner_size([1400.0, 860.0]).with_title("EasyAcft Studio");
+    let size: [f32; 2] = flag("--size").and_then(|s| s.split_once('x').and_then(|(w, h)| Some([w.parse().ok()?, h.parse().ok()?]))).unwrap_or([1400.0, 860.0]);
+    let bare = args.iter().any(|a| a == "--bare");
+    let mut viewport = egui::ViewportBuilder::default().with_inner_size(size).with_title("EasyAcft Studio");
     if shot.is_some() {
         viewport = viewport.with_position([-20000.0, -20000.0]).with_taskbar(false).with_decorations(false);
     }
@@ -1662,6 +1703,10 @@ fn main() -> eframe::Result<()> {
             cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
             cc.egui_ctx.set_visuals_of(egui::Theme::Dark, visuals());
             let mut app = App::new(dir);
+            if bare {
+                app.full = true;
+                cc.egui_ctx.set_pixels_per_point(1.0);
+            }
             for (n, v) in &sets {
                 app.set(n, *v);
             }

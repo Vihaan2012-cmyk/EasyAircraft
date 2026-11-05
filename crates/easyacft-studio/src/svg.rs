@@ -10,7 +10,7 @@ fn esc(s: &str) -> String {
 }
 
 pub fn render(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, get: impl Fn(&str) -> Option<f64>) -> String {
-    let d = diagram::build(c, domain, pinned, true);
+    let d = diagram::build(c, domain, pinned, true, 1.2);
     let (ink, faint) = ("#111", "#999");
     let (mut w, mut h) = (400.0f32, 200.0f32);
     for it in &d.items {

@@ -151,7 +151,7 @@ pub fn edge_in(domain: &str, p: &CheckedPart) -> Option<(usize, usize)> {
 }
 
 /// `fold` folds feeder buses and long user lists into their parent; off, every breaker and user is drawn.
-pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fold: bool) -> Diagram {
+pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fold: bool, aspect: f32) -> Diagram {
     let mut d = Diagram::default();
     let parts: Vec<usize> = (0..c.parts.len()).filter(|&i| c.parts[i].domain == domain || (c.parts[i].domain == "custom" && easyacft_parts::custom::ports_of(c.parts[i].kind).iter().any(|x| x.domain == domain))).collect();
     let mut hubs: Vec<usize> = parts.iter().copied().filter(|&i| role_in(domain, &c.parts[i]).is_some_and(|r| r.0 == Role::Hub)).collect();
@@ -345,9 +345,9 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     }
     let span = |row: &[usize]| row.iter().map(|&n| nodes[n].w + if nodes[n].hub.is_some() { gap } else { 14.0 }).sum::<f32>();
     let widest = rows.iter().map(|r| span(r)).fold(0.0, f32::max);
-    // Wrap rows at the width that makes the whole diagram about as wide as the Studio panel, 1.2 times its height.
+    // Wrap rows at the width that gives the whole diagram the panel's own shape.
     let total: f32 = rows.iter().map(|r| span(r)).sum();
-    let (b, k) = (1.2 * dy * levels as f32, 1.2 * dy * total);
+    let (b, k) = (aspect * dy * levels as f32, aspect * dy * total);
     let page = (b + (b * b + 4.0 * k).sqrt()) / 2.0;
     let max_w = widest.min(page.max(1500.0));
     let mut node_y = vec![0.0f32; nodes.len()];
@@ -568,7 +568,7 @@ mod tests {
     fn twin_jet_hubs_do_not_overlap() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/twin-jet");
         let (a, _) = easyacft_parts::Aircraft::load(&dir).map_err(|r| r.render()).unwrap();
-        let d = build(&a.checked, "electrical", &HashMap::new(), true);
+        let d = build(&a.checked, "electrical", &HashMap::new(), true, 1.2);
         let hubs: Vec<&Item> = d.items.iter().filter(|i| i.role == Role::Hub).collect();
         assert!(hubs.len() >= 10);
         for (k, x) in hubs.iter().enumerate() {
