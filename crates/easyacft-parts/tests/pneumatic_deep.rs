@@ -115,7 +115,7 @@ fn a_duct_leak_is_detected_after_its_loop_delay() {
 const SOURCES: &str = r#"
 [[input.number]]
 id = "hp"
-initial = 120
+initial = 150
 
 [[pneumatic.duct]]
 id = "x"
@@ -158,4 +158,77 @@ fn check_valves_and_overpressure_shutoff() {
     a.set("hp.value", 60.0);
     run(&mut a, 10.0);
     assert_eq!(a.get("sov.open"), Some(1.0), "reopens once downstream falls 10 % below");
+}
+
+const BLEED2: &str = r#"
+[[input.number]]
+id = "hp"
+initial = 60
+
+[[input.number]]
+id = "src_t"
+initial = 600
+
+[[cockpit.switch]]
+id = "start"
+
+[[pneumatic.duct]]
+id = "port"
+burst_pressure = "200 psi"
+
+[[pneumatic.duct]]
+id = "manifold"
+
+[[pneumatic.source]]
+id = "apu"
+duct = "port"
+pressure = "hp.value * 1 psi"
+temperature = "src_t.value * 1 K"
+flow = "2 kg/s"
+
+[[pneumatic.valve]]
+id = "sov"
+between = ["port", "manifold"]
+area = 0.004
+overtemperature = "560 K"
+
+[[pneumatic.consumer]]
+id = "ats"
+duct = "manifold"
+flow = "1.2 kg/s"
+on_when = "start.on"
+turbine = true
+venturi_area = 0.0012
+"#;
+
+#[test]
+fn an_air_turbine_starter_makes_power_and_its_venturi_chokes() {
+    let mut a = aircraft(BLEED2);
+    run(&mut a, 2.0);
+    a.set("start.on", 1.0);
+    run(&mut a, 3.0);
+    let (q, w) = (get(&a, "ats.flow"), get(&a, "ats.shaft_power"));
+    assert!(a.get("ats.choked") == Some(1.0) && q < 1.2, "the venturi holds it to {q:.2} kg/s");
+    assert!(w > 50_000.0 && w < 400_000.0, "{:.0} kW at the shaft", w / 1e3);
+}
+
+#[test]
+fn a_hot_supply_trips_the_overtemperature_shutoff() {
+    let mut a = aircraft(BLEED2);
+    a.set("start.on", 1.0);
+    run(&mut a, 3.0);
+    assert_eq!(a.get("sov.open"), Some(1.0));
+    a.set("src_t.value", 700.0);
+    run(&mut a, 20.0);
+    assert_eq!((a.get("sov.open"), a.get("sov.shut_reason")), (Some(0.0), Some(2.0)), "{:.0} K", get(&a, "sov.outlet_temperature"));
+}
+
+#[test]
+fn overpressure_bursts_a_duct_and_the_loop_finds_the_jet() {
+    let mut a = aircraft(BLEED2);
+    run(&mut a, 2.0);
+    a.set("hp.value", 230.0);
+    run(&mut a, 6.0);
+    assert_eq!(a.get("port.burst"), Some(1.0));
+    assert!(get(&a, "port.leak_flow") > 0.5 && a.get("port.leak_detected") == Some(1.0), "{:.2} kg/s, loop {:.0} K", get(&a, "port.leak_flow"), get(&a, "port.loop_temperature"));
 }
