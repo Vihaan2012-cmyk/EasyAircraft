@@ -16,6 +16,8 @@ pub struct Item {
     pub role: Role,
     pub pos: (f32, f32),
     pub size: (f32, f32),
+    /// The hub an attached part hangs from.
+    pub under: Option<usize>,
 }
 
 impl Item {
@@ -90,6 +92,8 @@ pub fn role(p: &CheckedPart) -> Option<(Role, &'static str)> {
         ("fuel", "feed") => (Role::Sink, "line"),
         ("pneumatic", "source") => (Role::Source, "duct"),
         ("pneumatic", "consumer") => (Role::Sink, "duct"),
+        ("computer", "air_data" | "inertial") if p.part("computer").is_some() => (Role::Sink, "computer"),
+        ("computer", "unit" | "air_data" | "inertial") => (Role::Hub, ""),
         _ => return None,
     })
 }
@@ -102,6 +106,7 @@ pub fn edge_ends(p: &CheckedPart) -> Option<(usize, usize)> {
         }
         ("electrical", "tru" | "inverter") => Some((p.part("input")?, p.part("output")?)),
         ("fuel", "pump") => Some((p.part("tank")?, p.part("outlet")?)),
+        ("data", "link") => Some((p.part("from")?, *p.parts("to").first()?)),
         _ => None,
     }
 }
@@ -150,10 +155,77 @@ pub fn edge_in(domain: &str, p: &CheckedPart) -> Option<(usize, usize)> {
     Some((*e.first()?, *e.get(1)?))
 }
 
+/// Computer levels: the network core (the 3-core of the links, or else the computers that only send) split by
+/// network, first network on top, the last below and every other linked computer between them by its distance
+/// from the core; computers with no links share the bottom level 0.
+fn network_levels(hubs: &[usize], ends: &[(usize, usize, usize)]) -> HashMap<usize, usize> {
+    let mut core: HashSet<usize> = hubs.iter().copied().collect();
+    loop {
+        let weak: Vec<usize> = core.iter().copied().filter(|&h| ends.iter().filter(|(_, a, b)| (*a == h && core.contains(b)) || (*b == h && core.contains(a))).count() < 3).collect();
+        if weak.is_empty() {
+            break;
+        }
+        for h in weak {
+            core.remove(&h);
+        }
+    }
+    let meshed = !core.is_empty();
+    if !meshed {
+        core = hubs.iter().copied().filter(|&h| ends.iter().any(|e| e.1 == h) && !ends.iter().any(|e| e.2 == h)).collect();
+    }
+    let mut comp: HashMap<usize, usize> = HashMap::new();
+    let mut n = 0;
+    for &h in hubs.iter().filter(|h| core.contains(h)) {
+        if comp.contains_key(&h) {
+            continue;
+        }
+        let mut q = VecDeque::from([h]);
+        comp.insert(h, n);
+        while let Some(x) = q.pop_front() {
+            for &(_, a, b) in ends {
+                for (p, y) in [(a, b), (b, a)] {
+                    if meshed && p == x && core.contains(&y) && !comp.contains_key(&y) {
+                        comp.insert(y, n);
+                        q.push_back(y);
+                    }
+                }
+            }
+        }
+        if meshed {
+            n += 1;
+        }
+    }
+    let mut dist: HashMap<usize, usize> = core.iter().map(|&h| (h, 0)).collect();
+    let mut q: VecDeque<usize> = hubs.iter().copied().filter(|h| core.contains(h)).collect();
+    while let Some(x) = q.pop_front() {
+        for &(_, a, b) in ends {
+            for (p, y) in [(a, b), (b, a)] {
+                if p == x && !dist.contains_key(&y) {
+                    dist.insert(y, dist[&x] + 1);
+                    q.push_back(y);
+                }
+            }
+        }
+    }
+    let deepest = dist.values().copied().max().unwrap_or(0);
+    hubs.iter()
+        .map(|&h| {
+            let l = match (comp.get(&h), dist.get(&h)) {
+                (Some(0), _) if n > 1 => deepest + 2,
+                (Some(_), _) if n > 1 => 1,
+                (_, Some(&d)) if n > 1 => d + 1,
+                (_, Some(&d)) => deepest - d + 1,
+                (_, None) => 0,
+            };
+            (h, l)
+        })
+        .collect()
+}
+
 /// `fold` folds feeder buses and long user lists into their parent; off, every breaker and user is drawn.
 pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fold: bool, aspect: f32) -> Diagram {
     let mut d = Diagram::default();
-    let parts: Vec<usize> = (0..c.parts.len()).filter(|&i| c.parts[i].domain == domain || (c.parts[i].domain == "custom" && easyacft_parts::custom::ports_of(c.parts[i].kind).iter().any(|x| x.domain == domain))).collect();
+    let parts: Vec<usize> = (0..c.parts.len()).filter(|&i| c.parts[i].domain == domain || (domain == "computer" && c.parts[i].domain == "data") || (c.parts[i].domain == "custom" && easyacft_parts::custom::ports_of(c.parts[i].kind).iter().any(|x| x.domain == domain))).collect();
     let mut hubs: Vec<usize> = parts.iter().copied().filter(|&i| role_in(domain, &c.parts[i]).is_some_and(|r| r.0 == Role::Hub)).collect();
     let mut ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_in(domain, &c.parts[i]).map(|(a, b)| (i, a, b))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
     // A bus fed by one breaker and feeding only users is a distribution feeder: fold it into its parent.
@@ -210,6 +282,24 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         }
     }
     let mut attached: HashMap<(usize, bool), Vec<usize>> = HashMap::new();
+    // A computer linked to only one other, such as a function a CPIOM hosts, hangs off it.
+    if domain == "computer" {
+        let degree = |h: usize, ends: &[(usize, usize, usize)]| ends.iter().filter(|(_, a, b)| *a == h || *b == h).count();
+        let leaves: Vec<(usize, usize)> = hubs
+            .iter()
+            .filter_map(|&h| {
+                let mut e = ends.iter().filter(|(_, a, b)| *a == h || *b == h);
+                let (_, a, b) = *e.next()?;
+                let other = if a == h { b } else { a };
+                (e.next().is_none() && degree(other, &ends) > 1).then_some((h, other))
+            })
+            .collect();
+        for &(h, parent) in &leaves {
+            attached.entry((parent, false)).or_default().push(h);
+            hubs.retain(|&q| q != h);
+            ends.retain(|(_, a, b)| *a != h && *b != h);
+        }
+    }
     for &i in &parts {
         let Some((r, field)) = role_in(domain, &c.parts[i]) else { continue };
         if r == Role::Hub {
@@ -226,10 +316,10 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         }
     }
 
-    let mut level: HashMap<usize, usize> = HashMap::new();
+    let mut level: HashMap<usize, usize> = if domain == "computer" { network_levels(&hubs, &ends) } else { HashMap::new() };
     let mut q = VecDeque::new();
     for &h in &hubs {
-        if attached.contains_key(&(h, true)) || c.parts[h].kind == "tank" {
+        if domain != "computer" && (attached.contains_key(&(h, true)) || c.parts[h].kind == "tank") {
             level.insert(h, 0);
             q.push_back(h);
         }
@@ -287,8 +377,10 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     };
     let side_w = |h: usize, below: bool| attached.get(&(h, below)).map_or(0.0, |l| l.iter().map(|&i| child_w(i) + 12.0).sum::<f32>());
     let degree = |h: usize| ends.iter().filter(|(_, a, b)| *a == h || *b == h).count() as f32;
-    let width = |h: usize| (text_w(&c.parts[h].id) + 76.0).max(side_w(h, true).max(side_w(h, false)) + 24.0 + degree(h) * 26.0).max(110.0);
-    let (gap, dy, hub_h) = (44.0f32, 190.0f32, 40.0f32);
+    let net = domain == "computer";
+    // Computers carry no power or flow readings, so their boxes and gaps only need room for the name.
+    let width = |h: usize| if net { (text_w(&c.parts[h].id) * 1.15 + 24.0).max(side_w(h, true).max(side_w(h, false)) + 12.0).max(70.0) } else { (text_w(&c.parts[h].id) + 76.0).max(side_w(h, true).max(side_w(h, false)) + 24.0 + degree(h) * 26.0).max(110.0) };
+    let (gap, dy, hub_h) = if net { (20.0f32, 160.0f32, 34.0f32) } else { (44.0f32, 190.0f32, 40.0f32) };
 
     let mut nodes: Vec<Node> = hubs.iter().map(|&h| Node { hub: Some(h), w: width(h) }).collect();
     let node_of: HashMap<usize, usize> = hubs.iter().enumerate().map(|(n, &h)| (h, n)).collect();
@@ -349,7 +441,8 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     let total: f32 = rows.iter().map(|r| span(r)).sum();
     let (b, k) = (aspect * dy * levels as f32, aspect * dy * total);
     let page = (b + (b * b + 4.0 * k).sqrt()) / 2.0;
-    let max_w = widest.min(page.max(1500.0));
+    let max_w = if domain == "computer" { rows.iter().skip(1).map(|r| span(r)).fold(1500.0, f32::max) } else { widest.min(page.max(1500.0)) };
+    let mut all_lines: Vec<Vec<usize>> = Vec::new();
     let mut node_y = vec![0.0f32; nodes.len()];
     let mut node_line = vec![0usize; nodes.len()];
     let mut y = 110.0f32;
@@ -360,7 +453,8 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         let mut acc = 0.0f32;
         for &n in &rows[l] {
             let w = nodes[n].w + if nodes[n].hub.is_some() { gap } else { 14.0 };
-            if acc + w > max_w && lines.last().is_some_and(|l| !l.is_empty()) {
+            // A computer network's levels stay whole; only the unlinked computers wrap.
+            if acc + w > max_w && lines.last().is_some_and(|l| !l.is_empty()) && (domain != "computer" || l == 0) {
                 lines.push(Vec::new());
                 acc = 0.0;
             }
@@ -369,12 +463,45 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         }
         for line in lines {
             place(&line, &mut x);
+            // Room for the arcs between neighbours on one line: above it, or below the bottom line of a network.
+            let arcs = same.iter().filter(|(a, b)| line.contains(a) || line.contains(b)).count() as f32 * 12.0;
+            let down = line.iter().any(|n| nodes[*n].hub.is_some_and(|h| domain == "computer" && level[&h] == 1));
+            if !down {
+                y += arcs;
+            }
             for &n in &line {
                 node_y[n] = y;
                 node_line[n] = line_no;
             }
-            y += dy;
+            y += dy + if down { arcs } else { 0.0 };
             line_no += 1;
+            all_lines.push(line);
+        }
+    }
+    // A network's narrower lines sit over what they connect to, in their order and without overlapping.
+    if domain == "computer" {
+        let full = all_lines.iter().map(|l| span(l)).fold(0.0, f32::max);
+        for _ in 0..4 {
+            for line in all_lines.iter().filter(|l| span(l) < full - 1.0) {
+                let want: Vec<f32> = line
+                    .iter()
+                    .map(|&n| {
+                        let xs: Vec<f32> = adj.iter().filter_map(|&(a, b)| if a == n { Some(x[b]) } else if b == n { Some(x[a]) } else { None }).collect();
+                        if xs.is_empty() { x[n] } else { xs.iter().sum::<f32>() / xs.len() as f32 }
+                    })
+                    .collect();
+                let sp = |i: usize| (nodes[line[i - 1]].w + nodes[line[i]].w) / 2.0 + if nodes[line[i - 1]].hub.is_some() { gap } else { 14.0 };
+                for (i, &n) in line.iter().enumerate() {
+                    x[n] = if i == 0 { want[0].max(40.0 + nodes[n].w / 2.0) } else { want[i].max(x[line[i - 1]] + sp(i)) };
+                }
+                for i in (1..line.len()).rev() {
+                    let (a, b) = (line[i - 1], line[i]);
+                    x[a] = x[a].min(x[b] - sp(i)).max(want[i - 1].min(x[a]));
+                }
+                for i in 1..line.len() {
+                    x[line[i]] = x[line[i]].max(x[line[i - 1]] + sp(i));
+                }
+            }
         }
     }
     for row in &rows {
@@ -383,7 +510,7 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
                 let pos = pinned.get(&c.parts[h].id).copied().unwrap_or((x[n], node_y[n]));
                 x[n] = pos.0;
                 node_y[n] = pos.1;
-                d.items.push(Item { part: h, role: Role::Hub, pos, size: (nodes[n].w, hub_h) });
+                d.items.push(Item { part: h, role: Role::Hub, pos, size: (nodes[n].w, hub_h), under: None });
             }
         }
     }
@@ -404,6 +531,7 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         }
         v
     };
+    let arcs_below = |h: &usize| domain == "computer" && level.get(h) == Some(&1);
     let mut arcs: HashMap<i32, usize> = HashMap::new();
     let mut lanes: HashMap<i32, usize> = HashMap::new();
     let mut pairs: HashMap<(usize, usize), usize> = HashMap::new();
@@ -427,13 +555,15 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
                 vec![(l.pos.0 + l.size.0 / 2.0, l.pos.1), (r.pos.0 - r.size.0 / 2.0, r.pos.1)]
             } else {
                 let n = arcs.entry(lv).or_default();
-                let y = l.top().min(r.top()) - 92.0 - *n as f32 * 12.0;
+                let down = arcs_below(&l.part);
+                let y = if down { l.bottom().max(r.bottom()) + 40.0 + *n as f32 * 12.0 } else { l.top().min(r.top()) - 92.0 - *n as f32 * 12.0 };
                 *n += 1;
-                let xa = free(l.part, true, l.pos.0 + l.size.0 / 2.0, &used);
-                let xb = free(r.part, true, r.pos.0 - r.size.0 / 2.0, &used);
-                used.entry((l.part, true)).or_default().push(xa);
-                used.entry((r.part, true)).or_default().push(xb);
-                vec![(xa, l.top()), (xa, y), (xb, y), (xb, r.top())]
+                let xa = free(l.part, !down, l.pos.0 + l.size.0 / 2.0, &used);
+                let xb = free(r.part, !down, r.pos.0 - r.size.0 / 2.0, &used);
+                used.entry((l.part, !down)).or_default().push(xa);
+                used.entry((r.part, !down)).or_default().push(xb);
+                let (ya, yb) = if down { (l.bottom(), r.bottom()) } else { (l.top(), r.top()) };
+                vec![(xa, ya), (xa, y), (xb, y), (xb, yb)]
             }
         } else {
             let (lo, up) = (item(chain[0]), item(*chain.last().unwrap()));
@@ -510,7 +640,7 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
             let attach = if below { hi.bottom() } else { hi.top() };
             let from = if below { pos.1 - size.1 / 2.0 } else { pos.1 + size.1 / 2.0 };
             d.links.push((i, [(pos.0, from), (pos.0, attach)]));
-            d.items.push(Item { part: i, role: r, pos, size });
+            d.items.push(Item { part: i, role: r, pos, size, under: Some(h) });
             cx += w + 12.0;
         }
     }

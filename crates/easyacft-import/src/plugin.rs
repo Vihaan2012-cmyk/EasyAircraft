@@ -676,7 +676,7 @@ pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: &[Option<String>]) -
     c += "# Every constant-power avionics consumer in the catalogue, as a computer on its own breaker bus.\n\n";
     let mut n = 0;
     for (lid, lb, kind, ata, name) in units {
-        if *kind != "constant_power" || !AVIONICS_ATA.contains(ata) || ["pump", "valve", "heater", "fan", "light"].iter().any(|w| lid.contains(w)) {
+        if !lid.starts_with("cpiom_") && (*kind != "constant_power" || !AVIONICS_ATA.contains(ata)) || ["pump", "valve", "heater", "fan", "light"].iter().any(|w| lid.contains(w)) {
             continue;
         }
         let flight = ["prim", "sec", "fcdc"].iter().any(|k| lid.starts_with(k));

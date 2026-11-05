@@ -525,6 +525,15 @@ impl App {
             let st = state_of(live, failed, &text);
             let pts: Vec<Pos2> = e.path.iter().map(|&p| at(p)).collect();
             wire(&pts, if live { State::Live } else if failed { State::Fail } else { State::Off });
+            // A data link is only its wire: hover anywhere along it.
+            if a.checked.parts[e.part].domain == "data" {
+                if let Some(h) = resp.hover_pos() {
+                    if pts.windows(2).any(|s| egui::emath::Rect::from_two_pos(s[0], s[1]).expand(4.0).contains(h)) {
+                        hit = Some(e.part);
+                    }
+                }
+                continue;
+            }
             let c = at(e.mark);
             let rad = 9.0 * z;
             let sel = self.selected == Some(e.part);
@@ -607,6 +616,12 @@ impl App {
             let own_bus = part.part("bus").map(|b| style::label(&a.checked.parts[b].id).trim_end_matches(" BUS").to_owned());
             if it.role == Role::Sink && own_bus.as_deref() == Some(short.as_str()) && !text.is_empty() {
                 short = text.clone();
+            }
+            // A function hosted in the box it hangs from drops the host's name, CPIOM B1 AGS showing AGS.
+            if let Some(host) = it.under.map(|h| style::label(&a.checked.parts[h].id)) {
+                if let Some(rest) = short.strip_prefix(&format!("{host} ")) {
+                    short = rest.to_owned();
+                }
             }
             let mut name_g = fit(&name, size, inner, colour).or_else(|| fit(&short, size.max(LABEL_MIN), inner, colour));
             // Still too long for its box: as much of it as fits, cut short.
@@ -1586,7 +1601,7 @@ impl eframe::App for App {
                 }
                 if self.tab == Tab::Diagram {
                     ui.separator();
-                    for (i, d) in DOMAINS.iter().enumerate().take(4) {
+                    for (i, d) in DOMAINS.iter().enumerate().filter(|(_, d)| !matches!(**d, "engine" | "cockpit")) {
                         if ui.selectable_value(&mut self.domain, i, *d).clicked() {
                             self.fit = true;
                         }

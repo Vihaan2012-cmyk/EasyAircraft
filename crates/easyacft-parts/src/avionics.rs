@@ -58,6 +58,7 @@ pub static SPECS: &[PartSpec] = &[
         help: "A value one computer sends, as an ARINC 429 word: rate, latency, range and resolution, sign/status matrix; stale or invalid when the sender stops.",
         fields: &[
             req("from", Kind::Ref(COMPUTER), "sending computer"),
+            opt("to", Kind::Refs(COMPUTER), "", "receiving computers, for the network picture; reading the link is what uses it"),
             req("value", Kind::Expr(N), "what it sends, as a plain number"),
             opt("rate", Kind::Quantity(Dim::FREQUENCY), "20 Hz", "update rate"),
             opt("latency", Kind::Quantity(Dim::TIME), "0 s", "transport delay"),

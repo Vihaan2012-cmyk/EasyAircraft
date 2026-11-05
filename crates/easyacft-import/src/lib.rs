@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
+mod afdx;
 mod catalogue;
 mod code;
 mod deep_parts;
@@ -471,6 +472,12 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
                 _ => "systems/lights.toml",
             });
             files.push((path, text));
+        }
+        let at = Path::new(&d.root);
+        let tree = [at.join("fbw").join("xplane"), at.join("..").join("fbw-aircraft")].into_iter().find(|t| t.join("fbw-a380x").is_dir());
+        if let Some(net) = tree.and_then(|t| afdx::network(&t, &units, &head)) {
+            files.push(("systems/network.toml".to_owned(), net));
+            inc.push("systems/network.toml");
         }
     }
     let mut root = format!("{head}[aircraft]\nname = \"{}\"\neasyacft = \"1.0\"\ninclude = [{}]\n", s.name.replace('"', "'"), inc.iter().map(|i| format!("\"{i}\"")).collect::<Vec<_>>().join(", "));
