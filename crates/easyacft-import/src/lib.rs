@@ -8,6 +8,7 @@ mod afdx;
 mod catalogue;
 mod code;
 mod deep_parts;
+mod fbw_links;
 mod msfs_fuel;
 pub mod plugin;
 
@@ -475,9 +476,14 @@ pub fn files(s: &Spec) -> (Vec<(String, String)>, String) {
         }
         let at = Path::new(&d.root);
         let tree = [at.join("fbw").join("xplane"), at.join("..").join("fbw-aircraft")].into_iter().find(|t| t.join("fbw-a380x").is_dir());
-        if let Some(net) = tree.and_then(|t| afdx::network(&t, &units, &head)) {
-            files.push(("systems/network.toml".to_owned(), net));
-            inc.push("systems/network.toml");
+        if let Some(t) = tree {
+            let mut net = afdx::network(&t, &units, &head).unwrap_or_else(|| head.clone());
+            let has: std::collections::HashSet<String> = files.iter().flat_map(|(_, text)| text.lines().filter_map(|l| l.strip_prefix("id = \"").and_then(|r| r.strip_suffix('"')).map(str::to_owned)).collect::<Vec<_>>()).collect();
+            net += &fbw_links::links(&t, &has);
+            if net.len() > head.len() {
+                files.push(("systems/network.toml".to_owned(), net));
+                inc.push("systems/network.toml");
+            }
         }
     }
     let mut root = format!("{head}[aircraft]\nname = \"{}\"\neasyacft = \"1.0\"\ninclude = [{}]\n", s.name.replace('"', "'"), inc.iter().map(|i| format!("\"{i}\"")).collect::<Vec<_>>().join(", "));

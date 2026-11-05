@@ -514,6 +514,10 @@ impl App {
         let wire = |pts: &[Pos2], st: State| {
             painter.add(egui::Shape::line(pts.to_vec(), Stroke::new(if st == State::Off { 1.4 * z.max(0.6) } else { 2.6 * z.max(0.6) }, style::colour_of(st))));
         };
+        for g in &d.groups {
+            let r = Rect::from_min_size(at((g.0, g.1)), Vec2::new(g.2, g.3) * z);
+            painter.rect_stroke(r, 10.0 * z, Stroke::new(1.0f32, style::GREY_TEXT.gamma_multiply(0.5)));
+        }
         for (part, l) in &d.links {
             let (live, failed, text) = self.part_state(&a.checked.parts[*part]);
             wire(&[at(l[0]), at(l[1])], state_of(live, failed, &text));

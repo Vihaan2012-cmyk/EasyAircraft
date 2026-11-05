@@ -68,6 +68,8 @@ pub struct Diagram {
     pub links: Vec<(usize, [(f32, f32); 2])>,
     /// Per drawn hub: breaker-fed sub-buses and loads folded into it.
     pub folded: HashMap<usize, (usize, usize)>,
+    /// Frames around a family of computers drawn as one box: left, top, width, height.
+    pub groups: Vec<(f32, f32, f32, f32)>,
     /// Hubs that carry the structure (not a load's own feeder bus or a pass-through fuel line): labelled at any zoom.
     pub major: HashSet<usize>,
 }
@@ -155,13 +157,23 @@ pub fn edge_in(domain: &str, p: &CheckedPart) -> Option<(usize, usize)> {
     Some((*e.first()?, *e.get(1)?))
 }
 
-/// Computer levels: the network core (the 3-core of the links, or else the computers that only send) split by
-/// network, first network on top, the last below and every other linked computer between them by its distance
-/// from the core; computers with no links share the bottom level 0.
-fn network_levels(hubs: &[usize], ends: &[(usize, usize, usize)]) -> HashMap<usize, usize> {
+/// A computer's family: its id without a short trailing number or letter, `prim_2` and `fadec_1a` as `prim` and `fadec`.
+fn stem(id: &str) -> &str {
+    match id.rsplit_once('_') {
+        Some((head, last)) if last.len() <= 2 && (last.len() == 1 || last.chars().any(|c| c.is_ascii_digit())) => head,
+        _ => id.trim_end_matches(|c: char| c.is_ascii_digit()),
+    }
+}
+
+/// Computer levels, top to bottom: each switched network (a mesh of one family's switches, at least three links
+/// each) with the first network over its modules over the last; under it every other linked computer by how its
+/// data flows, families together; computers with no links at the bottom, level 0. Also the bottom switch rows,
+/// whose own links run below them.
+fn network_levels(c: &Checked, hubs: &[usize], ends: &[(usize, usize, usize)]) -> (HashMap<usize, usize>, HashSet<usize>, HashSet<usize>) {
+    let same = |a: usize, b: usize| stem(&c.parts[a].id) == stem(&c.parts[b].id);
     let mut core: HashSet<usize> = hubs.iter().copied().collect();
     loop {
-        let weak: Vec<usize> = core.iter().copied().filter(|&h| ends.iter().filter(|(_, a, b)| (*a == h && core.contains(b)) || (*b == h && core.contains(a))).count() < 3).collect();
+        let weak: Vec<usize> = core.iter().copied().filter(|&h| ends.iter().filter(|(_, a, b)| ((*a == h && core.contains(b)) || (*b == h && core.contains(a))) && same(*a, *b)).count() < 3).collect();
         if weak.is_empty() {
             break;
         }
@@ -169,10 +181,7 @@ fn network_levels(hubs: &[usize], ends: &[(usize, usize, usize)]) -> HashMap<usi
             core.remove(&h);
         }
     }
-    let meshed = !core.is_empty();
-    if !meshed {
-        core = hubs.iter().copied().filter(|&h| ends.iter().any(|e| e.1 == h) && !ends.iter().any(|e| e.2 == h)).collect();
-    }
+    let near = |x: usize, f: &dyn Fn(usize) -> bool| -> Vec<usize> { ends.iter().filter_map(|&(_, a, b)| if a == x && f(b) { Some(b) } else if b == x && f(a) { Some(a) } else { None }).collect() };
     let mut comp: HashMap<usize, usize> = HashMap::new();
     let mut n = 0;
     for &h in hubs.iter().filter(|h| core.contains(h)) {
@@ -182,44 +191,98 @@ fn network_levels(hubs: &[usize], ends: &[(usize, usize, usize)]) -> HashMap<usi
         let mut q = VecDeque::from([h]);
         comp.insert(h, n);
         while let Some(x) = q.pop_front() {
-            for &(_, a, b) in ends {
-                for (p, y) in [(a, b), (b, a)] {
-                    if meshed && p == x && core.contains(&y) && !comp.contains_key(&y) {
-                        comp.insert(y, n);
-                        q.push_back(y);
-                    }
-                }
-            }
-        }
-        if meshed {
-            n += 1;
-        }
-    }
-    let mut dist: HashMap<usize, usize> = core.iter().map(|&h| (h, 0)).collect();
-    let mut q: VecDeque<usize> = hubs.iter().copied().filter(|h| core.contains(h)).collect();
-    while let Some(x) = q.pop_front() {
-        for &(_, a, b) in ends {
-            for (p, y) in [(a, b), (b, a)] {
-                if p == x && !dist.contains_key(&y) {
-                    dist.insert(y, dist[&x] + 1);
+            for y in near(x, &|y| core.contains(&y) && same(x, y)) {
+                if comp.insert(y, n).is_none() {
                     q.push_back(y);
                 }
             }
         }
+        n += 1;
     }
+    let mut dist: HashMap<usize, usize> = core.iter().map(|&h| (h, 0)).collect();
+    let mut q: VecDeque<usize> = hubs.iter().copied().filter(|h| core.contains(h)).collect();
+    while let Some(x) = q.pop_front() {
+        for y in near(x, &|_| true) {
+            if !dist.contains_key(&y) {
+                dist.insert(y, dist[&x] + 1);
+                q.push_back(y);
+            }
+        }
+    }
+    // Data flow among the rest, by family: sources on top, readers below, cycles broken greedily.
+    let linked: Vec<usize> = hubs.iter().copied().filter(|h| !dist.contains_key(h) && ends.iter().any(|e| e.1 == *h || e.2 == *h)).collect();
+    let fam = |h: usize| stem(&c.parts[h].id).to_owned();
+    let mut fams: Vec<String> = Vec::new();
+    for &h in &linked {
+        if !fams.contains(&fam(h)) {
+            fams.push(fam(h));
+        }
+    }
+    let fi = |h: usize| fams.iter().position(|f| *f == fam(h));
+    let mut arcs: HashSet<(usize, usize)> = HashSet::new();
+    for &(_, a, b) in ends {
+        if let (Some(x), Some(y)) = (fi(a), fi(b)) {
+            if x != y && linked.contains(&a) && linked.contains(&b) {
+                arcs.insert((x, y));
+            }
+        }
+    }
+    let mut left: Vec<usize> = (0..fams.len()).collect();
+    let (mut head, mut tail): (Vec<usize>, Vec<usize>) = (Vec::new(), Vec::new());
+    while !left.is_empty() {
+        let deg = |f: usize, left: &[usize], out: bool| arcs.iter().filter(|&&(x, y)| if out { x == f && left.contains(&y) } else { y == f && left.contains(&x) }).count();
+        if let Some(k) = left.iter().position(|&f| deg(f, &left, true) == 0) {
+            tail.insert(0, left.remove(k));
+        } else if let Some(k) = left.iter().position(|&f| deg(f, &left, false) == 0) {
+            head.push(left.remove(k));
+        } else {
+            let k = (0..left.len()).max_by_key(|&k| deg(left[k], &left, true) as i64 - deg(left[k], &left, false) as i64).unwrap();
+            head.push(left.remove(k));
+        }
+    }
+    head.extend(tail);
+    let rank: HashMap<usize, usize> = head.iter().enumerate().map(|(r, &f)| (f, r)).collect();
+    let mut depth = vec![0usize; fams.len()];
+    for &f in &head {
+        for &(x, y) in &arcs {
+            let (x, y) = if rank[&x] < rank[&y] { (x, y) } else { (y, x) };
+            if y == f {
+                depth[f] = depth[f].max(depth[x] + 1);
+            }
+        }
+    }
+    // Readers that pass nothing on, such as displays, sit together on the bottom row.
+    let last = depth.iter().copied().max().unwrap_or(0);
+    for f in 0..fams.len() {
+        if !arcs.iter().any(|&(x, _)| x == f) {
+            depth[f] = last;
+        }
+    }
+    let flow = last + 1;
     let deepest = dist.values().copied().max().unwrap_or(0);
-    hubs.iter()
+    let top = flow + 1;
+    let mut below = HashSet::new();
+    let levels = hubs
+        .iter()
         .map(|&h| {
-            let l = match (comp.get(&h), dist.get(&h)) {
-                (Some(0), _) if n > 1 => deepest + 2,
-                (Some(_), _) if n > 1 => 1,
-                (_, Some(&d)) if n > 1 => d + 1,
-                (_, Some(&d)) => deepest - d + 1,
-                (_, None) => 0,
+            let l = if let Some(f) = fi(h).filter(|_| linked.contains(&h)) {
+                flow - depth[f]
+            } else {
+                match (comp.get(&h), dist.get(&h)) {
+                    (Some(0), _) if n > 1 => top + deepest + 1,
+                    (Some(_), _) if n > 1 => {
+                        below.insert(h);
+                        top
+                    }
+                    (_, Some(&d)) if n > 1 => top + d,
+                    (_, Some(&d)) => top + deepest - d,
+                    (_, None) => 0,
+                }
             };
             (h, l)
         })
-        .collect()
+        .collect();
+    (levels, below, linked.into_iter().collect())
 }
 
 /// `fold` folds feeder buses and long user lists into their parent; off, every breaker and user is drawn.
@@ -227,7 +290,16 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     let mut d = Diagram::default();
     let parts: Vec<usize> = (0..c.parts.len()).filter(|&i| c.parts[i].domain == domain || (domain == "computer" && c.parts[i].domain == "data") || (c.parts[i].domain == "custom" && easyacft_parts::custom::ports_of(c.parts[i].kind).iter().any(|x| x.domain == domain))).collect();
     let mut hubs: Vec<usize> = parts.iter().copied().filter(|&i| role_in(domain, &c.parts[i]).is_some_and(|r| r.0 == Role::Hub)).collect();
-    let mut ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_in(domain, &c.parts[i]).map(|(a, b)| (i, a, b))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
+    // A computer's link from or to a part it hosts, such as ADR 1 in ADIRS 1, is drawn from the host.
+    let host = |p: usize| match role_in(domain, &c.parts[p]) {
+        Some((Role::Sink, f)) if domain == "computer" => c.parts[p].part(f).unwrap_or(p),
+        _ => p,
+    };
+    let mut ends: Vec<(usize, usize, usize)> = parts.iter().filter_map(|&i| edge_in(domain, &c.parts[i]).map(|(a, b)| (i, host(a), host(b)))).filter(|(_, a, b)| hubs.contains(a) && hubs.contains(b) && a != b).collect();
+    if domain == "computer" {
+        let mut seen = HashSet::new();
+        ends.retain(|(_, a, b)| seen.insert((*a.min(b), *a.max(b))));
+    }
     // A bus fed by one breaker and feeding only users is a distribution feeder: fold it into its parent.
     let sources_of = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r == Role::Source && c.parts[i].part(f) == Some(h)));
     // Also a load's own bus behind SSPCs and diodes: its neighbour that is not itself such a feeder is its parent.
@@ -316,7 +388,26 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         }
     }
 
-    let mut level: HashMap<usize, usize> = if domain == "computer" { network_levels(&hubs, &ends) } else { HashMap::new() };
+    let (mut level, below_rows, flowing) = if domain == "computer" { network_levels(c, &hubs, &ends) } else { (HashMap::new(), HashSet::new(), HashSet::new()) };
+    // A family of computers in the data flow, such as PRIM 1 to 3, is one framed box, one link per pair of families.
+    let mut members: HashMap<usize, Vec<usize>> = HashMap::new();
+    for &h in &hubs {
+        if flowing.contains(&h) {
+            let r = *hubs.iter().find(|&&g| flowing.contains(&g) && stem(&c.parts[g].id) == stem(&c.parts[h].id) && level.get(&g) == level.get(&h)).unwrap();
+            members.entry(r).or_default().push(h);
+        }
+    }
+    let rep_of: HashMap<usize, usize> = members.iter().flat_map(|(&r, m)| m.iter().map(move |&h| (h, r))).collect();
+    if !rep_of.is_empty() {
+        hubs.retain(|h| rep_of.get(h).is_none_or(|r| r == h));
+        for e in ends.iter_mut() {
+            e.1 = rep_of.get(&e.1).copied().unwrap_or(e.1);
+            e.2 = rep_of.get(&e.2).copied().unwrap_or(e.2);
+        }
+        ends.retain(|(_, a, b)| a != b);
+        let mut seen = HashSet::new();
+        ends.retain(|(_, a, b)| seen.insert((*a.min(b), *a.max(b))));
+    }
     let mut q = VecDeque::new();
     for &h in &hubs {
         if domain != "computer" && (attached.contains_key(&(h, true)) || c.parts[h].kind == "tank") {
@@ -375,14 +466,26 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
             _ => (w + 16.0).max(56.0),
         }
     };
-    let side_w = |h: usize, below: bool| attached.get(&(h, below)).map_or(0.0, |l| l.iter().map(|&i| child_w(i) + 12.0).sum::<f32>());
+    // A computer's many hosted parts stack in a grid of up to three a row.
+    let grid = |n: usize| if domain == "computer" && n > 3 { let rows = n.div_ceil(3); (n.div_ceil(rows), rows) } else { (n, 1) };
+    let side_w = |h: usize, below: bool| {
+        attached.get(&(h, below)).map_or(0.0, |l| {
+            let (cols, rows) = grid(l.len());
+            if rows > 1 { cols as f32 * (l.iter().map(|&i| child_w(i)).fold(0.0, f32::max) + 12.0) } else { l.iter().map(|&i| child_w(i) + 12.0).sum::<f32>() }
+        })
+    };
+    let stacked = |h: usize| attached.get(&(h, false)).map_or(1, |l| grid(l.len()).1);
     let degree = |h: usize| ends.iter().filter(|(_, a, b)| *a == h || *b == h).count() as f32;
     let net = domain == "computer";
     // Computers carry no power or flow readings, so their boxes and gaps only need room for the name.
     let width = |h: usize| if net { (text_w(&c.parts[h].id) * 1.15 + 24.0).max(side_w(h, true).max(side_w(h, false)) + 12.0).max(70.0) } else { (text_w(&c.parts[h].id) + 76.0).max(side_w(h, true).max(side_w(h, false)) + 24.0 + degree(h) * 26.0).max(110.0) };
     let (gap, dy, hub_h) = if net { (20.0f32, 160.0f32, 34.0f32) } else { (44.0f32, 190.0f32, 40.0f32) };
 
-    let mut nodes: Vec<Node> = hubs.iter().map(|&h| Node { hub: Some(h), w: width(h) }).collect();
+    let family_w = |h: usize| match members.get(&h) {
+        Some(m) if m.len() > 1 => m.iter().map(|&x| width(x)).sum::<f32>() + 12.0 * (m.len() - 1) as f32 + 20.0,
+        _ => width(h),
+    };
+    let mut nodes: Vec<Node> = hubs.iter().map(|&h| Node { hub: Some(h), w: family_w(h) }).collect();
     let node_of: HashMap<usize, usize> = hubs.iter().enumerate().map(|(n, &h)| (h, n)).collect();
     let mut rows: Vec<Vec<usize>> = vec![Vec::new(); levels];
     for (n, &h) in hubs.iter().enumerate() {
@@ -465,10 +568,11 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
             place(&line, &mut x);
             // Room for the arcs between neighbours on one line: above it, or below the bottom line of a network.
             let arcs = same.iter().filter(|(a, b)| line.contains(a) || line.contains(b)).count() as f32 * 12.0;
-            let down = line.iter().any(|n| nodes[*n].hub.is_some_and(|h| domain == "computer" && level[&h] == 1));
+            let down = line.iter().any(|n| nodes[*n].hub.is_some_and(|h| below_rows.contains(&h)));
             if !down {
                 y += arcs;
             }
+            y += line.iter().filter_map(|n| nodes[*n].hub).map(|h| stacked(h) - 1).max().unwrap_or(0) as f32 * 40.0;
             for &n in &line {
                 node_y[n] = y;
                 node_line[n] = line_no;
@@ -504,18 +608,33 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
             }
         }
     }
+    let mut frames: HashMap<usize, Item> = HashMap::new();
     for row in &rows {
         for &n in row {
             if let Some(h) = nodes[n].hub {
                 let pos = pinned.get(&c.parts[h].id).copied().unwrap_or((x[n], node_y[n]));
                 x[n] = pos.0;
                 node_y[n] = pos.1;
-                d.items.push(Item { part: h, role: Role::Hub, pos, size: (nodes[n].w, hub_h), under: None });
+                let frame = Item { part: h, role: Role::Hub, pos, size: (nodes[n].w, hub_h), under: None };
+                match members.get(&h) {
+                    Some(m) if m.len() > 1 => {
+                        let mut cx = pos.0 - nodes[n].w / 2.0 + 10.0;
+                        for &x in m {
+                            let w = width(x);
+                            d.items.push(Item { part: x, role: Role::Hub, pos: (cx + w / 2.0, pos.1), size: (w, hub_h), under: None });
+                            cx += w + 12.0;
+                        }
+                        d.groups.push((pos.0 - nodes[n].w / 2.0, pos.1 - hub_h / 2.0 - 7.0, nodes[n].w, hub_h + 14.0));
+                    }
+                    _ => d.items.push(frame.clone()),
+                }
+                frames.insert(h, frame);
             }
         }
     }
 
-    let hub: HashMap<usize, Item> = d.items.iter().map(|i| (i.part, i.clone())).collect();
+    let hub: HashMap<usize, Item> = frames;
+    let placed: HashMap<usize, Item> = d.items.iter().map(|i| (i.part, i.clone())).collect();
     let item = |n: usize| &hub[&nodes[n].hub.unwrap()];
     let mut used: HashMap<(usize, bool), Vec<f32>> = HashMap::new();
     let free = |h: usize, top: bool, want: f32, used: &HashMap<(usize, bool), Vec<f32>>| {
@@ -531,7 +650,7 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
         }
         v
     };
-    let arcs_below = |h: &usize| domain == "computer" && level.get(h) == Some(&1);
+    let arcs_below = |h: &usize| below_rows.contains(h);
     let mut arcs: HashMap<i32, usize> = HashMap::new();
     let mut lanes: HashMap<i32, usize> = HashMap::new();
     let mut pairs: HashMap<(usize, usize), usize> = HashMap::new();
@@ -623,19 +742,26 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     let mut keys: Vec<_> = attached.keys().copied().collect();
     keys.sort();
     for (h, below) in keys {
-        let Some(hi) = hub.get(&h) else { continue };
+        let Some(hi) = placed.get(&h) else { continue };
         let list = &attached[&(h, below)];
         let taken = used.get(&(h, !below)).cloned().unwrap_or_default();
-        let total: f32 = list.iter().map(|&i| child_w(i) + 12.0).sum::<f32>() - 12.0;
+        let (cols, rows) = grid(list.len());
+        let cell = list.iter().map(|&i| child_w(i)).fold(0.0, f32::max);
+        let total: f32 = if rows > 1 { cols as f32 * (cell + 12.0) - 12.0 } else { list.iter().map(|&i| child_w(i) + 12.0).sum::<f32>() - 12.0 };
         let mut cx = hi.pos.0 - total / 2.0;
-        for &i in list {
-            let w = child_w(i);
-            while taken.iter().any(|t| *t > cx - 8.0 && *t < cx + w + 8.0) {
-                cx += 10.0;
+        for (k, &i) in list.iter().enumerate() {
+            let w = if rows > 1 { cell } else { child_w(i) };
+            if rows > 1 {
+                cx = hi.pos.0 - total / 2.0 + (k % cols) as f32 * (cell + 12.0);
+            } else {
+                while taken.iter().any(|t| *t > cx - 8.0 && *t < cx + w + 8.0) {
+                    cx += 10.0;
+                }
             }
             let r = if below { Role::Source } else { Role::Sink };
             let size = (w, 34.0);
-            let y = if below { hi.bottom() + 52.0 } else { hi.top() - 52.0 };
+            let lift = (k / cols.max(1)) as f32 * 40.0;
+            let y = if below { hi.bottom() + 52.0 + lift } else { hi.top() - 52.0 - lift };
             let pos = pinned.get(&c.parts[i].id).copied().unwrap_or((cx + w / 2.0, y));
             let attach = if below { hi.bottom() } else { hi.top() };
             let from = if below { pos.1 - size.1 / 2.0 } else { pos.1 + size.1 / 2.0 };
