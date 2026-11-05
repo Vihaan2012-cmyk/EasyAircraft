@@ -42,6 +42,8 @@ pub struct Diagram {
     pub links: Vec<(usize, [(f32, f32); 2])>,
     /// Per drawn hub: breaker-fed sub-buses and loads folded into it.
     pub folded: HashMap<usize, (usize, usize)>,
+    /// Hubs that carry the structure (not a load's own feeder bus or a pass-through fuel line): labelled at any zoom.
+    pub major: HashSet<usize>,
 }
 
 /// Most users a hub shows before they fold into its count.
@@ -134,15 +136,17 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     let sources_of = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r == Role::Source && c.parts[i].part(f) == Some(h)));
     // Also a load's own bus behind SSPCs and diodes: its neighbour that is not itself such a feeder is its parent.
     let protective = |e: usize| matches!(c.parts[e].kind, "breaker" | "sspc" | "diode");
-    let candidate: HashSet<usize> = hubs
+    let feeders: HashSet<usize> = hubs
         .iter()
-        .filter(|_| fold)
         .copied()
         .filter(|&h| {
             let touching: Vec<&(usize, usize, usize)> = ends.iter().filter(|(_, a, b)| *a == h || *b == h).collect();
             touching.iter().any(|(e, _, _)| c.parts[*e].kind != "diode") && touching.iter().all(|(e, _, _)| protective(*e)) && !sources_of(h)
         })
         .collect();
+    let attached_to = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r != Role::Hub && c.parts[i].part(f) == Some(h)));
+    d.major = hubs.iter().copied().filter(|h| !feeders.contains(h) && (domain != "fuel" || c.parts[*h].kind == "tank" || attached_to(*h))).collect();
+    let candidate: HashSet<usize> = if fold { feeders.clone() } else { HashSet::new() };
     let mut feeder_of: HashMap<usize, usize> = HashMap::new();
     for &h in &candidate {
         let parent = ends.iter().filter(|(_, a, b)| *a == h || *b == h).map(|&(_, a, b)| if a == h { b } else { a }).find(|n| !candidate.contains(n));
@@ -161,7 +165,6 @@ pub fn build(c: &Checked, domain: &str, pinned: &HashMap<String, (f32, f32)>, fo
     }
     // A fuel line that only joins two pipes, pumps or valves is drawn as one run from end to end.
     if fold && domain == "fuel" {
-        let attached_to = |h: usize| parts.iter().any(|&i| role_in(domain, &c.parts[i]).is_some_and(|(r, f)| r != Role::Hub && c.parts[i].part(f) == Some(h)));
         loop {
             let through = |h: usize| ends.iter().filter(|(_, a, b)| *a == h || *b == h).count() == 2;
             let Some(h) = hubs.iter().copied().find(|&h| c.parts[h].kind == "line" && through(h) && !attached_to(h)) else { break };

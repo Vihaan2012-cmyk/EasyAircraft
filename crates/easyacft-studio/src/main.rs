@@ -235,7 +235,7 @@ impl App {
             search: String::new(),
             plots: Vec::new(),
             pinned: HashMap::new(),
-            fold: true,
+            fold: false,
             dragging: None,
             offset: Vec2::ZERO,
             edits: HashMap::new(),
@@ -534,19 +534,32 @@ impl App {
                 hit = Some(e.part);
             }
         }
+        let mut crisp_rects: Vec<Rect> = Vec::new();
         for it in &d.items {
             let p = at(it.pos);
             let part = &a.checked.parts[it.part];
             let (live, failed, text) = self.part_state(part);
             let st = state_of(live, failed, &text);
             let sel = self.selected == Some(it.part);
-            let rect = box_of(it);
+            let major = d.major.contains(&it.part);
+            let name = style::label(&part.id);
+            // A structural hub keeps a crisp label at any zoom; its box grows around it.
+            let mut crisp = if major && it.role == Role::Hub && 12.5 * z < 11.0 { Some(painter.layout_no_wrap(name.clone(), FontId::monospace(11.0), style::text_of(st))) } else { None };
+            let mut rect = box_of(it);
+            if let Some(g) = &crisp {
+                let grown = Rect::from_center_size(rect.center(), Vec2::new(rect.width().max(g.size().x + 12.0), rect.height().max(g.size().y + 8.0)));
+                if crisp_rects.iter().any(|r| r.expand(2.0).intersects(grown)) {
+                    crisp = None;
+                } else {
+                    crisp_rects.push(grown);
+                    rect = grown;
+                }
+            }
             style::squircle(&painter, rect, 9.0 * z, st);
             if sel {
                 style::squircle_with(&painter, rect.expand(3.0 * z), 11.0 * z, Color32::TRANSPARENT, Stroke::new(2.0f32, style::SELECT));
             }
-            let name = style::label(&part.id);
-            let size = if it.role == Role::Hub { (12.5 * z).max(10.5) } else { (10.0 * z).max(9.0) };
+            let size = if it.role == Role::Hub { 12.5 * z } else { 10.0 * z };
             let inner = rect.width() - 10.0 * z;
             let mut sub: Vec<String> = Vec::new();
             if labels && !text.is_empty() {
@@ -555,8 +568,9 @@ impl App {
             if let Some(&(b, u)) = d.folded.get(&it.part) {
                 sub.push(if b == 0 { format!("{u} USERS") } else { format!("{b} CB  {u} USERS") });
             }
-            let sub_g = if sub.is_empty() { None } else { fit(&sub.join("  "), (9.0 * z).max(8.0), inner, faint) };
-            let name_g = fit(&name, size, inner, style::text_of(st));
+            let sub_g = if sub.is_empty() { None } else { fit(&sub.join("  "), 9.0 * z, inner, faint) };
+            let name_g = crisp.clone().or_else(|| fit(&name, size, inner, style::text_of(st)));
+            let sub_g = if crisp.is_some() { None } else { sub_g };
             match (name_g, sub_g) {
                 (Some(g), Some(sg)) => {
                     let gap = 2.0 * z;
