@@ -854,7 +854,7 @@ mod probe {
     #[test]
     #[ignore]
     fn real_loads() {
-        let t = std::fs::read_to_string("E:/fbw-int/plugin/src/deep/electrical/loads.rs").unwrap();
+        let t = std::fs::read_to_string(std::env::var("FBW_LOADS_RS").expect("FBW_LOADS_RS: the plugin's deep/electrical/loads.rs")).unwrap();
         let (l, e) = super::loads(&t);
         println!("loads {} estimated {}", l.len(), e);
         for x in l.iter().take(5) {
