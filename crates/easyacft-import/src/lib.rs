@@ -9,6 +9,7 @@ mod catalogue;
 mod code;
 mod deep_parts;
 mod fbw_links;
+mod hydraulic_users;
 mod msfs_fuel;
 pub mod plugin;
 

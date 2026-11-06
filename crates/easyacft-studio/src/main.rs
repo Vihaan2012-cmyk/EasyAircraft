@@ -4,6 +4,7 @@ mod diagram;
 mod cutaway;
 mod edit;
 mod engine_view;
+mod hydraulic_view;
 mod inspector;
 mod live;
 mod png;
@@ -20,6 +21,8 @@ use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+const TABS: [Tab; 9] = [Tab::Diagram, Tab::Engine, Tab::Plot, Tab::Log, Tab::Health, Tab::Tables, Tab::Fit, Tab::Compare, Tab::Computers];
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
@@ -51,6 +54,8 @@ pub struct App {
     full: bool,
     toggle_full: bool,
     saved_ppp: Option<f32>,
+    /// The tab and domain last written to the recent list for this folder.
+    saved_view: (usize, usize),
     dragging: Option<usize>,
     offset: Vec2,
     pub edits: HashMap<String, String>,
@@ -164,14 +169,76 @@ fn last_file() -> Option<PathBuf> {
     std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("EasyAcft").join("last-aircraft.txt"))
 }
 
-fn last_dir() -> String {
-    last_file().and_then(|f| std::fs::read_to_string(f).ok()).map(|s| s.trim().to_owned()).unwrap_or_default()
+fn recent_file() -> Option<PathBuf> {
+    last_file().map(|f| f.with_file_name("recent.txt"))
 }
 
-fn remember_dir(dir: &str) {
-    if let Some(f) = last_file() {
-        let _ = std::fs::create_dir_all(f.parent().unwrap());
-        let _ = std::fs::write(f, dir);
+/// One opened folder with the tab and domain it was left on.
+#[derive(Clone)]
+struct Recent {
+    dir: String,
+    tab: usize,
+    domain: usize,
+}
+
+const RECENT_MAX: usize = 12;
+
+fn read_recent() -> Vec<Recent> {
+    let text = recent_file().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    let mut list: Vec<Recent> = text
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.split('\t');
+            let dir = f.next()?.trim().to_owned();
+            (!dir.is_empty()).then(|| Recent { dir, tab: f.next().and_then(|t| t.parse().ok()).unwrap_or(0), domain: f.next().and_then(|t| t.parse().ok()).unwrap_or(0) })
+        })
+        .collect();
+    if list.is_empty() {
+        if let Some(d) = last_file().and_then(|f| std::fs::read_to_string(f).ok()).map(|s| s.trim().to_owned()).filter(|d| !d.is_empty()) {
+            list.push(Recent { dir: d, tab: 0, domain: 0 });
+        }
+    }
+    list
+}
+
+fn write_recent(list: &[Recent]) {
+    let Some(f) = recent_file() else { return };
+    let _ = std::fs::create_dir_all(f.parent().unwrap());
+    let text: String = list.iter().map(|r| format!("{}\t{}\t{}\n", r.dir, r.tab, r.domain)).collect();
+    let _ = std::fs::write(f, text);
+    if let (Some(first), Some(last)) = (list.first(), last_file()) {
+        let _ = std::fs::write(last, &first.dir);
+    }
+}
+
+fn same_dir(a: &str, b: &str) -> bool {
+    let n = |s: &str| s.trim().replace('\\', "/").trim_end_matches('/').to_ascii_lowercase();
+    n(a) == n(b)
+}
+
+fn last_dir() -> String {
+    read_recent().first().map(|r| r.dir.clone()).unwrap_or_default()
+}
+
+/// Puts `dir` first in the recent list, keeping the view it was left on unless one is given.
+fn remember_dir(dir: &str, view: Option<(usize, usize)>) {
+    let mut list = read_recent();
+    let old = list.iter().position(|r| same_dir(&r.dir, dir)).map(|i| list.remove(i));
+    let (tab, domain) = view.unwrap_or_else(|| old.as_ref().map_or((0, 0), |r| (r.tab, r.domain)));
+    list.insert(0, Recent { dir: dir.to_owned(), tab, domain });
+    list.truncate(RECENT_MAX);
+    write_recent(&list);
+}
+
+/// A folder's name for the recent list: its aircraft's name when aircraft.toml says one.
+fn recent_label(dir: &str) -> String {
+    let name = std::fs::read_to_string(Path::new(dir).join("aircraft.toml"))
+        .ok()
+        .and_then(|t| t.parse::<toml_edit::DocumentMut>().ok())
+        .and_then(|d| d.get("name").and_then(|v| v.as_str()).map(str::to_owned));
+    match name {
+        Some(n) => format!("{n}   {dir}"),
+        None => dir.to_owned(),
     }
 }
 
@@ -242,6 +309,7 @@ impl App {
             full: false,
             toggle_full: false,
             saved_ppp: None,
+            saved_view: (usize::MAX, usize::MAX),
             dragging: None,
             offset: Vec2::ZERO,
             edits: HashMap::new(),
@@ -309,7 +377,14 @@ impl App {
                 self.report = report.render();
                 self.status = format!("{}: {} parts", fresh.name, fresh.checked.parts.len());
                 if self.shot.is_none() {
-                    remember_dir(&self.dir);
+                    remember_dir(&self.dir, None);
+                    if let Some(r) = read_recent().into_iter().find(|r| same_dir(&r.dir, &self.dir)) {
+                        if self.aircraft.is_none() {
+                            self.tab = TABS.get(r.tab).copied().unwrap_or(Tab::Diagram);
+                            self.domain = r.domain.min(DOMAINS.len() - 1);
+                        }
+                    }
+                    self.saved_view = (TABS.iter().position(|t| *t == self.tab).unwrap_or(0), self.domain);
                 }
                 self.aircraft = Some(fresh);
             }
@@ -462,9 +537,34 @@ impl App {
     fn draw_diagram(&mut self, ui: &mut egui::Ui) {
         let Some(a) = &self.aircraft else {
             ui.label("Open an aircraft folder: the one with aircraft.toml.");
+            ui.add_space(8.0);
+            let mut open = None;
+            for r in read_recent() {
+                if ui.button(recent_label(&r.dir)).clicked() {
+                    open = Some(r.dir);
+                }
+            }
+            if let Some(d) = open {
+                self.dir = d;
+                self.reload();
+            }
             return;
         };
         let domain = DOMAINS[self.domain];
+        if domain == "hydraulic" {
+            let (resp, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
+            let get = |n: &str| self.get(n).unwrap_or(0.0);
+            let hits = hydraulic_view::draw(&painter, resp.rect, &a.checked, &get, self.selected);
+            let picked = resp.interact_pointer_pos().and_then(|pos| hits.iter().find(|h| h.rect.contains(pos)).map(|h| h.part));
+            if resp.clicked() && picked.is_some() {
+                self.selected = picked;
+                self.edits.clear();
+            }
+            if self.running {
+                ui.ctx().request_repaint();
+            }
+            return;
+        }
         let avail = ui.available_size();
         let d: Diagram = diagram::build(&a.checked, domain, &self.pinned, self.fold, (avail.x / avail.y.max(1.0)).clamp(0.6, 3.0));
         let (resp, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
@@ -1483,6 +1583,13 @@ fn compare(a: Option<&Model>, b: &Model) -> Vec<String> {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.tick();
+        if self.shot.is_none() && self.aircraft.is_some() {
+            let view = (TABS.iter().position(|t| *t == self.tab).unwrap_or(0), self.domain);
+            if view != self.saved_view {
+                self.saved_view = view;
+                remember_dir(&self.dir, Some(view));
+            }
+        }
         if let Some((path, n)) = &mut self.shot {
             *n += 1;
             if *n == 8 {
@@ -1521,6 +1628,20 @@ impl eframe::App for App {
                     self.aircraft = None;
                     self.reload();
                 }
+                ui.menu_button("Recent", |ui| {
+                    let list = read_recent();
+                    if list.is_empty() {
+                        ui.label("Nothing opened yet.");
+                    }
+                    for r in list {
+                        if ui.button(recent_label(&r.dir)).clicked() {
+                            self.dir = r.dir.clone();
+                            self.aircraft = None;
+                            self.reload();
+                            ui.close_menu();
+                        }
+                    }
+                });
                 if ui.button("Reload").clicked() {
                     self.reload();
                 }
@@ -1817,17 +1938,19 @@ fn main() -> eframe::Result<()> {
             if let Some(d) = domain.and_then(|d| DOMAINS.iter().position(|x| *x == d)) {
                 app.domain = d;
             }
-            app.tab = match tab.as_deref() {
-                Some("engine") => Tab::Engine,
-                Some("plot") => Tab::Plot,
-                Some("log") => Tab::Log,
-                Some("health") => Tab::Health,
-                Some("tables") => Tab::Tables,
-                Some("fit") => Tab::Fit,
-                Some("compare") => Tab::Compare,
-                Some("computers") => Tab::Computers,
-                _ => Tab::Diagram,
-            };
+            if let Some(t) = tab.as_deref() {
+                app.tab = match t {
+                    "engine" => Tab::Engine,
+                    "plot" => Tab::Plot,
+                    "log" => Tab::Log,
+                    "health" => Tab::Health,
+                    "tables" => Tab::Tables,
+                    "fit" => Tab::Fit,
+                    "compare" => Tab::Compare,
+                    "computers" => Tab::Computers,
+                    _ => Tab::Diagram,
+                };
+            }
             app.selected = select.and_then(|id| app.aircraft.as_ref().and_then(|a| a.checked.find(&id)));
             app.shot = shot.map(|p| (p, 0));
             Ok(Box::new(app))

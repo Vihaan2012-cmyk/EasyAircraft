@@ -212,22 +212,9 @@ fn wheels(c: &Catalogue) -> Vec<(String, String, &'static str)> {
 
 fn gear(c: &Catalogue, head: &str) -> String {
     let mut f = head.to_owned();
-    f += "# Brakes, tyres and steering from the plugin's landing gear (32_gear): 16 carbon brakes, the tyres it monitors, nose and body steering.\n\n";
-    f += "[[input.number]]\nid = \"brake_pedals\"\n\n[[input.number]]\nid = \"tiller\"\n\n[[input.number]]\nid = \"rudder_pedals\"\n\n";
-    for x in c.components.iter().filter(|x| x.id.starts_with("32_gear.wheel_") && x.id.ends_with("_brake")) {
-        let id = &x.id["32_gear.".len()..];
-        let circuit = if x.name.contains("wing") { "green" } else { "yellow" };
-        writeln!(f, "# {}\n[[gear.brake]]\nid = \"{id}\"\ncircuit = \"{circuit}\"\npedal = \"brake_pedals.value\"\nmax_pressure = \"3000 psi\"\nair = \"air\"\n", x.name).unwrap();
-    }
+    f += "# The tyres the plugin's landing gear monitors (32_gear); the brakes and steering are in hydraulic.toml, on their circuits.\n\n";
     for (key, id, _) in wheels(c) {
         writeln!(f, "[[gear.tyre]]\nid = \"{id}\"\npressure = \"{} psi\"\nair = \"air\"\n", if key.starts_with("nose") { 180 } else { 218 }).unwrap();
-    }
-    let steer = fails(c, "32_gear.steer_ctl", &["channel 1"]);
-    let steer2 = fails(c, "32_gear.steer_ctl", &["channel 2"]);
-    let powered = if steer == "false" { "true".to_owned() } else { format!("!(({steer}) && ({steer2}))") };
-    writeln!(f, "[[gear.steering]]\nid = \"nose_steering\"\ncircuit = \"yellow\"\npowered_when = \"{powered}\"\ntiller = \"tiller.value\"\npedals = \"rudder_pedals.value\"\nair = \"air\"\ntowing_when = \"{}\"\n", fails(c, "32_gear.nose_steering", &["disconnect"])).unwrap();
-    if comp(c, "32_gear.l_body_steering").is_some() {
-        writeln!(f, "[[gear.steering]]\nid = \"body_steering\"\ncircuit = \"green\"\npowered_when = \"{powered}\"\ntiller = \"tiller.value\"\nair = \"air\"\ntiller_angle = 15\n").unwrap();
     }
     f
 }

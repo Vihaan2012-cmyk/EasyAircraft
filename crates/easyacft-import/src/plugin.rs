@@ -687,25 +687,21 @@ pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: &[Option<String>]) -
         let motor = or(f(&format!("29_elec.hyd-epump-{e}"), &[]), f(&format!("29_elec.hyd-epump-{e}-coil"), &[]));
         writeln!(
             h,
-            "[[cockpit.switch]]\nid = \"{c}_epump_{x}_sw\"\n\n[[hydraulic.pump]]\nid = \"{c}_epump_{x}\"\ncircuit = \"{c}\"\ntype = \"electric\"\npressure = \"5000 psi\"\nflow = \"16 L/min\"\nrunning_when = \"{c}_epump_{x}_sw.on && {bus}.powered\"\n{}{}{}",
+            "[[cockpit.switch]]\nid = \"{c}_epump_{x}_sw\"\n\n[[hydraulic.pump]]\nid = \"{c}_epump_{x}\"\ncircuit = \"{c}\"\ntype = \"electric\"\npressure = \"5000 psi\"\nflow = \"35 L/min\"\nrunning_when = \"{c}_epump_{x}_sw.on && {bus}.powered\"\n{}{}{}",
             when("worn_when", f(&u, &["displacement"])),
             when("seized_when", f(&u, &["seizure"])),
             when("powered_when", if motor == "false" { "false".into() } else { super::deep_parts::not(&motor) }),
         )
         .unwrap();
     }
-    for (id, c, vol) in [("brake_acc_g", "green", "12 L"), ("brake_acc_y", "yellow", "12 L"), ("cargo_door_acc", "yellow", "2 L")] {
-        let lost = if id.starts_with("brake") { f(&format!("29_hyd.{c}_accumulator"), &[]) } else { "false".into() };
+    for (id, c, vol) in [("brake_acc_g", "green", "12 L"), ("brake_acc_y", "yellow", "12 L"), ("parking_brake_acc", "yellow", "6 L"), ("cargo_door_acc", "yellow", "2 L")] {
+        let lost = match id {
+            "parking_brake_acc" => f("32_gear.parking_brake_accumulator", &[]),
+            i if i.starts_with("brake") => f(&format!("29_hyd.{c}_accumulator"), &[]),
+            _ => "false".into(),
+        };
         writeln!(h, "[[hydraulic.accumulator]]\nid = \"{id}\"\ncircuit = \"{c}\"\nvolume = \"{vol}\"\nprecharge = \"2000 psi\"\ncheck_valve = true\n{}", when("precharge_lost_when", lost)).unwrap();
     }
-    h += "[[logic.flag]]\nid = \"flying\"\nwhen = \"!air.on_ground\"\n\n";
-    for (id, flow) in [("ailerons", 40), ("elevators", 30), ("rudder", 15), ("ths", 20)] {
-        for (c, x) in [("green", "g"), ("yellow", "y")] {
-            writeln!(h, "[[hydraulic.consumer]]\nid = \"{id}_{x}\"\ncircuit = \"{c}\"\nflow = \"{flow} L/min\"\nmoving_when = \"flying.on\"\n").unwrap();
-        }
-    }
-    h += "[[input.number]]\nid = \"flap_lever\"\n\n[[logic.flag]]\nid = \"flaps_moving\"\nwhen = \"off_delay(rising(flap_lever.value > 0.5) || rising(flap_lever.value < 0.5), 40 s)\"\n\n";
-    h += "[[hydraulic.consumer]]\nid = \"flaps_motor_g\"\ncircuit = \"green\"\nflow = \"60 L/min\"\nmoving_when = \"flaps_moving.on\"\n\n[[hydraulic.consumer]]\nid = \"slats_motor_g\"\ncircuit = \"green\"\nflow = \"40 L/min\"\nmoving_when = \"flaps_moving.on\"\n\n";
     h += "# Each system's supply lines to its gear, brakes, steering, reversers and cargo doors, each able to leak, the gear and cargo door lines behind the priority valve.\n";
     for c in ["green", "yellow"] {
         for line in ["gear", "brakes", "steering", "reversers", "cargo_doors"] {
@@ -713,10 +709,7 @@ pub fn systems(d: &Deep, head: &str, units: &[Unit], feeds: &[Option<String>]) -
         }
         writeln!(h, "[[hydraulic.valve]]\nid = \"{c}_priority_valve\"\ncircuit = \"{c}\"\nserves = [\"{c}_line_gear\", \"{c}_line_cargo_doors\"]\nopen_when = \"{c}.pressure > 3000 psi\"\nopen_time = \"0.2 s\"\n{}", when("stuck_when", f(&format!("29_hyd.{c}_priority_valve"), &[]))).unwrap();
     }
-    h += "# Five legs; the body and wing gear on green, the nose on yellow.\n";
-    for (id, c, t) in [("nose_gear", "yellow", 10), ("wing_gear_l", "green", 14), ("wing_gear_r", "green", 14), ("body_gear_l", "green", 14), ("body_gear_r", "green", 14)] {
-        writeln!(h, "[[gear.leg]]\nid = \"{id}\"\ncircuit = \"{c}\"\ndown_when = \"gear_lever.on\"\ntime = \"{t} s\"\n").unwrap();
-    }
+    h += &super::hydraulic_users::users(&f);
 
     let mut c = head.to_owned();
     c += "# Every constant-power avionics consumer in the catalogue, as a computer on its own breaker bus.\n\n";
