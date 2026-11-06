@@ -56,6 +56,8 @@ pub struct App {
     saved_ppp: Option<f32>,
     /// The tab and domain last written to the recent list for this folder.
     saved_view: (usize, usize),
+    /// Off for screenshots, so they never touch the recent list.
+    remember: bool,
     dragging: Option<usize>,
     offset: Vec2,
     pub edits: HashMap<String, String>,
@@ -190,7 +192,7 @@ fn read_recent() -> Vec<Recent> {
         .filter_map(|l| {
             let mut f = l.split('\t');
             let dir = f.next()?.trim().to_owned();
-            (!dir.is_empty()).then(|| Recent { dir, tab: f.next().and_then(|t| t.parse().ok()).unwrap_or(0), domain: f.next().and_then(|t| t.parse().ok()).unwrap_or(0) })
+            (!dir.is_empty() && Path::new(&dir).join("aircraft.toml").exists()).then(|| Recent { dir, tab: f.next().and_then(|t| t.parse().ok()).unwrap_or(0), domain: f.next().and_then(|t| t.parse().ok()).unwrap_or(0) })
         })
         .collect();
     if list.is_empty() {
@@ -291,7 +293,7 @@ pub const SETTABLE: &[&str] = &["on", "pressed", "guard_open", "failed", "pulled
 const MORE: &[&str] = &["custom", "logic", "weight", "gear", "cabin", "ice", "oxygen", "fadec", "apu", "fire", "light", "sound", "failure", "data", "sensor", "wear", "input", "output", "environment"];
 
 impl App {
-    fn new(dir: String) -> Self {
+    fn new(dir: String, remember: bool) -> Self {
         let mut a = App {
             dir,
             aircraft: None,
@@ -310,6 +312,7 @@ impl App {
             toggle_full: false,
             saved_ppp: None,
             saved_view: (usize::MAX, usize::MAX),
+            remember,
             dragging: None,
             offset: Vec2::ZERO,
             edits: HashMap::new(),
@@ -376,7 +379,7 @@ impl App {
                 }
                 self.report = report.render();
                 self.status = format!("{}: {} parts", fresh.name, fresh.checked.parts.len());
-                if self.shot.is_none() {
+                if self.remember {
                     remember_dir(&self.dir, None);
                     if let Some(r) = read_recent().into_iter().find(|r| same_dir(&r.dir, &self.dir)) {
                         if self.aircraft.is_none() {
@@ -1583,7 +1586,7 @@ fn compare(a: Option<&Model>, b: &Model) -> Vec<String> {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.tick();
-        if self.shot.is_none() && self.aircraft.is_some() {
+        if self.remember && self.aircraft.is_some() {
             let view = (TABS.iter().position(|t| *t == self.tab).unwrap_or(0), self.domain);
             if view != self.saved_view {
                 self.saved_view = view;
@@ -1904,7 +1907,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
             cc.egui_ctx.set_visuals_of(egui::Theme::Dark, visuals());
-            let mut app = App::new(dir);
+            let mut app = App::new(dir, shot.is_none());
             if bare {
                 app.full = true;
                 cc.egui_ctx.set_pixels_per_point(1.0);
